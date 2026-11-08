@@ -1,128 +1,50 @@
 ---
 name: scene-building
 description: >
-  Scene and world building workflow for the Flopperam Unreal Engine MCP. Covers 
-  actor management, landscape sculpting, foliage scattering, AI setup, cinematics, 
-  and level verification. Use when placing actors, building environments, working 
-  with landscapes/foliage, setting up AI characters, or creating Level Sequences.
+  Scene and level building with the local UnrealMCP tools: finding, spawning,
+  editing and verifying actors; lighting; procedural structures; levels and PIE.
+  Use when placing actors, laying out a level, lighting a scene, or building
+  structures.
 ---
 
-# Scene & World Building Workflow
+# Scene & Level Building
 
-## Core Pattern: Observe → Execute → Verify
+## Find
+- `get_actors_in_level`, `find_actors_by_name(pattern)`: actor names and labels (Outliner names, **not** asset paths).
+- `object_describe(path="<label>")`: the actor's class, components and properties. Add `include_values=true` to also get current values.
+- Assets (meshes, materials) are found through Python:
+  ```python
+  reg = unreal.AssetRegistryHelpers.get_asset_registry()
+  result = [str(a.package_name) for a in reg.get_assets_by_path("/Game", recursive=True)
+            if "Rock" in str(a.asset_name)][:50]
+  ```
+  Engine basic shapes: `/Engine/BasicShapes/Cube.Cube`, `Sphere`, `Cylinder`, `Cone`, `Plane`.
 
-1. **Observe** — `scene_brief` for level overview, `scene_query` for specific actors, `search_assets` for meshes/materials
-2. **Execute** — `scene_compose` for batch placement, domain tools for specific systems
-3. **Verify** — `scene_query` with spatial filters to confirm, `pie_test_scene` for runtime behavior
+## Spawn & edit
+- Many actors at once: a single `execute_python` call with a loop. Don't make one tool call per actor.
+  ```python
+  sub = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+  mesh = unreal.load_asset("/Engine/BasicShapes/Cube.Cube")
+  with unreal.ScopedEditorTransaction("pillars"):
+      for i in range(10):
+          a = sub.spawn_actor_from_object(mesh, unreal.Vector(i * 300, 0, 0))
+          a.set_actor_label(f"Pillar_{i}")
+          a.set_actor_scale3d(unreal.Vector(1, 1, 4))
+  result = "ok"
+  ```
+- One property: `property_set(path="Pillar_3", property="StaticMeshComponent.Mobility", value="Movable")`.
+- Transforms: `set_actor_transform`. Deletion: `delete_actor`.
+- Procedural structures: `create_town`, `create_castle_fortress`, `construct_house`, `construct_mansion`, `create_maze`, `create_tower`, `create_wall`, `create_staircase`, `create_arch`, `create_pyramid`, `create_suspension_bridge`, `create_aqueduct`.
 
-## Scene Queries & Placement
+## Lighting
+Spawn `unreal.DirectionalLight`, `unreal.SkyLight`, `unreal.SkyAtmosphere`, `unreal.ExponentialHeightFog`, `unreal.PointLight` with `spawn_actor_from_class`. Tune them with `property_set`, e.g. `LightComponent.Intensity`, `LightComponent.LightColor` = `{"R":255,"G":200,"B":150,"A":255}`.
 
-### Finding Things
-- `scene_brief` — compact level overview (actor counts, classes, bounds)
-- `scene_query` — find actors by class/label/tag/folder with spatial filters (`near`, `box`, `frustum`)
-- `search_assets` — Content Browser search by name/prefix/class (returns asset paths, NOT actor labels)
-- `asset_references` — dependency graphs (what does X reference, what references X)
-- `project_context` — engine version, plugins, project settings, maps, content stats
+## Levels & play
+- `project_context` → `maps`, `current_level`. Load a map with `editor_action(action="load_level", level_path="/Game/Maps/Arena")`.
+- Save with `editor_action(action="save_all")`. Nothing is saved to disk until you do.
+- PIE: `editor_action(action="pie_start")`, then poll `project_context().pie_running`, read `editor_log`, then `pie_stop`.
 
-Scene tools work on **actors** (placed instances). `search_assets` works on **assets** (reusable files). Never confuse the two.
-
-### Placing Things
-`scene_compose` declaratively spawns/modifies/deletes actors with prefabs + patterns. Prefer it over looping scene_query writes.
-
-### Actor Management
-- `actor_inspect` — drill into one actor (components, properties, transform)
-- Use `scene_compose` to modify transforms, delete actors, or batch-manage scene objects
-
-## Landscape & Terrain
-
-### Inspection
-`landscape_inspect` — height/slope/normal queries, statistics, find flat areas, paint-layer listing.
-
-### Editing
-`landscape_edit` handles:
-- Lifecycle — create/resize/delete landscapes
-- Sculpting — raise, lower, smooth, flatten, erosion
-- Semantic features — mountains, valleys, craters, plateaus, terraces
-- Paint layers — create and apply landscape material layers
-- Heightmap — import/export
-
-Always inspect before editing to understand current terrain state.
-
-## Foliage
-
-- `foliage_inspect` — list types + counts
-- `foliage_edit` — create FoliageTypes, scatter (circles/rectangles/by weight layer), place exact transforms, remove by radius or type
-
-## Materials & Shading
-
-1. `material_inspect` — read-only (overview, expressions, connections, parameters, textures, shader stats, parent chain). Run BEFORE `material_edit` on existing materials.
-2. `material_edit` — create materials/instances/functions/Parameter Collections, author expression graphs. Auto-retries single-input pin name resolution.
-
-## VFX (Niagara & Chaos)
-
-- `niagara_inspect` → `niagara_edit` for systems/emitters/parameters/renderers
-- `niagara_script_edit` for reusable NiagaraScript module graphs
-- `chaos_edit` for Geometry Collections (fracture, clustering, damage thresholds)
-- `ramp_authoring` for curve assets (UCurveFloat/Vector/LinearColor) — create the curve FIRST, then reference from the consumer
-
-## AI & Behavior Trees
-
-Full setup workflow:
-1. `behavior_tree` with `create_blackboard` → create keys (TargetActor, PatrolLocation, etc.)
-2. `behavior_tree` with `create_behavior_tree` → create the BT asset
-3. `behavior_tree` with `set_blackboard_on_bt` → link Blackboard to BT
-4. `behavior_tree` with `build_behavior_tree` → build tree structure (selectors, sequences, tasks, decorators)
-5. `behavior_tree` with `create_ai_controller` → create controller referencing the BT
-6. `behavior_tree` with `validate_behavior_tree` → validate
-
-Also covers: AI perception, NavMesh, EQS queries, StateTrees, Smart Objects, runtime BT + blackboard inspection in PIE.
-
-### Gameplay Abilities
-- `gas_edit` — Gameplay Abilities (tags, cost, cooldown, activation), Effects (duration, modifiers, stacking), Attribute Sets
-- `tag_registry_edit` — project-wide Gameplay Tag hierarchy
-
-## Cinematics
-
-`sequencer_edit` creates Level Sequences with:
-- Actor bindings
-- Transform / animation / audio / camera / event / fade tracks
-- Keyframes with interpolation control
-- Camera cuts
-
-## Audio
-
-- `metasound_edit` — procedural audio (MetaSound graphs: oscillators, filters, envelopes, mixers, sample players)
-- `sound_asset_edit` — SoundCue graphs, SoundClass hierarchy, SoundAttenuation curves
-
-## Procedural Content
-
-`pcg_graph_edit` — PCG graphs with point generators, samplers, filters, density operators, mesh spawners with typed pin wiring.
-
-## Physics
-
-`collision_profile_edit` — collision profiles, physical materials, object type responses.
-
-## Editor Utilities
-
-- `editor_actions` — save, undo, redo, select, focus, build lighting/navigation, compile, PIE start/stop, viewport mode
-- `editor_log` — Output Log + Message Log with verbosity filter + time window
-- `performance_audit` — triangle counts, actor counts by class, mesh complexity, texture memory, optimization warnings
-- `window_capture` — viewport screenshot as PNG
-
-## Runtime Verification
-
-`pie_test_scene` — free-tier PIE harness with:
-- Narrow input whitelist (console, wait, spawn_actor, play_sequence, fire_damage)
-- Lifecycle + VFX + audio + visual-regression assertions
-- Auto-plan mode from task description
-
-Use after any scene change that affects runtime behavior.
-
-## Data Assets
-
-`asset_factory` — single entry for:
-- Enums / Structs
-- DataTables (CRUD rows, bulk JSON import)
-- DataAssets (any subclass)
-- Enhanced Input (IA + IMC + key mappings + modifiers + triggers)
-- Safe Blueprint deletion (crash-safe path)
+## Verify
+- `viewport_capture` after visual changes. To frame the subject first, use `editor_action(action="focus_actor", actor_name=...)`.
+- Run `editor_log(since_seq=..., min_verbosity="Warning")` after any batch.
+- Count check: re-query and compare with what you intended to create.

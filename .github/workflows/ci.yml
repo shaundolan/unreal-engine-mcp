@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+      - run: uv run ruff check .
+      - run: uv run pytest -q
+
+  # Compiles the plugin on a self-hosted runner that has Unreal Engine installed.
+  # Register the Windows UE box as a runner with labels [self-hosted, windows, unreal].
+  plugin-build:
+    if: ${{ vars.UE_RUNNER_ENABLED == 'true' }}
+    runs-on: [self-hosted, windows, unreal]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build editor target
+        shell: pwsh
+        run: |
+          $ue = if ($env:UE_ROOT) { $env:UE_ROOT } else { "C:\Program Files\Epic Games\UE_5.5" }
+          & "$ue\Engine\Build\BatchFiles\Build.bat" FlopperamUnrealMCPEditor Win64 Development `
+            -Project="$PWD\FlopperamUnrealMCP\FlopperamUnrealMCP.uproject" -WaitMutex
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -1,23 +1,27 @@
 ---
 description: >
-  Error recovery patterns for Flopperam Unreal Engine MCP tools. Applies when 
-  a tool call returns an error, unexpected result, or partial failure.
+  Error recovery for the local UnrealMCP tools. Applies when a tool call returns
+  an error, an unexpected result, or a partial failure.
 alwaysApply: false
 globs: "**/*"
 ---
 
-Connection errors: The Unreal Editor is not reachable. Ask the user to verify the editor and FlopAI plugin are running.
+"cannot reach Unreal": the editor isn't running, the UnrealMCP plugin isn't enabled, or the port differs (`UNREAL_MCP_PORT`). Ask the user to check.
 
-"Asset not found": Double-check the path with `search_assets`. Paths are case-sensitive and require `PackageName.AssetName` format.
+"Unknown command: X": the editor has an older plugin build. Run `unreal_status` to see which commands it supports, then use `execute_python` as a fallback or ask the user to rebuild the plugin.
 
-Blueprint compile errors after edits: Use `bp_inspect` to see current state, submit a NARROW follow-up (`bp_wire` for missing edges, `bp_nodes` for missing nodes, `bp_variable`/`bp_component` for missing declarations), then `bp_commit` again. Do NOT re-submit the whole spec — that duplicates successful intents.
+"unauthorized": `UNREAL_MCP_TOKEN` differs between the MCP server and the editor environment.
 
-Partial apply / missing_intents: batched tools return per-sub-op status. Read the `sub_results` and patch just the failures.
+"timed out waiting for the game thread": a modal dialog is probably open in the editor, or a long compile is running. Ask the user to dismiss it. Don't blindly retry mutating commands.
 
-"pin 'execute' not found" on a pure node: pure functions (`variable_get`, math, `K2_GetActorLocation`, `make_struct`, `break_struct`) have no exec pins. Wire only data.
+`execute_python` returned `success: false` with a `traceback`: read the last line. For AttributeError or TypeError, look up the right name with `unreal_api_search` / `unreal_api_doc` and fix only that line.
 
-"Function 'X' not found": K2_ prefix mismatch — some AActor getters have it (`K2_GetActorLocation`, `K2_SetActorLocation`, `K2_DestroyActor`), some don't (`GetActorForwardVector`, `GetOwner`, `GetWorld`). Use `bp_dry_run` to confirm.
+"has no property 'X'": run `object_describe(path, filter="X")` to see the real property names. Component properties go through the component, e.g. `LightComponent.Intensity`.
 
-Silent `NodesCreated=0` / UNVERIFIED: look at the `Errors[]` array in the response — the real per-node failure reason is there, not in the summary.
+Blueprint compile errors: read `editor_log(since_seq=..., min_verbosity="Warning")`, fix the specific node or connection, and recompile. Don't rebuild the whole graph.
 
-After 3 failed attempts on the same operation, stop and ask the user what they want to do.
+"pin 'execute' not found" on a pure node: pure nodes (getters, math, `K2_GetActorLocation`, make/break struct) have no exec pins. Wire data only.
+
+If a change made things worse: `editor_action(action="undo")`.
+
+After 3 failed attempts on the same operation, stop and ask the user.

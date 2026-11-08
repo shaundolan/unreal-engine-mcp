@@ -1,20 +1,18 @@
 # Local MCP Server Setup
 
-This guide covers setting up the **open-source local MCP server** included in this repository. This is a community edition with basic scene manipulation, Blueprint, and actor management tools.
-
-For the full hosted Flop MCP with 50+ advanced tools, see the [main README](README.md).
+How to set up the local UnrealMCP server and editor plugin. For the full tool list, see the [README](README.md).
 
 ## Prerequisites
 
-- **Unreal Engine 5.5+**
-- **Python 3.12+**
+- **Unreal Engine 5.5+** with the **Python Editor Script Plugin** enabled (UnrealMCP depends on it)
+- **Python 3.10–3.13** and [uv](https://docs.astral.sh/uv/)
 - **MCP Client** (Claude Desktop, Cursor, or Windsurf)
 
 ## 1. Setup Options
 
 **Option A: Use the Pre-Built Project (Recommended for Quick Start)**
 ```bash
-git clone https://github.com/flopperam/unreal-engine-mcp.git
+git clone https://github.com/shaundolan/unreal-engine-mcp.git
 cd unreal-engine-mcp
 
 # Open FlopperamUnrealMCP/FlopperamUnrealMCP.uproject
@@ -69,7 +67,44 @@ Add this to your MCP configuration:
 
 On Mac/Windows you may need the absolute path to `uv` (`which uv` or `where uv`).
 
-## 4. Start Building
+**Claude Code**:
+```bash
+claude mcp add unreal -- uv --directory /path/to/unreal-engine-mcp/Python run unreal_mcp_server_advanced.py
+```
+
+## 4. Offline API index (recommended)
+
+The editor writes a stub of the full `unreal` Python API to `<Project>/Intermediate/PythonStub/unreal.py` when
+*Editor Preferences → Plugins → Python → Developer Mode* is on (restart the editor after turning it on). Then either
+ask the agent to call `unreal_api_build_index`, or run:
+```bash
+cd Python && uv run python -m unreal_mcp.api_index build "/path/to/Project/Intermediate/PythonStub/unreal.py"
+```
+The index is saved to `~/.unreal_mcp/unreal_api.sqlite`. Agents use `unreal_api_search` to get exact names before writing Python.
+
+## Configuration
+
+| Variable | Side | Default | Meaning |
+|---|---|---|---|
+| `UNREAL_MCP_PORT` | both | `55557` | TCP port |
+| `UNREAL_MCP_HOST` | server | `127.0.0.1` | Where the editor is |
+| `UNREAL_MCP_BIND` | editor | `127.0.0.1` | Address the plugin listens on |
+| `UNREAL_MCP_TOKEN` | both | (none) | Shared secret. **Required** when `UNREAL_MCP_BIND` isn't loopback |
+| `UNREAL_MCP_PROTOCOL` | server | `framed` | `legacy` for editors still running the original (pre-0.2) plugin build |
+| `UNREAL_MCP_LOG_DIR` | server | `~/.unreal_mcp/logs` | Server log directory (logs never go to stdout) |
+
+### Remote editor
+
+To run the MCP server on one machine and the editor on another (e.g. agents on Linux, Unreal on a Windows PC),
+set these in the editor machine's environment before launching Unreal:
+```powershell
+setx UNREAL_MCP_BIND 0.0.0.0
+setx UNREAL_MCP_TOKEN <long-random-secret>
+```
+On the server side, set `UNREAL_MCP_HOST=<windows-ip>` and the same `UNREAL_MCP_TOKEN`. Prefer a private network
+(Tailscale/WireGuard) over opening the port to the LAN. `execute_python` is remote code execution.
+
+## 5. Start Building
 
 ```bash
 > "Create a medieval castle with towers and walls"

@@ -1,99 +1,62 @@
 ---
 name: material-vfx
 description: >
-  Material authoring and VFX workflow for the Flopperam Unreal Engine MCP. Covers 
-  material creation, expression graphs, Niagara particle systems, Chaos destruction, 
-  and curve assets. Use when creating materials, material instances, Niagara systems, 
-  destruction effects, or procedural audio.
+  Materials and VFX with the local UnrealMCP tools: create materials and
+  expression graphs, material instances, apply them, and place Niagara systems,
+  all through execute_python. Use when creating or editing materials, material
+  instances, or placing particle effects.
 ---
 
-# Material & VFX Workflow
+# Materials & VFX
 
-## Materials
+There are no dedicated material tools yet (Phase 2). Use `execute_python` with `MaterialEditingLibrary`.
+Look up exact names first: `unreal_api_search("material editing library connect")`.
 
-### Inspect Before Edit
-Always run `material_inspect` before editing an existing material to understand:
-- Current expression graph structure
-- Existing connections and parameters
-- Texture references and shader stats
-- Parent chain (for Material Instances)
+## Quick color on an actor
+`set_mesh_material_color` / `apply_material_to_actor` for simple cases.
 
-### Creating Materials
+## New material with an expression graph
+```python
+tools = unreal.AssetToolsHelpers.get_asset_tools()
+mel = unreal.MaterialEditingLibrary
+mat = tools.create_asset("M_Glow", "/Game/Materials", unreal.Material, unreal.MaterialFactoryNew())
+color = mel.create_material_expression(mat, unreal.MaterialExpressionVectorParameter, -400, 0)
+color.set_editor_property("parameter_name", "Color")
+color.set_editor_property("default_value", unreal.LinearColor(0.1, 0.6, 1.0, 1.0))
+power = mel.create_material_expression(mat, unreal.MaterialExpressionScalarParameter, -400, 200)
+power.set_editor_property("parameter_name", "Glow")
+power.set_editor_property("default_value", 5.0)
+mul = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, -200, 100)
+mel.connect_material_expressions(color, "", mul, "A")
+mel.connect_material_expressions(power, "", mul, "B")
+mel.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+mel.connect_material_property(mul, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+mel.recompile_material(mat)
+unreal.EditorAssetLibrary.save_asset(mat.get_path_name())
+result = mat.get_path_name()
 ```
-material_edit(operation="create_material", material_path="/Game/Materials/M_MyMaterial")
+
+## Material instance
+```python
+tools = unreal.AssetToolsHelpers.get_asset_tools()
+mi = tools.create_asset("MI_Glow_Red", "/Game/Materials", unreal.MaterialInstanceConstant,
+                        unreal.MaterialInstanceConstantFactoryNew())
+mel = unreal.MaterialEditingLibrary
+mel.set_material_instance_parent(mi, unreal.load_asset("/Game/Materials/M_Glow"))
+mel.set_material_instance_vector_parameter_value(mi, "Color", unreal.LinearColor(1, 0.1, 0.05, 1))
+mel.update_material_instance(mi)
+result = mi.get_path_name()
 ```
+Apply it with `apply_material_to_actor`, or `property_set` on `StaticMeshComponent.OverrideMaterials`.
 
-### Material Workflow
-1. `search_assets` with `class_names=["Texture2D"]` — find textures
-2. `material_edit` with `create_material` — create base material
-3. `material_edit` — create parameters (scalar, vector, texture) and expressions
-4. `material_edit` — wire expressions to material properties (BaseColor, Roughness, Metallic, Normal, Emissive, etc.)
-5. `material_edit` with `recompile_material` — compile
-6. `material_inspect` — verify graph, connections, parameter setup
+## Niagara: place an existing system
+```python
+sub = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+system = unreal.load_asset("/Game/FX/NS_Fire")   # find real paths via the asset registry
+actor = sub.spawn_actor_from_object(system, unreal.Vector(0, 0, 100))
+result = actor.get_actor_label()
+```
+Python can't author Niagara emitter/module graphs well. Duplicate a template system (`EditorAssetLibrary.duplicate_asset`) and change exposed **user parameters** instead.
 
-### Material Instances
-Create instances that inherit from a parent material and expose parameter overrides without recompiling the parent shader.
-
-### Material Functions
-Reusable expression subgraphs that can be shared across materials.
-
-### Material Parameter Collections
-Global parameter sets accessible from any material — useful for time-of-day, weather, global tinting.
-
-### Pin Name Resolution
-`material_edit` auto-retries single-input pin name resolution — passing empty `to_input_name` for single-input nodes (Sine, Cosine, Abs, Normalize) is the canonical form.
-
-## Niagara VFX
-
-### System Architecture
-- **NiagaraSystem** — top-level container with emitters
-- **NiagaraEmitter** — particle behavior (spawn, update, render)
-- **NiagaraScript** — reusable module graphs
-
-### Workflow
-1. `niagara_inspect` — read-only system inspection (emitters, modules, parameters, renderers)
-2. `niagara_edit` — create/modify systems, emitters, user parameters, renderers
-3. `niagara_script_edit` — author reusable NiagaraScript module graphs (custom particle behavior)
-
-### Spawning Niagara in Blueprints
-Use `function_call` with `SpawnSystemAtLocation` from `/Script/Niagara.NiagaraFunctionLibrary`:
-- Pin defaults: `SystemTemplate` (asset path), `Location` (vector), `Rotation` (rotator), `Scale` (vector)
-
-## Chaos Destruction
-
-`chaos_edit` handles Geometry Collections:
-- Fracture geometry into pieces
-- Clustering (how pieces group)
-- Damage thresholds (when things break)
-- Physics properties for debris
-
-## Curve Assets
-
-`ramp_authoring` creates:
-- `UCurveFloat` — scalar curves (falloff, opacity over time)
-- `UCurveVector` — vector curves (position paths, wind)
-- `UCurveLinearColor` — color gradients (material ramps, VFX color over life)
-
-**Author the curve FIRST, then reference its path from the consumer** (material, Niagara module, widget animation, etc.).
-
-## Procedural Audio
-
-`metasound_edit` — MetaSound graph authoring:
-- Oscillators (sine, saw, square, noise)
-- Filters (low-pass, high-pass, band-pass)
-- Envelopes (ADSR)
-- Mixers and gain
-- Sample players
-
-`sound_asset_edit` — traditional audio:
-- SoundCue graphs (attenuation, random, modulator, mixer nodes)
-- SoundClass hierarchy
-- SoundAttenuation curves and spatialization settings
-
-## PCG (Procedural Content Generation)
-
-`pcg_graph_edit` — PCG graph authoring:
-- Point generators and samplers
-- Filters and density operators
-- Mesh spawners with typed pin wiring
-- Landscape-aware placement
+## Verify
+`viewport_capture` after `editor_action(action="focus_actor", ...)`. Shader compiles are asynchronous, so if the capture still shows the default checker, capture again after a few seconds.
