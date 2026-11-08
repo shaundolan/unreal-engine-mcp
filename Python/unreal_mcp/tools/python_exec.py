@@ -76,6 +76,47 @@ def parse_output(log: list[dict[str, Any]], marker: str) -> dict[str, Any] | Non
     return None
 
 
+def run_python(get_conn, code: str, timeout_s: float = 60.0) -> dict[str, Any]:
+    """Run code in the editor; returns {success, result, stdout, traceback?, log_errors?}."""
+    marker = f"<<MCP:{uuid.uuid4().hex}>>"
+    reply = call(get_conn, "execute_python",
+                 {"code": build_script(code, marker), "mode": "file", "timeout_s": timeout_s})
+    if not reply.get("success"):
+        return reply
+    log = reply.get("log", [])
+    parsed = parse_output(log, marker)
+    errors = [e.get("output", "") for e in log
+              if e.get("type") == "Error" and marker not in e.get("output", "")]
+    if parsed is None:
+        return {"success": False,
+                "error": "script produced no result marker (editor Python crashed or timed out?)",
+                "log": log[-50:]}
+    out: dict[str, Any] = {"success": bool(parsed.get("ok")), "result": parsed.get("result"),
+                           "stdout": parsed.get("stdout", "")}
+    if parsed.get("traceback"):
+        out["traceback"] = parsed["traceback"]
+    if errors:
+        out["log_errors"] = errors[-20:]
+    return out
+
+
+def run_editor_script(get_conn, name: str, args: dict[str, Any], timeout_s: float = 120.0) -> dict[str, Any]:
+    """Run one of unreal_mcp/editor_scripts/<name>.py with ARGS=args; flatten its `result` dict."""
+    from ..editor_scripts import render
+    out = run_python(get_conn, render(name, args), timeout_s)
+    if not out.get("success"):
+        return out
+    res = out.get("result")
+    flat: dict[str, Any] = {"success": True}
+    if isinstance(res, dict):
+        flat.update(res)
+    else:
+        flat["result"] = res
+    if out.get("log_errors"):
+        flat["log_errors"] = out["log_errors"]
+    return flat
+
+
 def register(mcp, get_conn):
     @mcp.tool()
     def execute_python(code: str, timeout_s: float = 60.0) -> dict[str, Any]:
@@ -89,23 +130,4 @@ def register(mcp, get_conn):
 
         Returns {success, result, stdout, traceback?, log_errors?}.
         """
-        marker = f"<<MCP:{uuid.uuid4().hex}>>"
-        reply = call(get_conn, "execute_python",
-                     {"code": build_script(code, marker), "mode": "file", "timeout_s": timeout_s})
-        if not reply.get("success"):
-            return reply
-        log = reply.get("log", [])
-        parsed = parse_output(log, marker)
-        errors = [e.get("output", "") for e in log
-                  if e.get("type") == "Error" and marker not in e.get("output", "")]
-        if parsed is None:
-            return {"success": False,
-                    "error": "script produced no result marker (editor Python crashed or timed out?)",
-                    "log": log[-50:]}
-        out: dict[str, Any] = {"success": bool(parsed.get("ok")), "result": parsed.get("result"),
-                               "stdout": parsed.get("stdout", "")}
-        if parsed.get("traceback"):
-            out["traceback"] = parsed["traceback"]
-        if errors:
-            out["log_errors"] = errors[-20:]
-        return out
+        return run_python(get_conn, code, timeout_s)

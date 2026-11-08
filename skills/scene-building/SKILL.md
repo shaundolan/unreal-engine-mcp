@@ -10,18 +10,20 @@ description: >
 # Scene & Level Building
 
 ## Find
-- `get_actors_in_level`, `find_actors_by_name(pattern)`: actor names and labels (Outliner names, **not** asset paths).
-- `object_describe(path="<label>")`: the actor's class, components and properties. Add `include_values=true` to also get current values.
-- Assets (meshes, materials) are found through Python:
-  ```python
-  reg = unreal.AssetRegistryHelpers.get_asset_registry()
-  result = [str(a.package_name) for a in reg.get_assets_by_path("/Game", recursive=True)
-            if "Rock" in str(a.asset_name)][:50]
-  ```
-  Engine basic shapes: `/Engine/BasicShapes/Cube.Cube`, `Sphere`, `Cylinder`, `Cone`, `Plane`.
+- `scene_brief`: first look at an unfamiliar level (counts, classes, folders, bounds, lights, cameras).
+- `scene_query(class_name=, label_contains=, tag=, folder=, near=, radius=, box_min=, box_max=)`: actor labels (Outliner names, **not** asset paths).
+- `actor_inspect(target)`: one actor's transform, components, meshes, materials. `object_describe` for raw reflection.
+- Assets: `search_assets(query="rock", class_name="StaticMesh")` returns full object paths. Engine basic shapes: `/Engine/BasicShapes/Cube.Cube`, `Sphere`, `Cylinder`, `Cone`, `Plane`.
 
 ## Spawn & edit
-- Many actors at once: a single `execute_python` call with a loop. Don't make one tool call per actor.
+- **Default:** `scene_compose` puts spawn, modify and delete in one call and one undo step, with grid/circle/line patterns:
+  ```json
+  [{"op":"spawn","asset":"/Engine/BasicShapes/Cylinder.Cylinder","label":"Pillar","location":[0,0,0],
+    "scale":[1,1,4],"pattern":{"type":"circle","count":12,"radius":1500,"face_center":true},"folder":"Arena"},
+   {"op":"spawn","class":"PointLight","label":"Torch","location":[0,0,400],
+    "properties":{"light_component.intensity":8000}}]
+  ```
+- Anything scene_compose can't express: a single `execute_python` call with a loop. Don't make one tool call per actor.
   ```python
   sub = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
   mesh = unreal.load_asset("/Engine/BasicShapes/Cube.Cube")

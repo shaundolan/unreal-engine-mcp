@@ -27,6 +27,9 @@
 | **Observation** | `viewport_capture` (returns an image the model can see), `editor_log` (Output Log tail with filters and a cursor), `console_command` |
 | **Editor** | `unreal_status`, `project_context`, `editor_action` (undo/redo, save all, open asset, load level, select, focus, PIE start/stop) |
 | **API knowledge (offline)** | `unreal_api_search`, `unreal_api_doc`, `unreal_api_build_index`: full-text index of the whole `unreal` Python API, built from your engine's own stub |
+| **Scene & level** | `scene_brief`, `scene_query` (class/label/tag/folder/sphere/box), `actor_inspect`, `scene_compose` (batched spawn/modify/delete with grid/circle/line patterns, one undo step), `level_inspect` |
+| **Assets** | `search_assets`, `asset_references` (dependencies/referencers, transitive), `asset_manage` (duplicate/rename/delete/save/folders/properties), `asset_import` (FBX/glTF/OBJ/textures/audio, from the editor's disk or uploaded from the MCP machine) |
+| **Materials** | `material_inspect`, `material_edit` (build a whole expression graph in one call), `material_instance` |
 | **Blueprint graphs** | `add_node` (23+ node types), `connect_nodes`, `delete_node`, `set_node_property`, `add_event_node`, `create_variable`, `set_blueprint_variable_properties`, `create_function`, `add_function_input/output`, `rename_function`, `delete_function` |
 | **Blueprint assets** | `create_blueprint`, `add_component_to_blueprint`, `set_static_mesh_properties`, `set_physics_properties`, `compile_blueprint`, `read_blueprint_content`, `analyze_blueprint_graph`, `get_blueprint_variable_details`, `get_blueprint_function_details` |
 | **Actors & materials** | `get_actors_in_level`, `find_actors_by_name`, `set_actor_transform`, `delete_actor`, `spawn_physics_blueprint_actor`, `get_available_materials`, `apply_material_to_actor/blueprint`, `set_mesh_material_color`, `get_actor_material_info` |

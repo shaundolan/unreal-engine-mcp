@@ -9,8 +9,25 @@ description: >
 
 # Materials & VFX
 
-There are no dedicated material tools yet (Phase 2). Use `execute_python` with `MaterialEditingLibrary`.
-Look up exact names first: `unreal_api_search("material editing library connect")`.
+Dedicated tools: `material_inspect`, `material_edit` (a whole graph in one call), `material_instance`.
+Use the `execute_python` recipes below only for things those tools don't cover. Look up exact names with `unreal_api_search`.
+
+## Preferred: material_edit
+```json
+{"path":"/Game/Materials/M_Glow","create":true,"clear":true,
+ "operations":[
+  {"op":"add","id":"tint","class":"VectorParameter","properties":{"parameter_name":"Tint","default_value":[0.1,0.6,1,1]}},
+  {"op":"add","id":"power","class":"ScalarParameter","properties":{"parameter_name":"Glow","default_value":5}},
+  {"op":"add","id":"mul","class":"Multiply"},
+  {"op":"connect","from":"tint","to":"mul","to_input":"A"},
+  {"op":"connect","from":"power","to":"mul","to_input":"B"},
+  {"op":"output","from":"tint","property":"BaseColor"},
+  {"op":"output","from":"mul","property":"EmissiveColor"}]}
+```
+Then `material_instance(path="/Game/Materials/MI_Glow_Red", parent="/Game/Materials/M_Glow", parameters={"Tint":[1,0.1,0.05,1]})`.
+Imported textures/meshes: `asset_import(local_files=[...], destination="/Game/Props")`.
+
+## Python equivalents (for reference)
 
 ## Quick color on an actor
 `set_mesh_material_color` / `apply_material_to_actor` for simple cases.

@@ -21,6 +21,9 @@ NEW_TOOLS = {
     "execute_python", "object_describe", "property_get", "property_set", "function_call", "unreal_status",
     "project_context", "editor_action", "console_command", "editor_log", "viewport_capture",
     "unreal_api_search", "unreal_api_doc", "unreal_api_build_index",
+    "scene_query", "scene_brief", "actor_inspect", "scene_compose", "level_inspect",
+    "search_assets", "asset_references", "asset_manage", "asset_import",
+    "material_inspect", "material_edit", "material_instance",
 }
 
 
