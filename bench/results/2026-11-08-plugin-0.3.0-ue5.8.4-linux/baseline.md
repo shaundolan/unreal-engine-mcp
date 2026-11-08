@@ -1,6 +1,6 @@
 # UE-Bench: baseline (no agent), plugin 0.3.0
 
-**0/19 passed** (0%), 0 skipped
+**0/20 passed** (0%), 0 skipped
 
 | Domain | Passed | Scored |
 |---|---|---|
@@ -8,7 +8,7 @@
 | assets | 0 | 1 |
 | blueprints | 0 | 1 |
 | cinematics | 0 | 1 |
-| gameplay | 0 | 2 |
+| gameplay | 0 | 3 |
 | input | 0 | 1 |
 | materials | 0 | 3 |
 | modeling | 0 | 1 |
@@ -23,6 +23,7 @@
 | blueprint-coin-pickup | failed | tools: sphere trigger + mesh actual="Blueprint '/Game/UEBench/blueprint-coin-pickup/BP_Coin' not found"; scene: coin placed actual=False |
 | blueprint-greeter | failed | scene: one greeter placed actual=False; pie: BeginPlay printed actual=[] |
 | cine-intro-camera | failed | scene: asset_exists actual=False; scene: 4 s long actual=None error=LookupError: asset '/Game/UEBench/cine-intro-camera/LS_Intro' not found |
+| demo-arena-playable | failed | tools: game mode compiles with Score actual="Blueprint '/Game/UEBench/demo-arena-playable/BP_ArenaGameMode' not found"; tools: HUD has ScoreText actual="widget  |
 | gameplay-playable-start | failed | scene: actor_exists actual=0; scene: ground under PlayerStart actual=False |
 | input-wasd | failed | scene: asset_exists actual=False; scene: asset_exists actual=False |
 | material-apply | failed | scene: M_Red applied actual=False |

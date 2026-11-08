@@ -1,6 +1,6 @@
-# UE-Bench: reference solutions, plugin 0.3.0, UE 5.8.4 Linux, GTX 1080
+# UE-Bench: reference solutions, plugin 0.3.0, UE 5.8.4 Linux, GTX 1080, offscreen
 
-**19/19 passed** (100%), 0 skipped
+**20/20 passed** (100%), 0 skipped
 
 | Domain | Passed | Scored |
 |---|---|---|
@@ -8,7 +8,7 @@
 | assets | 1 | 1 |
 | blueprints | 1 | 1 |
 | cinematics | 1 | 1 |
-| gameplay | 2 | 2 |
+| gameplay | 3 | 3 |
 | input | 1 | 1 |
 | materials | 3 | 3 |
 | modeling | 1 | 1 |
@@ -23,6 +23,7 @@
 | blueprint-coin-pickup | passed |  |
 | blueprint-greeter | passed |  |
 | cine-intro-camera | passed |  |
+| demo-arena-playable | passed |  |
 | gameplay-playable-start | passed |  |
 | input-wasd | passed |  |
 | material-apply | passed |  |
