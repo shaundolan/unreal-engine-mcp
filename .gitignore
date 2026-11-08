@@ -106,3 +106,5 @@ MCPGameProject/Config/DefaultEditorPerProjectUserSettings.ini
 .clang-format
 .clangd
 bench-results/
+*.blend
+*.blend1

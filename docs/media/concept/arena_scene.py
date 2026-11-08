@@ -185,7 +185,10 @@ scene.view_settings.view_transform = "Filmic"
 scene.view_settings.look = "Medium High Contrast"
 scene.view_settings.exposure = -0.3
 scene.render.filepath = str(OUT_DIR / "arena.png")
-bpy.ops.render.render(write_still=True)
+if ARGS.get("save_blend"):  # open it in the Blender GUI afterwards
+    bpy.ops.wm.save_as_mainfile(filepath=ARGS["save_blend"])
+if ARGS.get("render", True):
+    bpy.ops.render.render(write_still=True)
 
 result = {"device": device, "objects": len(mesh_objects()), "triangles": sum(triangles().values()),
           "image": scene.render.filepath}
