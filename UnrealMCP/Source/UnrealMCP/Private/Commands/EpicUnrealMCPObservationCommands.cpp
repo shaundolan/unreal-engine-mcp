@@ -152,7 +152,31 @@ static TSharedPtr<FJsonObject> HandleViewportCapture(const TSharedPtr<FJsonObjec
 	}
 	else if (GEditor)
 	{
-		Viewport = GEditor->GetActiveViewport();
+		// Nobody has clicked into a viewport yet (fresh editor, or agents only): use the first
+		// perspective level viewport, then any level viewport, then whatever is active.
+		for (FLevelEditorViewportClient* Client : GEditor->GetLevelViewportClients())
+		{
+			if (Client && Client->Viewport && Client->IsPerspective())
+			{
+				Viewport = Client->Viewport;
+				break;
+			}
+		}
+		if (!Viewport)
+		{
+			for (FLevelEditorViewportClient* Client : GEditor->GetLevelViewportClients())
+			{
+				if (Client && Client->Viewport)
+				{
+					Viewport = Client->Viewport;
+					break;
+				}
+			}
+		}
+		if (!Viewport)
+		{
+			Viewport = GEditor->GetActiveViewport();
+		}
 	}
 	if (!Viewport)
 	{

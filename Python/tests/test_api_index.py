@@ -76,3 +76,12 @@ def test_api_tools(tools, conn):
 def test_build_index_asks_editor_for_stub(fake, tools):
     fake.on("project_context", lambda p: {"python_stub_path": str(STUB)})
     assert tools["unreal_api_build_index"]()["success"]
+
+
+def test_stub_with_utf8_bom(tmp_path):
+    # The real UE 5.8 PythonStub/unreal.py starts with a BOM.
+    from unreal_mcp.api_index import ApiIndex, build_index
+    stub = tmp_path / "unreal.py"
+    stub.write_bytes(b"\xef\xbb\xbf" + STUB.read_bytes())
+    build_index(stub, tmp_path / "bom.sqlite")
+    assert ApiIndex(tmp_path / "bom.sqlite").search("spawn actor", limit=3)

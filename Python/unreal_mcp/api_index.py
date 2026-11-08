@@ -117,7 +117,7 @@ def _parse_class(cls: ast.ClassDef) -> Iterator[Symbol]:
 
 
 def build_index(stub_path: Path, out_path: Path) -> int:
-    source = Path(stub_path).read_text(encoding="utf-8", errors="replace")
+    source = Path(stub_path).read_text(encoding="utf-8-sig", errors="replace")  # UE writes a UTF-8 BOM
     symbols = list(parse_stub(source))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(out_path.suffix + ".tmp")
