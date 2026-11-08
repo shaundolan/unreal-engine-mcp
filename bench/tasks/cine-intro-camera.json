@@ -1,0 +1,86 @@
+{
+  "id": "cine-intro-camera",
+  "domain": "cinematics",
+  "title": "Intro camera move",
+  "prompt": "Create the level sequence {root}/LS_Intro, 4 seconds long, with a cine camera that moves from (-800, 0, 300) to (0, 0, 300) over the 4 seconds, and a camera cut track that uses it.",
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "asset_exists",
+        "path": "{root}/LS_Intro",
+        "class": "LevelSequence"
+      },
+      {
+        "type": "python",
+        "expr": "abs(asset('{root}/LS_Intro').get_playback_end_seconds() - 4) < 0.05",
+        "name": "4 s long"
+      },
+      {
+        "type": "python",
+        "expr": "len(asset('{root}/LS_Intro').get_bindings()) >= 1",
+        "name": "camera bound"
+      },
+      {
+        "type": "python",
+        "expr": "any('CameraCut' in t.get_class().get_name() for t in asset('{root}/LS_Intro').get_tracks())",
+        "name": "camera cut track"
+      },
+      {
+        "type": "actor_exists",
+        "class": "CineCameraActor",
+        "name": "cine camera in level"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "sequence_edit",
+      "args": {
+        "path": "{root}/LS_Intro",
+        "create": true,
+        "duration_s": 4,
+        "operations": [
+          {
+            "op": "spawn_camera",
+            "id": "cam",
+            "label": "IntroCam",
+            "location": [
+              -800,
+              0,
+              300
+            ]
+          },
+          {
+            "op": "transform_keys",
+            "binding": "cam",
+            "keys": [
+              {
+                "t": 0,
+                "location": [
+                  -800,
+                  0,
+                  300
+                ]
+              },
+              {
+                "t": 4,
+                "location": [
+                  0,
+                  0,
+                  300
+                ]
+              }
+            ]
+          },
+          {
+            "op": "camera_cut",
+            "binding": "cam",
+            "start_s": 0,
+            "end_s": 4
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -145,6 +145,12 @@ def coerce(current, value):
         if loaded is None:
             raise LookupError(f"asset {value!r} not found")
         return loaded
+    enum_base = getattr(unreal, "EnumBase", None)
+    if enum_base is not None and isinstance(current, enum_base) and isinstance(value, str):
+        member = getattr(type(current), value.split(".")[-1].upper(), None)
+        if member is None:
+            raise ValueError(f"{value!r} is not a member of {type(current).__name__}")
+        return member
     if isinstance(current, bool):
         return bool(value)
     if isinstance(current, int) and not isinstance(current, bool) and isinstance(value, (int, float)):

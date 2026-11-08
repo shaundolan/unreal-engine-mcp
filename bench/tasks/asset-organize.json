@@ -1,0 +1,77 @@
+{
+  "id": "asset-organize",
+  "domain": "assets",
+  "title": "File loose materials",
+  "prompt": "Three materials (M_Stone, M_Wood, M_Metal) sit loose in {root}. Move them into {root}/Materials without renaming them; references must stay valid.",
+  "setup": [
+    {
+      "tool": "material_edit",
+      "args": {
+        "path": "{root}/M_Stone",
+        "create": true
+      }
+    },
+    {
+      "tool": "material_edit",
+      "args": {
+        "path": "{root}/M_Wood",
+        "create": true
+      }
+    },
+    {
+      "tool": "material_edit",
+      "args": {
+        "path": "{root}/M_Metal",
+        "create": true
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "asset_exists",
+        "path": "{root}/Materials/M_Stone",
+        "class": "Material"
+      },
+      {
+        "type": "asset_exists",
+        "path": "{root}/Materials/M_Wood",
+        "class": "Material"
+      },
+      {
+        "type": "asset_exists",
+        "path": "{root}/Materials/M_Metal",
+        "class": "Material"
+      },
+      {
+        "type": "python",
+        "expr": "not any(unreal.EditorAssetLibrary.does_asset_exist('{root}/' + n) for n in ('M_Stone', 'M_Wood', 'M_Metal'))",
+        "name": "old paths gone"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "asset_manage",
+      "args": {
+        "operations": [
+          {
+            "op": "rename",
+            "source": "{root}/M_Stone",
+            "destination": "{root}/Materials/M_Stone"
+          },
+          {
+            "op": "rename",
+            "source": "{root}/M_Wood",
+            "destination": "{root}/Materials/M_Wood"
+          },
+          {
+            "op": "rename",
+            "source": "{root}/M_Metal",
+            "destination": "{root}/Materials/M_Metal"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "id": "scene-pillar-grid",
+  "domain": "scene",
+  "title": "5x5 pillar grid",
+  "prompt": "Build a 5x5 grid of pillars from the engine mesh /Engine/BasicShapes/Cylinder, each scaled (1, 1, 4), 400 units apart in X and Y with the first pillar at the world origin. Label them Pillar_<n> and put them in the World Outliner folder 'Pillars'.",
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_actor_label().startswith('Pillar')]) == 25",
+        "name": "25 pillars"
+      },
+      {
+        "type": "python",
+        "expr": "all(str(a.get_folder_path()) == 'Pillars' for a in [a for a in actors if a.get_actor_label().startswith('Pillar')])",
+        "name": "in folder"
+      },
+      {
+        "type": "python",
+        "expr": "sorted({round(a.get_actor_location().x) for a in [a for a in actors if a.get_actor_label().startswith('Pillar')]}) == [0, 400, 800, 1200, 1600]",
+        "name": "x spacing"
+      },
+      {
+        "type": "python",
+        "expr": "sorted({round(a.get_actor_location().y) for a in [a for a in actors if a.get_actor_label().startswith('Pillar')]}) == [0, 400, 800, 1200, 1600]",
+        "name": "y spacing"
+      },
+      {
+        "type": "python",
+        "expr": "all(abs(a.get_actor_scale3d().z - 4) < 0.01 for a in [a for a in actors if a.get_actor_label().startswith('Pillar')])",
+        "name": "scaled"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cylinder.Cylinder",
+            "label": "Pillar",
+            "scale": [
+              1,
+              1,
+              4
+            ],
+            "folder": "Pillars",
+            "pattern": {
+              "type": "grid",
+              "count": [
+                5,
+                5
+              ],
+              "spacing": [
+                400,
+                400
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -199,3 +199,26 @@ def test_level_inspect(ue, tools):
     r = tools["level_inspect"]()
     assert r["world"] == "/Temp/Untitled.Untitled" and r["actor_count"] == 4
     assert r["world_settings"]["kill_z"] == -100000.0 and r["world_partition"] is False
+
+
+def test_scene_assert_editor_world_and_assets(ue, tools):
+    tools["scene_compose"]([{"op": "spawn", "class": "PointLight", "label": "Lamp", "location": [0, 0, 300]},
+                            {"op": "spawn", "class": "StaticMeshActor", "label": "Crate", "location": [400, 0, 0]}])
+    tools["material_edit"]("/Game/M_Glow", create=True, settings={"two_sided": True})
+    r = tools["scene_assert"]([
+        {"type": "actor_exists", "class": "PointLight", "min": 1},
+        {"type": "distance", "a": "Lamp", "b": "Crate", "op": "<=", "value": 600},
+        {"type": "asset_exists", "path": "/Game/M_Glow", "class": "Material"},
+        {"type": "asset_property", "path": "/Game/M_Glow", "property": "two_sided", "value": True},
+        {"type": "python", "expr": "asset('/Game/M_Glow') is not None and len(actors) == 2"},
+    ])
+    assert r["success"] and r["passed"], r
+    bad = tools["scene_assert"]([
+        {"type": "asset_exists", "path": "/Game/M_Glow", "class": "StaticMesh"},
+        {"type": "asset_exists", "path": "/Game/Nope"},
+        {"type": "distance", "a": "@player", "b": "Crate", "op": "<=", "value": 1},
+        {"type": "property", "target": "Ghost", "property": "x", "value": 1},
+    ])
+    assert bad["passed"] is False and bad["failed_count"] == 4
+    assert "only exists in PIE" in bad["results"][2]["error"]
+    assert "not in editor world" in bad["results"][3]["error"]

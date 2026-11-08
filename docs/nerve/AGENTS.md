@@ -44,6 +44,6 @@ Owns: materials, Niagara, sequencer, landscape/foliage, animation, lighting tool
 5. Blueprint v2 (C++): `bp_export` GraphSpec → `bp_author` diff apply in one transaction, `bp_dry_run`. *(gamedev)*
 6. UMG widget tree authoring (C++). *(gamedev)*
 7. Behavior Tree / Blackboard authoring (C++). *(gamedev)*
-8. Blender bridge tool: `blender_run(script)` → export → import. *(techart)*
-9. UE-Bench v0: 15 tasks with checkers. *(Probe)*
+8. ~~Blender bridge tool~~: done (`blender_run`/`blender_status`, `3d-assets` skill). Next: skeletal/animation export recipes. *(techart)*
+9. ~~UE-Bench v0~~: done (15 tasks, oracle + near-miss tests in CI). Next: v1 to 60 tasks, adding Blueprint/UMG/BT once the C++ lands. *(Probe)*
 10. Demo 1 "prompt → playable" recording: Nerve Live Flow plus an editor timelapse. *(gamedev + techart, Quill writes it up)*

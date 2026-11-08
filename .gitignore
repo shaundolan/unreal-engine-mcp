@@ -105,3 +105,4 @@ MCPGameProject/Config/DefaultEditorPerProjectUserSettings.ini
 # Clang
 .clang-format
 .clangd
+bench-results/

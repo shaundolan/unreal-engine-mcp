@@ -27,7 +27,7 @@
 | **Observation** | `viewport_capture` (returns an image the model can see), `editor_log` (Output Log tail with filters and a cursor), `console_command` |
 | **Editor** | `unreal_status`, `project_context`, `editor_action` (undo/redo, save all, open asset, load level, select, focus, PIE start/stop) |
 | **API knowledge (offline)** | `unreal_api_search`, `unreal_api_doc`, `unreal_api_build_index`: full-text index of the whole `unreal` Python API, built from your engine's own stub |
-| **Scene & level** | `scene_brief`, `scene_query` (class/label/tag/folder/sphere/box), `actor_inspect`, `scene_compose` (batched spawn/modify/delete with grid/circle/line patterns, one undo step), `level_inspect` |
+| **Scene & level** | `scene_brief`, `scene_query` (class/label/tag/folder/sphere/box), `actor_inspect`, `scene_compose` (batched spawn/modify/delete with grid/circle/line patterns, one undo step), `level_inspect`, `scene_assert` (verify the level and assets against assertions) |
 | **Assets** | `search_assets`, `asset_references` (dependencies/referencers, transitive), `asset_manage` (duplicate/rename/delete/save/folders/properties), `asset_import` (FBX/glTF/OBJ/textures/audio, from the editor's disk or uploaded from the MCP machine) |
 | **3D modeling (Blender)** | `blender_run` (headless Blender on the MCP machine: bpy + helpers for primitives, bevels, materials, UVs, pivots, FBX/GLB export, preview render returned as an image, then auto-import into Unreal), `blender_status` |
 | **Materials** | `material_inspect`, `material_edit` (build a whole expression graph in one call), `material_instance` |
@@ -91,3 +91,7 @@ Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 ## License
 
 MIT. See [LICENSE](LICENSE). Original work © Flopperam and contributors; fork modifications © Shaun Dolan.
+
+## UE-Bench
+15 scripted editor tasks with automatic checkers. They cover scene, assets, materials, cinematics, input, performance,
+Blender modeling and PIE gameplay. Each checker is proven against a reference solution and against near-miss solutions. See [bench/README.md](bench/README.md).

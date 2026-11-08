@@ -1,0 +1,158 @@
+{
+  "id": "scene-greybox-arena",
+  "domain": "scene",
+  "title": "Greybox arena",
+  "prompt": "Greybox an arena: a floor at least 4000x4000 units centred on the origin, four walls at least 300 units tall enclosing it, a PlayerStart inside the arena, a DirectionalLight and a SkyLight.",
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "any(a.get_actor_bounds(False)[1].x >= 1990 and a.get_actor_bounds(False)[1].y >= 1990 and a.get_actor_bounds(False)[1].z <= 100 for a in actors)",
+        "name": "floor 4000x4000"
+      },
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_actor_bounds(False)[1].z * 2 >= 300 and max(a.get_actor_bounds(False)[1].x, a.get_actor_bounds(False)[1].y) >= 1500 and min(a.get_actor_bounds(False)[1].x, a.get_actor_bounds(False)[1].y) < 500]) >= 4",
+        "name": "4 tall walls"
+      },
+      {
+        "type": "python",
+        "expr": "any(isinstance(a, unreal.PlayerStart) and abs(a.get_actor_location().x) < 2000 and abs(a.get_actor_location().y) < 2000 for a in actors)",
+        "name": "PlayerStart inside"
+      },
+      {
+        "type": "actor_exists",
+        "class": "DirectionalLight"
+      },
+      {
+        "type": "actor_exists",
+        "class": "SkyLight"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Wall_N",
+            "location": [
+              0,
+              2000,
+              200
+            ],
+            "scale": [
+              40,
+              0.5,
+              4
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Wall_S",
+            "location": [
+              0,
+              -2000,
+              200
+            ],
+            "scale": [
+              40,
+              0.5,
+              4
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Wall_E",
+            "location": [
+              2000,
+              0,
+              200
+            ],
+            "scale": [
+              0.5,
+              40,
+              4
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Wall_W",
+            "location": [
+              -2000,
+              0,
+              200
+            ],
+            "scale": [
+              0.5,
+              40,
+              4
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "SkyLight",
+            "label": "Sky",
+            "location": [
+              0,
+              0,
+              1200
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

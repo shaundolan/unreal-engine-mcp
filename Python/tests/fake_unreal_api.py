@@ -27,6 +27,12 @@ def make_module() -> types.ModuleType:
         def to_tuple(self):
             return (self.x, self.y, self.z)
 
+        def __add__(self, o):
+            return Vector(self.x + o.x, self.y + o.y, self.z + o.z)
+
+        def __sub__(self, o):
+            return Vector(self.x - o.x, self.y - o.y, self.z - o.z)
+
     class Rotator:
         def __init__(self, roll=0.0, pitch=0.0, yaw=0.0):
             self.roll, self.pitch, self.yaw = float(roll), float(pitch), float(yaw)
@@ -103,8 +109,16 @@ def make_module() -> types.ModuleType:
             self.static_mesh = None
             self.cast_shadow = True
 
+            self._materials = {}
+
         def get_materials(self):
-            return []
+            return [self._materials[i] for i in sorted(self._materials)]
+
+        def get_material(self, index):
+            return self._materials.get(index)
+
+        def set_material(self, index, mat):
+            self._materials[index] = mat
 
     class LightComponent(SceneComponent):
         def __init__(self, *a, **k):
@@ -159,7 +173,8 @@ def make_module() -> types.ModuleType:
             self._folder = Name(p)
 
         def get_actor_bounds(self, only_colliding):
-            return self._loc, Vector(50, 50, 50)
+            sc = self._scale  # engine basic shapes are 100 units across
+            return self._loc, Vector(50 * sc.x, 50 * sc.y, 50 * sc.z)
 
         def set_is_temporarily_hidden_in_editor(self, h):
             self._hidden = h
@@ -186,6 +201,12 @@ def make_module() -> types.ModuleType:
         pass
 
     class DirectionalLight(Light):
+        pass
+
+    class SkyLight(Light):
+        pass
+
+    class PlayerStart(Actor):
         pass
 
     class CameraActor(Actor):
@@ -348,6 +369,25 @@ def make_module() -> types.ModuleType:
 
         @staticmethod
         def make_directory(path):
+            return True
+
+        @staticmethod
+        def list_assets(path, recursive=True, include_folder=False):
+            root = path.rstrip("/") + "/"
+            return sorted(p for p in state["assets"] if p.startswith(root))
+
+        @staticmethod
+        def does_directory_exist(path):
+            return bool(EditorAssetLibrary.list_assets(path))
+
+    class LevelEditorSubsystem:
+        def new_level(self, asset_path, is_partitioned_world=False):
+            if asset_path.split(".")[0] in state["assets"]:
+                return False
+            state["actors"].clear()
+            name = asset_path.rsplit("/", 1)[-1]
+            world._name, world._path = name, f"{asset_path}.{name}"
+            _register(World(name, f"{asset_path}.{name}"))
             return True
 
     # ---- materials -----------------------------------------------------------------------
@@ -585,6 +625,9 @@ def make_module() -> types.ModuleType:
         def __init__(self, cls):
             self.cls, self.sections = cls, []
 
+        def get_class(self):
+            return _Class(self.cls.__name__, self.cls)
+
         def add_section(self):
             sec = _Section(self.cls.nch)
             self.sections.append(sec)
@@ -626,6 +669,15 @@ def make_module() -> types.ModuleType:
 
         def get_portable_binding_id(self, root, binding):
             raise AttributeError("not in this version")  # exercise the fallback chain
+
+        def get_tracks(self):
+            return list(self.tracks)
+
+        def get_bindings(self):
+            return list(self.bindings)
+
+        def get_playback_end_seconds(self):
+            return self.end
 
         def get_binding_id(self, binding):
             return ("binding", self.bindings.index(binding))

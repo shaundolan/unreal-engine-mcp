@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "unreal": {
+      "command": "uv",
+      "args": ["--directory", ".", "run", "unreal_mcp_server_advanced.py"]
+    }
+  }
+}

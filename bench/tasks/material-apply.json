@@ -1,0 +1,58 @@
+{
+  "id": "material-apply",
+  "domain": "materials",
+  "title": "Apply material to actors",
+  "prompt": "Apply the material {root}/M_Red to material slot 0 of every Box_* actor's static mesh component.",
+  "setup": [
+    {
+      "tool": "material_edit",
+      "args": {
+        "path": "{root}/M_Red",
+        "create": true
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Box",
+            "pattern": {
+              "type": "line",
+              "count": 4,
+              "step": [
+                200,
+                0,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_actor_label().startswith('Box')]) == 4",
+        "name": "4 boxes"
+      },
+      {
+        "type": "python",
+        "expr": "all((a.get_editor_property('static_mesh_component').get_material(0) or a).get_name() == 'M_Red' for a in [a for a in actors if a.get_actor_label().startswith('Box')])",
+        "name": "M_Red applied"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "execute_python",
+      "args": {
+        "code": "m = unreal.load_asset('{root}/M_Red')\nfor a in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors():\n    if a.get_actor_label().startswith('Box'):\n        a.get_editor_property('static_mesh_component').set_material(0, m)\nresult = True"
+      }
+    }
+  ]
+}

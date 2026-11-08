@@ -1,0 +1,65 @@
+{
+  "id": "modeling-blender-crate",
+  "domain": "modeling",
+  "title": "Model, import and place a crate",
+  "prompt": "Model a wooden crate about 1 m on each side in Blender (blender_run), import it as {root}/Props/SM_Crate, and place 3 of them in a row labelled Crate_0..Crate_2, resting on the ground (Z = 0).",
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "asset_exists",
+        "path": "{root}/Props/SM_Crate",
+        "class": "StaticMesh"
+      },
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_actor_label().startswith('Crate')]) == 3",
+        "name": "3 crates placed"
+      },
+      {
+        "type": "python",
+        "expr": "all(abs(a.get_actor_location().z) < 1 for a in [a for a in actors if a.get_actor_label().startswith('Crate')])",
+        "name": "on the ground"
+      },
+      {
+        "type": "python",
+        "expr": "all(a.get_editor_property('static_mesh_component').get_editor_property('static_mesh').get_path_name().startswith('{root}/Props/SM_Crate') for a in [a for a in actors if a.get_actor_label().startswith('Crate')])",
+        "name": "uses SM_Crate"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "blender_run",
+      "args": {
+        "code": "clear_scene()\nc = primitive(\"cube\", \"Body\", size=1)\nmodifier(c, \"BEVEL\", width=0.04, segments=2)\nmaterial(c, \"M_CrateWood\", color=(0.45, 0.3, 0.15), roughness=0.8)\ncrate = join([c], \"SM_Crate\")\nsmart_uv(crate); origin_to_bottom(crate)\nexport(\"SM_Crate\")\nresult = triangles()",
+        "import_destination": "{root}/Props",
+        "show_preview": false
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/Props/SM_Crate.SM_Crate",
+            "label": "Crate",
+            "pattern": {
+              "type": "line",
+              "count": 3,
+              "step": [
+                200,
+                0,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "requires": [
+    "blender"
+  ]
+}

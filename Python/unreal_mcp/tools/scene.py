@@ -70,3 +70,21 @@ def register(mcp, get_conn):
         """Level structure: persistent world, loaded and streaming sublevels, World Partition
         flag, key world settings (kill Z, gravity, default game mode)."""
         return run_editor_script(get_conn, "level_inspect", {})
+
+    @mcp.tool()
+    def scene_assert(assertions: list[dict[str, Any]]) -> dict[str, Any]:
+        """Check the EDITOR level and assets (no PIE) against assertions; use it to verify your own
+        work before reporting done. Same assertion types as pie_test (except @player and log checks):
+          {"type":"actor_exists","label":"Crate","min":1}  {"type":"actor_exists","class":"PointLight","min":4}
+          {"type":"property","target":"Lamp","property":"point_light_component.intensity","op":">=","value":5000}
+          {"type":"distance","a":"Crate","b":"PlayerStart","op":"<=","value":800}
+          {"type":"asset_exists","path":"/Game/Props/SM_Crate","class":"StaticMesh"}
+          {"type":"asset_property","path":"/Game/M_Glow","property":"two_sided","value":true}
+          {"type":"python","expr":"len(actors) > 10"}   (scope: unreal, world, actors, find, asset, dist, vec)
+        Returns passed (bool), failed_count and per-assertion results with actual values."""
+        r = run_editor_script(get_conn, "pie_assert", {"world": "editor", "assertions": assertions})
+        if not r.get("success"):
+            return r
+        failed = [a for a in r["assertions"] if not a.get("passed")]
+        return {"success": True, "passed": not failed, "failed_count": len(failed), "results": r["assertions"],
+                "actor_count": r.get("actor_count")}

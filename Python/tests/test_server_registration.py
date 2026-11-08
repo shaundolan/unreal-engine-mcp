@@ -27,6 +27,7 @@ NEW_TOOLS = {
     "niagara_edit", "sequence_edit", "data_table",
     "enhanced_input", "game_setup", "cpp_source", "live_coding_compile", "performance_audit",
     "blender_status", "blender_run",
+    "scene_assert",
 }
 
 

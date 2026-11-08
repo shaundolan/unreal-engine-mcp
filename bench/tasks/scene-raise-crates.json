@@ -1,0 +1,119 @@
+{
+  "id": "scene-raise-crates",
+  "domain": "scene",
+  "title": "Fix sunken crates",
+  "prompt": "Some crates (labels Crate_*) have sunk below the floor. Move every crate so its Z location is exactly 50, keeping its X and Y.",
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Crate_0",
+            "location": [
+              0,
+              0,
+              -120
+            ]
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Crate_1",
+            "location": [
+              300,
+              0,
+              -40
+            ]
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Crate_2",
+            "location": [
+              600,
+              200,
+              -300
+            ]
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Crate_3",
+            "location": [
+              900,
+              -200,
+              -10
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_actor_label().startswith('Crate')]) == 4",
+        "name": "4 crates"
+      },
+      {
+        "type": "python",
+        "expr": "all(abs(a.get_actor_location().z - 50) < 0.5 for a in [a for a in actors if a.get_actor_label().startswith('Crate')])",
+        "name": "z = 50"
+      },
+      {
+        "type": "python",
+        "expr": "sorted((round(a.get_actor_location().x), round(a.get_actor_location().y)) for a in [a for a in actors if a.get_actor_label().startswith('Crate')]) == [(0, 0), (300, 0), (600, 200), (900, -200)]",
+        "name": "x/y kept"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "modify",
+            "target": "Crate_0",
+            "location": [
+              0,
+              0,
+              50
+            ]
+          },
+          {
+            "op": "modify",
+            "target": "Crate_1",
+            "location": [
+              300,
+              0,
+              50
+            ]
+          },
+          {
+            "op": "modify",
+            "target": "Crate_2",
+            "location": [
+              600,
+              200,
+              50
+            ]
+          },
+          {
+            "op": "modify",
+            "target": "Crate_3",
+            "location": [
+              900,
+              -200,
+              50
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

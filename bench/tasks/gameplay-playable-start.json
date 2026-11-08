@@ -1,0 +1,87 @@
+{
+  "id": "gameplay-playable-start",
+  "domain": "gameplay",
+  "title": "Make the level playable",
+  "prompt": "Make this empty level playable: when Play-In-Editor starts, the player must spawn on solid ground near the world origin and still be there 2 seconds later. Add a DirectionalLight so it is visible.",
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "actor_exists",
+        "class": "DirectionalLight"
+      },
+      {
+        "type": "python",
+        "expr": "any(abs(p.get_actor_location().x - a.get_actor_bounds(False)[0].x) <= a.get_actor_bounds(False)[1].x and abs(p.get_actor_location().y - a.get_actor_bounds(False)[0].y) <= a.get_actor_bounds(False)[1].y and 0 <= p.get_actor_location().z - (a.get_actor_bounds(False)[0].z + a.get_actor_bounds(False)[1].z) <= 250 for p in [p for p in actors if isinstance(p, unreal.PlayerStart)] for a in actors if a is not p)",
+        "name": "ground under PlayerStart"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "python",
+          "expr": "player is not None",
+          "name": "pawn spawned"
+        },
+        {
+          "type": "python",
+          "expr": "dist(player, [0, 0, 100]) < 1500",
+          "name": "near origin, not fallen"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              20,
+              20,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
