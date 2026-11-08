@@ -19,6 +19,10 @@ Notes:
   targets SM5 as well as SM6, so the editor falls back to SM5 instead of exiting with "Vulkan device could not be created".
 - **Close the editor over MCP** before rebuilding the plugin (no hot reload on Linux):
   `execute_python("import unreal; unreal.SystemLibrary.quit_editor()")`.
+- **Run automation offscreen** (`scripts/ue_linux.sh launch`, which adds `-RenderOffscreen`). With a visible window, a stale Vulkan
+  swapchain ("AcquireNextImage() failed due to the outdated swapchain") can deadlock the editor's RHI, render and game threads.
+  This is an engine bug in 5.8.4 Linux. `launch-gui` is for watching only.
+- **Packaging** works here: `package_project()` produced a Linux build (BUILD SUCCESSFUL, 1.2 GB) that boots headless.
 - **Live Coding is Windows-only.** `live_coding_compile` won't work here. Use a full rebuild instead.
 - **A known 5.8.4 engine ensure** (`FAppTime ... IsInGameThread()` from `UpdateReflectionSceneData`) appears once per
   session. It's an engine bug, harmless; dismiss it.

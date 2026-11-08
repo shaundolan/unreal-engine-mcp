@@ -190,7 +190,9 @@ def requirement_missing(task: Task, tools: dict[str, Any] | None = None) -> str 
         if req.startswith("command:"):
             if commands is None:
                 status = call_tool(tools or {}, "unreal_status")
-                commands = status.get("commands", []) if status.get("success") else []
+                if not status.get("success"):
+                    return f"editor not reachable: {status.get('error')}"
+                commands = status.get("commands", [])
             if req.split(":", 1)[1] not in commands:
                 return f"editor plugin lacks {req.split(':', 1)[1]} (needs a plugin build with it)"
             continue

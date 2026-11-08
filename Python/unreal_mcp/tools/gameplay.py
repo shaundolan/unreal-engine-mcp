@@ -36,6 +36,8 @@ def wait_for_live_coding(get_conn, since: int, timeout_s: float, sleep=time.slee
 
 
 def register(mcp, get_conn):
+    register_packaging(mcp, get_conn)
+
     @mcp.tool()
     def enhanced_input(actions: list[dict[str, Any]] | None = None, contexts: list[dict[str, Any]] | None = None,
                        folder: str = "/Game/Input") -> dict[str, Any]:
@@ -91,3 +93,24 @@ def register(mcp, get_conn):
         mesh component and material slot counts, light mobility/shadow counts, instancing
         candidates, and a list of concrete issues. For frame timings, use pie_test + stat unit."""
         return run_editor_script(get_conn, "performance_audit", {"triangle_budget": triangle_budget, "top": top})
+
+
+def register_packaging(mcp, get_conn):
+    from .python_exec import run_editor_script as _run
+
+    @mcp.tool()
+    def package_project(platform: str = "", configuration: str = "Development", output_dir: str = "",
+                        maps: list[str] | None = None, extra_args: str = "") -> dict[str, Any]:
+        """Build, cook, stage, pak and archive a standalone build with UAT BuildCookRun, in the
+        background on the editor machine. platform defaults to the editor's host (Win64/Linux/Mac);
+        configuration Development or Shipping; maps limits cooking (e.g. ["/Game/Maps/Arena"]).
+        Returns a job id immediately. Poll package_status(job) until state is succeeded/failed
+        (first cooks take many minutes). The editor stays usable meanwhile."""
+        return _run(get_conn, "package_job", {"action": "start", "platform": platform, "configuration": configuration,
+                                              "output_dir": output_dir, "maps": maps or [], "extra_args": extra_args})
+
+    @mcp.tool()
+    def package_status(job: str = "", tail: int = 40) -> dict[str, Any]:
+        """Progress of a package_project job (latest if job is empty): state running/succeeded/failed,
+        current UAT stage, exit code, error lines, the log tail, and launcher paths when done."""
+        return _run(get_conn, "package_job", {"action": "status", "job": job, "tail": tail})

@@ -77,6 +77,11 @@ steps=[
 If something fails, read `results[].actual`, `steps[].assertions` and `errors_in_log`, fix just that, and re-run.
 Then run `performance_audit` and `editor_action(action="save_all")`.
 
+## 8. Ship it
+`game_setup(game_default_map="/Game/Maps/Arena")` → `package_project()` (it runs in the background) → poll `package_status()` until
+`succeeded`. `launchers` lists the built game. A complete worked example of steps 1 to 8 is the reference solution of the
+UE-Bench task `bench/tasks/demo-arena-playable.json`.
+
 ## Limits today (be honest with the user)
 - PIE input is driven through pawn and controller calls (`add_movement_input`, `jump`, BlueprintCallable functions), not raw key events.
   Enhanced Input action bindings aren't exercised directly.

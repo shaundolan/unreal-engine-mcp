@@ -330,6 +330,18 @@ static UEdGraphPin* FindPin(UEdGraphNode* N, const FString& InName, EEdGraphPinD
 	{
 		return P; // a real pin named e.g. "Target" wins over the alias below
 	}
+	// Set-variable nodes output the new value on a pin named "Output_Get": accept the variable's name.
+	if (const UK2Node_VariableSet* VS = Cast<UK2Node_VariableSet>(N);
+		VS && Dir != EGPD_Input && Want == Norm(VS->VariableReference.GetMemberName().ToString()))
+	{
+		if (UEdGraphPin* P = FindPinExact(N, TEXT("outputget"), EGPD_Output)) return P;
+	}
+	// Cast result pins are named after the class ("AsBP Arena Game Mode"): accept as/result too.
+	if (UK2Node_DynamicCast* DC = Cast<UK2Node_DynamicCast>(N);
+		DC && Dir != EGPD_Input && (Want == TEXT("as") || Want == TEXT("result") || Want == TEXT("castresult")))
+	{
+		return DC->GetCastResultPin();
+	}
 	// Friendly aliases for exec and common pins.
 	FString Alias;
 	if (Want == TEXT("exec") || Want == TEXT("execute") || Want == TEXT("in")) Alias = Norm(UEdGraphSchema_K2::PN_Execute.ToString());

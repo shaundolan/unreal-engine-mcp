@@ -33,7 +33,7 @@
 | **Materials** | `material_inspect`, `material_edit` (build a whole expression graph in one call), `material_instance` |
 | **VFX, cinematics, data** | `niagara_edit` (place systems, set User parameters), `sequence_edit` (Level Sequences: cameras, bindings, transform keys, camera cuts), `data_table` (read / write rows) |
 | **Blueprints, UI, AI** | `bp_export` / `bp_apply` (whole Blueprints as a JSON graph spec: variables, components, functions, nodes, pins and links, applied atomically and compiled with structured errors; dry run), `widget_export` / `widget_apply` (UMG widget trees with canvas anchors and slots), `bt_export` / `bt_build` (Blackboard keys and Behavior Trees from one nested spec) |
-| **Gameplay & code** | `enhanced_input` (actions + mapping contexts with modifiers), `game_setup` (level/project game mode, default maps), `cpp_source` (read/write project C++, sandboxed to Source/Plugins/Config), `live_coding_compile` (compile and get parsed errors back), `performance_audit` |
+| **Gameplay & code** | `enhanced_input` (actions + mapping contexts with modifiers), `game_setup` (level/project game mode, default maps), `cpp_source` (read/write project C++, sandboxed to Source/Plugins/Config), `live_coding_compile` (compile and get parsed errors back), `performance_audit`, `package_project` / `package_status` (background UAT BuildCookRun to a standalone build) |
 | **Runtime verification** | `pie_test`: play the level in PIE, then assert on actors, properties, distances, Python expressions and the log (e.g. "no errors", "player health ≥ 100") |
 | **Blueprint graphs** | `add_node` (23+ node types), `connect_nodes`, `delete_node`, `set_node_property`, `add_event_node`, `create_variable`, `set_blueprint_variable_properties`, `create_function`, `add_function_input/output`, `rename_function`, `delete_function` |
 | **Blueprint assets** | `create_blueprint`, `add_component_to_blueprint`, `set_static_mesh_properties`, `set_physics_properties`, `compile_blueprint`, `read_blueprint_content`, `analyze_blueprint_graph`, `get_blueprint_variable_details`, `get_blueprint_function_details` |
@@ -94,5 +94,5 @@ Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 MIT. See [LICENSE](LICENSE). Original work © Flopperam and contributors; fork modifications © Shaun Dolan.
 
 ## UE-Bench
-19 scripted editor tasks with automatic checkers. They cover scene, assets, materials, cinematics, input, performance,
-Blender modeling, Blueprints, UI, AI and PIE gameplay (a coin collected by walking into it, a guard walking its Behavior Tree route). Each checker is proven against a reference solution and against near-miss solutions. See [bench/README.md](bench/README.md).
+20 scripted editor tasks with automatic checkers. They cover scene, assets, materials, cinematics, input, performance,
+Blender modeling, Blueprints, UI, AI and PIE gameplay (a coin collected by walking into it, a guard walking its Behavior Tree route, and a full "prompt to playable" coin arena with score, HUD and a chasing enemy). Each checker is proven against a reference solution and against near-miss solutions. See [bench/README.md](bench/README.md).

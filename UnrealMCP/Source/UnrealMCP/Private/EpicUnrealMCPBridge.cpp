@@ -74,6 +74,13 @@ void UEpicUnrealMCPBridge::Initialize(FSubsystemCollectionBase& Collection)
 	}
 
 	RegisterAllCommands();
+	if (IsRunningCommandlet())
+	{
+		// Cook/package/automation commandlets load editor plugins too; they must not take the port
+		// (an agent would end up talking to a cook process that exits mid-session).
+		UE_LOG(LogUnrealMCP, Display, TEXT("UnrealMCP: commandlet run, server not started"));
+		return;
+	}
 	StartServer();
 }
 

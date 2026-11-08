@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Linux plugin dev loop for the sample project.
 #   scripts/ue_linux.sh build      sync plugin copy + compile (editor must be closed)
-#   scripts/ue_linux.sh launch     start the editor and wait until the MCP plugin answers ping
+#   scripts/ue_linux.sh launch     start the editor offscreen (no window) and wait until the MCP plugin answers ping
+#   scripts/ue_linux.sh launch-gui same, with a visible editor window
+# Offscreen is the default for automation: in UE 5.8.4 Linux/Vulkan a stale window swapchain
+# ("AcquireNextImage() failed due to the outdated swapchain") can deadlock the RHI/render/game threads.
 #   scripts/ue_linux.sh quit       close the editor over MCP (falls back to SIGTERM)
 #   scripts/ue_linux.sh rebuild    quit + build + launch
 # UE_ROOT defaults to ~/Downloads/Linux_Unreal_Engine_5.8.4; logs go to $UE_LOG_DIR (default /tmp/unreal-mcp).
@@ -40,8 +43,10 @@ do_build() {
 }
 
 do_launch() {
+  local mode=("-RenderOffscreen")
+  [ "${1:-}" = "gui" ] && mode=()
   if pgrep -x UnrealEditor >/dev/null; then echo "editor already running"; return 0; fi
-  setsid "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$PROJECT" -nosplash -abslog="$LOG_DIR/editor.log" \
+  setsid "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$PROJECT" -nosplash "${mode[@]}" -abslog="$LOG_DIR/editor.log" \
     "-ini:Engine:[/Script/PythonScriptPlugin.PythonScriptPluginSettings]:bDeveloperMode=True" >/dev/null 2>&1 &
   for i in $(seq 1 180); do
     if ping_editor; then sleep 10; echo "editor ready after ~$((i * 5))s"; return 0; fi
@@ -54,7 +59,8 @@ do_launch() {
 case "${1:-}" in
   build) do_build ;;
   launch) do_launch ;;
+  launch-gui) do_launch gui ;;
   quit) do_quit ;;
   rebuild) do_quit && do_build && do_launch ;;
-  *) echo "usage: $0 build|launch|quit|rebuild"; exit 2 ;;
+  *) echo "usage: $0 build|launch|launch-gui|quit|rebuild"; exit 2 ;;
 esac
