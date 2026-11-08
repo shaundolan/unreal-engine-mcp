@@ -73,6 +73,8 @@ bp_apply(blueprint="/Game/Game/BP_Coin", create_parent="Actor", operations=[
 - AI movement needs a NavMesh: place a `NavMeshBoundsVolume` with `scene_compose`. It builds automatically, and `pie_test` waits for it.
 
 ## Gotchas
+- Callable nodes (exec pins) only run when exec flows into them: `GetActorOfClass`, `Delay`, `SetText`, ... `bp_apply` returns
+  `warnings` for any new node whose exec input is unwired. Pure nodes (no exec pins, e.g. `GetPlayerPawn`, math) run on demand.
 - Python's script names differ from C++: `unreal.WidgetLibrary` is `WidgetBlueprintLibrary`, `unreal.AIBlueprintHelperLibrary` doesn't
   exist in Python (use the Blueprint node), and BT `MoveTo` params are `ValueOrBBKey` structs (handled by `bt_build`).
 - An actor spawned already inside a trigger gets no BeginOverlap. Test pickups by moving the pawn into them (`pie_test` steps).

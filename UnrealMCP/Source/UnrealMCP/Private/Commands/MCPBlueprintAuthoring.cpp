@@ -975,6 +975,13 @@ static UEdGraphNode* CreateNodeFromOp(FApplyContext& Ctx, UEdGraph* G, const TSh
 	if (Kind == TEXT("call_function") || Kind == TEXT("call"))
 	{
 		UFunction* F = FindCallable(BP, Str(TEXT("function")), Str(TEXT("class")), Err);
+		if (!F)
+		{
+			// A custom event or function added earlier in this batch is not in the skeleton class yet.
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
+			Err.Empty();
+			F = FindCallable(BP, Str(TEXT("function")), Str(TEXT("class")), Err);
+		}
 		if (!F) return nullptr;
 		UK2Node_CallFunction* N = NewNode<UK2Node_CallFunction>(G, [&](UK2Node_CallFunction* C) { C->SetFromFunction(F); });
 		PlaceNode(Ctx, G, N, Op);
@@ -1515,6 +1522,27 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);
 	}
 
+	// Lint: an impure node whose exec input is unwired never runs, and its outputs stay at their
+	// defaults (None) at runtime with no compile error. Tell the caller now.
+	TArray<FString> Warnings;
+	for (const auto& Pair : Ctx.Aliases)
+	{
+		UEdGraphNode* N = Pair.Value;
+		if (!N || Cast<UK2Node_Event>(N) || Cast<UK2Node_FunctionEntry>(N) || !IsValid(N) || !N->GetGraph())
+		{
+			continue;
+		}
+		for (UEdGraphPin* P : N->Pins)
+		{
+			if (P && P->Direction == EGPD_Input && P->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec && P->LinkedTo.Num() == 0)
+			{
+				Warnings.Add(FString::Printf(TEXT("'%s' (%s) has an unconnected exec input: it will never run and its outputs stay empty. "
+					"Wire something into %s.%s"), *Pair.Key, *N->GetNodeTitle(ENodeTitleType::ListView).ToString(), *Pair.Key, *P->PinName.ToString()));
+				break;
+			}
+		}
+	}
+
 	TSharedPtr<FJsonObject> Compile = bCompile ? CompileBlueprintWithResults(BP) : nullptr;
 	const bool bCompileOk = !Compile.IsValid() || Compile->GetBoolField(TEXT("ok"));
 	const bool bRollback = bDryRun || (bAtomic && (Failed.Num() > 0 || !bCompileOk));
@@ -1558,6 +1586,7 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 	Out->SetNumberField(TEXT("applied"), Applied);
 	Out->SetArrayField(TEXT("failed"), Failed);
 	if (DefaultErrors.Num()) Out->SetField(TEXT("default_errors"), StringArray(DefaultErrors));
+	if (Warnings.Num()) Out->SetField(TEXT("warnings"), StringArray(Warnings));
 	TSharedPtr<FJsonObject> AliasJ = MakeShared<FJsonObject>();
 	if (!bRolledBack)
 	{

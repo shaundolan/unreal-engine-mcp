@@ -24,10 +24,11 @@ def register(mcp, get_conn):
                                              "since_seq": since_seq, "category": category})
 
     @mcp.tool()
-    def viewport_capture(max_width: int = 1280) -> Any:
-        """Screenshot the active level viewport and return it as an image, so you can
-        visually verify scene changes. max_width downsizes large viewports."""
-        reply = call(get_conn, "viewport_capture", {"max_width": max_width})
+    def viewport_capture(max_width: int = 1280, source: str = "auto") -> Any:
+        """Screenshot and return it as an image, so you can visually verify your work.
+        source: "auto" = what the player sees while PIE runs, else the level viewport;
+        "game" = the PIE viewport only; "editor" = the level viewport. max_width downsizes."""
+        reply = call(get_conn, "viewport_capture", {"max_width": max_width, "source": source})
         if not reply.get("success"):
             return reply
         try:

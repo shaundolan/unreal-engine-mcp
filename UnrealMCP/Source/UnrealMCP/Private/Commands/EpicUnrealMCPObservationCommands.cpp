@@ -2,6 +2,7 @@
 #include "Commands/EpicUnrealMCPReflectionCommands.h"
 #include "Commands/EpicUnrealMCPPythonCommands.h"
 #include "Editor.h"
+#include "Engine/GameViewportClient.h"
 #include "EditorViewportClient.h"
 #include "LevelEditorViewport.h"
 #include "FileHelpers.h"
@@ -145,8 +146,23 @@ static TSharedPtr<FJsonObject> HandleViewportCapture(const TSharedPtr<FJsonObjec
 	double MaxWidth = 1280;
 	Params->TryGetNumberField(TEXT("max_width"), MaxWidth);
 
+	FString Source = TEXT("auto");
+	Params->TryGetStringField(TEXT("source"), Source);
 	FViewport* Viewport = nullptr;
-	if (GCurrentLevelEditingViewportClient && GCurrentLevelEditingViewportClient->Viewport)
+	// While playing, "auto" captures what the player sees (the PIE game viewport), not the editor view.
+	if (Source != TEXT("editor") && GEditor && GEditor->PlayWorld && GEditor->PlayWorld->GetGameViewport())
+	{
+		Viewport = GEditor->PlayWorld->GetGameViewport()->Viewport;
+	}
+	if (!Viewport && Source == TEXT("game"))
+	{
+		return MCPError(TEXT("source=game needs a running PIE session"));
+	}
+	if (Viewport)
+	{
+		// already the game viewport
+	}
+	else if (GCurrentLevelEditingViewportClient && GCurrentLevelEditingViewportClient->Viewport)
 	{
 		Viewport = GCurrentLevelEditingViewportClient->Viewport;
 	}

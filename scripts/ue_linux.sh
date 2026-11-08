@@ -7,11 +7,11 @@
 # ("AcquireNextImage() failed due to the outdated swapchain") can deadlock the RHI/render/game threads.
 #   scripts/ue_linux.sh quit       close the editor over MCP (falls back to SIGTERM)
 #   scripts/ue_linux.sh rebuild    quit + build + launch
-# UE_ROOT defaults to ~/Downloads/Linux_Unreal_Engine_5.8.4; logs go to $UE_LOG_DIR (default /tmp/unreal-mcp).
+# UE_PROJECT selects another .uproject (default: the sample project). UE_ROOT defaults to ~/Downloads/Linux_Unreal_Engine_5.8.4; logs go to $UE_LOG_DIR (default /tmp/unreal-mcp).
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 UE_ROOT="${UE_ROOT:-$HOME/Downloads/Linux_Unreal_Engine_5.8.4}"
-PROJECT="$REPO/FlopperamUnrealMCP/FlopperamUnrealMCP.uproject"
+PROJECT="${UE_PROJECT:-$REPO/FlopperamUnrealMCP/FlopperamUnrealMCP.uproject}"
 LOG_DIR="${UE_LOG_DIR:-/tmp/unreal-mcp}"
 mkdir -p "$LOG_DIR"
 
@@ -34,7 +34,7 @@ UnrealConnection(Settings()).send_command('execute_python', {'code': 'import unr
 do_build() {
   bash "$REPO/scripts/sync_plugin.sh" >/dev/null
   local log="$LOG_DIR/build.log"
-  if "$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh" FlopperamUnrealMCPEditor Linux Development \
+  if "$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh" "$(basename "$PROJECT" .uproject)Editor" Linux Development \
       -Project="$PROJECT" -WaitMutex >"$log" 2>&1; then
     echo "build ok ($(grep -c 'warning:' "$log" || true) warnings) -> $log"
   else
