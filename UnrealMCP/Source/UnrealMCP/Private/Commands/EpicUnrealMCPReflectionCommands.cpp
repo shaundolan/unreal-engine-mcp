@@ -535,7 +535,8 @@ static TSharedPtr<FJsonObject> HandleFunctionCall(const TSharedPtr<FJsonObject>&
 		TSharedPtr<FJsonValue> ArgValue;
 		for (const auto& Pair : Args->Values)
 		{
-			if (Pair.Key.Equals(P->GetName(), ESearchCase::IgnoreCase))
+			// *Key is const TCHAR* for both FString (<=5.7) and UE::TSharedString (5.8+) keys
+			if (FCString::Stricmp(*Pair.Key, *P->GetName()) == 0)
 			{
 				ArgValue = Pair.Value;
 				break;

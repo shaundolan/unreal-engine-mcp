@@ -26,8 +26,8 @@ TSharedPtr<FJsonObject> FBPVariables::CreateVariable(const TSharedPtr<FJsonObjec
 
     if (!Blueprint)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Blueprint not found");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), "Blueprint not found");
         return Result;
     }
 
@@ -52,7 +52,7 @@ TSharedPtr<FJsonObject> FBPVariables::CreateVariable(const TSharedPtr<FJsonObjec
 
         if (Params->HasField(TEXT("default_value")))
         {
-            SetDefaultValue(Variable, Params->Values.FindRef("default_value"));
+            SetDefaultValue(Variable, Params->TryGetField(TEXT("default_value")));
         }
 
         Blueprint->MarkPackageDirty();
@@ -76,20 +76,20 @@ TSharedPtr<FJsonObject> FBPVariables::CreateVariable(const TSharedPtr<FJsonObjec
 
         FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
-        Result->SetBoolField("success", true);
+        Result->SetBoolField(TEXT("success"), true);
 
         TSharedPtr<FJsonObject> VarInfo = MakeShared<FJsonObject>();
-        VarInfo->SetStringField("name", VariableName);
-        VarInfo->SetStringField("type", VariableType);
-        VarInfo->SetBoolField("is_public", IsPublic);
-        VarInfo->SetStringField("category", Category);
+        VarInfo->SetStringField(TEXT("name"), VariableName);
+        VarInfo->SetStringField(TEXT("type"), VariableType);
+        VarInfo->SetBoolField(TEXT("is_public"), IsPublic);
+        VarInfo->SetStringField(TEXT("category"), Category);
 
-        Result->SetObjectField("variable", VarInfo);
+        Result->SetObjectField(TEXT("variable"), VarInfo);
     }
     else
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Failed to create variable");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), "Failed to create variable");
     }
 
     return Result;
@@ -106,8 +106,8 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
 
     if (!Blueprint)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", FString::Printf(TEXT("Blueprint not found: %s"), *BlueprintName));
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Blueprint not found: %s"), *BlueprintName));
         return Result;
     }
 
@@ -124,8 +124,8 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
 
     if (!VarDesc)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", FString::Printf(TEXT("Variable not found: %s"), *VariableName));
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Variable not found: %s"), *VariableName));
         return Result;
     }
 
@@ -137,7 +137,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString NewVarName = Params->GetStringField(TEXT("var_name"));
         VarDesc->VarName = FName(*NewVarName);
-        UpdatedProperties->SetStringField("var_name", NewVarName);
+        UpdatedProperties->SetStringField(TEXT("var_name"), NewVarName);
     }
 
     // Update var_type (change variable type)
@@ -146,7 +146,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         FString TypeString = Params->GetStringField(TEXT("var_type"));
         FEdGraphPinType NewType = GetPinTypeFromString(TypeString);
         VarDesc->VarType = NewType;
-        UpdatedProperties->SetStringField("var_type", TypeString);
+        UpdatedProperties->SetStringField(TEXT("var_type"), TypeString);
     }
 
     // Update is_blueprint_writable (Set node)
@@ -161,7 +161,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->PropertyFlags |= CPF_BlueprintReadOnly;
         }
-        UpdatedProperties->SetBoolField("is_blueprint_writable", bIsWritable);
+        UpdatedProperties->SetBoolField(TEXT("is_blueprint_writable"), bIsWritable);
     }
 
     // Update is_public
@@ -176,7 +176,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->PropertyFlags &= ~CPF_Edit;
         }
-        UpdatedProperties->SetBoolField("is_public", bIsPublic);
+        UpdatedProperties->SetBoolField(TEXT("is_public"), bIsPublic);
     }
 
     // Update is_editable_in_instance (opposite of CPF_DisableEditOnInstance)
@@ -191,7 +191,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->PropertyFlags |= CPF_DisableEditOnInstance;
         }
-        UpdatedProperties->SetBoolField("is_editable_in_instance", bIsEditable);
+        UpdatedProperties->SetBoolField(TEXT("is_editable_in_instance"), bIsEditable);
     }
 
     // Update is_config
@@ -206,7 +206,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->PropertyFlags &= ~CPF_Config;
         }
-        UpdatedProperties->SetBoolField("is_config", bIsConfig);
+        UpdatedProperties->SetBoolField(TEXT("is_config"), bIsConfig);
     }
 
     // Update friendly_name
@@ -214,7 +214,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString FriendlyName = Params->GetStringField(TEXT("friendly_name"));
         VarDesc->FriendlyName = FriendlyName;
-        UpdatedProperties->SetStringField("friendly_name", FriendlyName);
+        UpdatedProperties->SetStringField(TEXT("friendly_name"), FriendlyName);
     }
 
     // Update tooltip
@@ -222,7 +222,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString Tooltip = Params->GetStringField(TEXT("tooltip"));
         VarDesc->SetMetaData(FBlueprintMetadata::MD_Tooltip, *Tooltip);
-        UpdatedProperties->SetStringField("tooltip", Tooltip);
+        UpdatedProperties->SetStringField(TEXT("tooltip"), Tooltip);
     }
 
     // Update category
@@ -230,7 +230,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString Category = Params->GetStringField(TEXT("category"));
         VarDesc->Category = FText::FromString(Category);
-        UpdatedProperties->SetStringField("category", Category);
+        UpdatedProperties->SetStringField(TEXT("category"), Category);
     }
 
     // Update replication_enabled (Row 15 - CPF_Net flag)
@@ -245,7 +245,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->PropertyFlags &= ~CPF_Net;
         }
-        UpdatedProperties->SetBoolField("replication_enabled", bReplicationEnabled);
+        UpdatedProperties->SetBoolField(TEXT("replication_enabled"), bReplicationEnabled);
     }
 
     // Update replication_condition (Row 16 - ELifetimeCondition)
@@ -253,7 +253,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         int32 ReplicationConditionValue = (int32)Params->GetNumberField(TEXT("replication_condition"));
         VarDesc->ReplicationCondition = (ELifetimeCondition)ReplicationConditionValue;
-        UpdatedProperties->SetNumberField("replication_condition", ReplicationConditionValue);
+        UpdatedProperties->SetNumberField(TEXT("replication_condition"), ReplicationConditionValue);
     }
 
     // Update is_private (Row 7 - MD_AllowPrivateAccess metadata)
@@ -268,7 +268,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->RemoveMetaData(TEXT("AllowPrivateAccess"));
         }
-        UpdatedProperties->SetBoolField("is_private", bIsPrivate);
+        UpdatedProperties->SetBoolField(TEXT("is_private"), bIsPrivate);
     }
 
     // Update expose_on_spawn (metadata)
@@ -283,14 +283,14 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->RemoveMetaData(TEXT("ExposeOnSpawn"));
         }
-        UpdatedProperties->SetBoolField("expose_on_spawn", bExposeOnSpawn);
+        UpdatedProperties->SetBoolField(TEXT("expose_on_spawn"), bExposeOnSpawn);
     }
 
     // Update default_value
     if (Params->HasField(TEXT("default_value")))
     {
-        SetDefaultValue(*VarDesc, Params->Values.FindRef("default_value"));
-        UpdatedProperties->SetStringField("default_value", "updated");
+        SetDefaultValue(*VarDesc, Params->TryGetField(TEXT("default_value")));
+        UpdatedProperties->SetStringField(TEXT("default_value"), "updated");
     }
 
     // Update expose_to_cinematics (CPF_Interp)
@@ -305,7 +305,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->PropertyFlags &= ~CPF_Interp;
         }
-        UpdatedProperties->SetBoolField("expose_to_cinematics", bExposeToCinematics);
+        UpdatedProperties->SetBoolField(TEXT("expose_to_cinematics"), bExposeToCinematics);
     }
 
     // Update slider_range_min (MD_UIMin)
@@ -313,7 +313,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString SliderMin = Params->GetStringField(TEXT("slider_range_min"));
         VarDesc->SetMetaData(TEXT("UIMin"), *SliderMin);
-        UpdatedProperties->SetStringField("slider_range_min", SliderMin);
+        UpdatedProperties->SetStringField(TEXT("slider_range_min"), SliderMin);
     }
 
     // Update slider_range_max (MD_UIMax)
@@ -321,7 +321,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString SliderMax = Params->GetStringField(TEXT("slider_range_max"));
         VarDesc->SetMetaData(TEXT("UIMax"), *SliderMax);
-        UpdatedProperties->SetStringField("slider_range_max", SliderMax);
+        UpdatedProperties->SetStringField(TEXT("slider_range_max"), SliderMax);
     }
 
     // Update value_range_min (MD_ClampMin)
@@ -329,7 +329,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString ClampMin = Params->GetStringField(TEXT("value_range_min"));
         VarDesc->SetMetaData(TEXT("ClampMin"), *ClampMin);
-        UpdatedProperties->SetStringField("value_range_min", ClampMin);
+        UpdatedProperties->SetStringField(TEXT("value_range_min"), ClampMin);
     }
 
     // Update value_range_max (MD_ClampMax)
@@ -337,7 +337,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString ClampMax = Params->GetStringField(TEXT("value_range_max"));
         VarDesc->SetMetaData(TEXT("ClampMax"), *ClampMax);
-        UpdatedProperties->SetStringField("value_range_max", ClampMax);
+        UpdatedProperties->SetStringField(TEXT("value_range_max"), ClampMax);
     }
 
     // Update units (MD_Units)
@@ -345,7 +345,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString Units = Params->GetStringField(TEXT("units"));
         VarDesc->SetMetaData(TEXT("Units"), *Units);
-        UpdatedProperties->SetStringField("units", Units);
+        UpdatedProperties->SetStringField(TEXT("units"), Units);
     }
 
     // Update bitmask (MD_Bitmask)
@@ -360,7 +360,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
         {
             VarDesc->RemoveMetaData(TEXT("Bitmask"));
         }
-        UpdatedProperties->SetBoolField("bitmask", bIsBitmask);
+        UpdatedProperties->SetBoolField(TEXT("bitmask"), bIsBitmask);
     }
 
     // Update bitmask_enum (MD_BitmaskEnum)
@@ -368,7 +368,7 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
     {
         FString BitmaskEnum = Params->GetStringField(TEXT("bitmask_enum"));
         VarDesc->SetMetaData(TEXT("BitmaskEnum"), *BitmaskEnum);
-        UpdatedProperties->SetStringField("bitmask_enum", BitmaskEnum);
+        UpdatedProperties->SetStringField(TEXT("bitmask_enum"), BitmaskEnum);
     }
 
     // Mark Blueprint as modified and compile
@@ -385,10 +385,10 @@ TSharedPtr<FJsonObject> FBPVariables::SetVariableProperties(const TSharedPtr<FJs
 
     FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
-    Result->SetBoolField("success", true);
-    Result->SetStringField("variable_name", VariableName);
-    Result->SetObjectField("properties_updated", UpdatedProperties);
-    Result->SetStringField("message", "Variable properties updated successfully");
+    Result->SetBoolField(TEXT("success"), true);
+    Result->SetStringField(TEXT("variable_name"), VariableName);
+    Result->SetObjectField(TEXT("properties_updated"), UpdatedProperties);
+    Result->SetStringField(TEXT("message"), "Variable properties updated successfully");
 
     return Result;
 }

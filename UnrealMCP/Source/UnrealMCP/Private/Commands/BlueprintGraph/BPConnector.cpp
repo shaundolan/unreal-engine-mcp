@@ -54,8 +54,8 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
     if (!Blueprint)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Blueprint not found");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), "Blueprint not found");
         return Result;
     }
 
@@ -90,8 +90,8 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
         if (!Graph)
         {
-            Result->SetBoolField("success", false);
-            Result->SetStringField("error", FString::Printf(TEXT("Function graph not found: %s"), *FunctionName));
+            Result->SetBoolField(TEXT("success"), false);
+            Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Function graph not found: %s"), *FunctionName));
             return Result;
         }
     }
@@ -100,8 +100,8 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
         // Use event graph if no function specified
         if (Blueprint->UbergraphPages.Num() == 0)
         {
-            Result->SetBoolField("success", false);
-            Result->SetStringField("error", "Blueprint has no event graph");
+            Result->SetBoolField(TEXT("success"), false);
+            Result->SetStringField(TEXT("error"), "Blueprint has no event graph");
             return Result;
         }
 
@@ -110,8 +110,8 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
     if (!Graph)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Graph not found");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), "Graph not found");
         return Result;
     }
 
@@ -121,8 +121,8 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
     if (!SourceNode || !TargetNode)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Node not found");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), "Node not found");
         return Result;
     }
 
@@ -132,16 +132,16 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
 
     if (!SourcePin || !TargetPin)
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Pin not found");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), "Pin not found");
         return Result;
     }
 
     // Validate compatibility
     if (!ArePinsCompatible(SourcePin, TargetPin))
     {
-        Result->SetBoolField("success", false);
-        Result->SetStringField("error", "Pins not compatible");
+        Result->SetBoolField(TEXT("success"), false);
+        Result->SetStringField(TEXT("error"), "Pins not compatible");
         return Result;
     }
 
@@ -153,16 +153,16 @@ TSharedPtr<FJsonObject> FBPConnector::ConnectNodes(const TSharedPtr<FJsonObject>
     FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
     // Return
-    Result->SetBoolField("success", true);
+    Result->SetBoolField(TEXT("success"), true);
 
     TSharedPtr<FJsonObject> ConnectionInfo = MakeShared<FJsonObject>();
-    ConnectionInfo->SetStringField("source_node", SourceNodeId);
-    ConnectionInfo->SetStringField("source_pin", SourcePinName);
-    ConnectionInfo->SetStringField("target_node", TargetNodeId);
-    ConnectionInfo->SetStringField("target_pin", TargetPinName);
-    ConnectionInfo->SetStringField("connection_type", SourcePin->PinType.PinCategory.ToString());
+    ConnectionInfo->SetStringField(TEXT("source_node"), SourceNodeId);
+    ConnectionInfo->SetStringField(TEXT("source_pin"), SourcePinName);
+    ConnectionInfo->SetStringField(TEXT("target_node"), TargetNodeId);
+    ConnectionInfo->SetStringField(TEXT("target_pin"), TargetPinName);
+    ConnectionInfo->SetStringField(TEXT("connection_type"), SourcePin->PinType.PinCategory.ToString());
 
-    Result->SetObjectField("connection", ConnectionInfo);
+    Result->SetObjectField(TEXT("connection"), ConnectionInfo);
 
     return Result;
 }
