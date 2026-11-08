@@ -57,7 +57,9 @@ public class UnrealMCP : ModuleRules
 				"SlateCore",
 				"Kismet",
 				"Projects",
-				"AssetRegistry"
+				"AssetRegistry",
+				"RenderCore",          // FlushRenderingCommands for viewport_capture
+				"PythonScriptPlugin"   // execute_python
 			}
 		);
 		

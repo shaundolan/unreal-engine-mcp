@@ -1,9 +1,9 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
-	"VersionName": "1.0",
+	"Version": 2,
+	"VersionName": "0.2.0",
 	"FriendlyName": "UnrealMCP",
-	"Description": "Model Context Protocol implementation for Unreal Engine",
+	"Description": "Local MCP bridge for agents: Python execution, reflection, observation, Blueprint graphs, world building.",
 	"Category": "Editor",
 	"CreatedBy": "Flopperam",
 	"CreatedByURL": "",
@@ -30,6 +30,10 @@
 		{
 			"Name": "EditorScriptingUtilities",
 			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
 		}
 	]
-} 
+}

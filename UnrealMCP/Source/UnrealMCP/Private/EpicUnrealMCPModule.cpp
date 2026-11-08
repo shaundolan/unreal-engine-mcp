@@ -1,21 +1,29 @@
 #include "EpicUnrealMCPModule.h"
-#include "EpicUnrealMCPBridge.h"
+#include "MCPCommon.h"
+#include "Commands/EpicUnrealMCPObservationCommands.h"
 #include "Modules/ModuleManager.h"
-#include "EditorSubsystem.h"
-#include "Editor.h"
+#include "Misc/OutputDeviceRedirector.h"
 
 #define LOCTEXT_NAMESPACE "FEpicUnrealMCPModule"
 
 void FEpicUnrealMCPModule::StartupModule()
 {
-	UE_LOG(LogTemp, Display, TEXT("Epic Unreal MCP Module has started"));
+	// Capture the Output Log from the start so editor_log can show startup errors too.
+	if (GLog)
+	{
+		GLog->AddOutputDevice(&FMCPLogCapture::Get());
+	}
+	UE_LOG(LogUnrealMCP, Display, TEXT("UnrealMCP module %s started"), UNREALMCP_PLUGIN_VERSION);
 }
 
 void FEpicUnrealMCPModule::ShutdownModule()
 {
-	UE_LOG(LogTemp, Display, TEXT("Epic Unreal MCP Module has shut down"));
+	if (GLog)
+	{
+		GLog->RemoveOutputDevice(&FMCPLogCapture::Get());
+	}
 }
 
 #undef LOCTEXT_NAMESPACE
-	
-IMPLEMENT_MODULE(FEpicUnrealMCPModule, UnrealMCP) 
+
+IMPLEMENT_MODULE(FEpicUnrealMCPModule, UnrealMCP)
