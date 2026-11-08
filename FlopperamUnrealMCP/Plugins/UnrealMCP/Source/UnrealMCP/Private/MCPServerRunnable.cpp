@@ -53,11 +53,9 @@ FMCPServerRunnable::~FMCPServerRunnable()
 
 void FMCPServerRunnable::Stop()
 {
+	// Called from another thread: only flip the flag. Clients are stopped and joined at the end
+	// of Run() on the server thread, the only thread that touches Clients.
 	bRunning = false;
-	for (FClient& C : Clients)
-	{
-		C.Runnable->Stop();
-	}
 }
 
 void FMCPServerRunnable::ReapFinishedClients()
@@ -113,6 +111,17 @@ uint32 FMCPServerRunnable::Run()
 			Clients.Add(C);
 		}
 	}
+	for (FClient& C : Clients)
+	{
+		C.Runnable->Stop();
+	}
+	for (FClient& C : Clients)
+	{
+		C.Thread->WaitForCompletion();
+		delete C.Thread;
+		delete C.Runnable;
+	}
+	Clients.Empty();
 	return 0;
 }
 
@@ -167,6 +176,11 @@ bool FMCPClientRunnable::SendAll(const uint8* Data, int32 Num)
 	int32 Sent = 0;
 	while (Sent < Num)
 	{
+		// Bounded wait so a client that stopped reading can't wedge shutdown forever.
+		if (!Socket->Wait(ESocketWaitConditions::WaitForWrite, FTimespan::FromSeconds(30)) || !bRunning)
+		{
+			return false;
+		}
 		int32 N = 0;
 		if (!Socket->Send(Data + Sent, Num - Sent, N) || N <= 0)
 		{

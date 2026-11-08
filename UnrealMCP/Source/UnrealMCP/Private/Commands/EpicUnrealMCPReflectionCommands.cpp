@@ -122,8 +122,9 @@ static FProperty* FindPropertyCI(const UStruct* Struct, const FString& Name)
 /** Resolved location of a (possibly nested) property. */
 struct FMCPPropertyTarget
 {
-	UObject* Owner = nullptr;      // innermost UObject that contains the leaf (for Modify/PostEditChange)
-	FProperty* Property = nullptr; // leaf property
+	UObject* Owner = nullptr;            // innermost UObject that contains the leaf (for Modify/PostEditChange)
+	FProperty* MemberProperty = nullptr; // first property under Owner on the path (what owners switch on)
+	FProperty* Property = nullptr;       // leaf property
 	void* ValuePtr = nullptr;      // address of the leaf value
 };
 
@@ -144,6 +145,7 @@ static bool ResolvePropertyPath(UObject* Root, const FString& Path, FMCPProperty
 	UObject* Owner = Root;
 	const UStruct* Struct = Root->GetClass();
 	void* Container = Root;
+	FProperty* Member = nullptr;
 
 	for (int32 i = 0; i < Parts.Num(); ++i)
 	{
@@ -169,6 +171,7 @@ static bool ResolvePropertyPath(UObject* Root, const FString& Path, FMCPProperty
 					Owner = Found;
 					Struct = Found->GetClass();
 					Container = Found;
+					Member = nullptr;
 					continue;
 				}
 			}
@@ -181,9 +184,14 @@ static bool ResolvePropertyPath(UObject* Root, const FString& Path, FMCPProperty
 		}
 
 		void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Container);
+		if (!Member)
+		{
+			Member = Prop;
+		}
 		if (bLast)
 		{
 			Out.Owner = Owner;
+			Out.MemberProperty = Member;
 			Out.Property = Prop;
 			Out.ValuePtr = ValuePtr;
 			return true;
@@ -204,6 +212,7 @@ static bool ResolvePropertyPath(UObject* Root, const FString& Path, FMCPProperty
 			Owner = Next;
 			Struct = Next->GetClass();
 			Container = Next;
+			Member = nullptr; // a new owner starts a new member chain
 		}
 		else
 		{
@@ -442,16 +451,26 @@ static TSharedPtr<FJsonObject> HandlePropertySet(const TSharedPtr<FJsonObject>& 
 	}
 
 	const TSharedPtr<FJsonValue> Old = PropertyToJson(T.Property, T.ValuePtr);
-	T.Owner->Modify();
-#if WITH_EDITOR
-	T.Owner->PreEditChange(T.Property);
-#endif
-	if (!JsonToProperty(Value, T.Property, T.ValuePtr, T.Owner, Error))
+
+	// Convert into a scratch value first, so a bad value never leaves a partial write or an
+	// unbalanced PreEditChange (components unregister in PreEditChange, re-register in Post).
+	void* Scratch = FMemory::Malloc(FMath::Max(T.Property->GetSize(), 1), T.Property->GetMinAlignment());
+	T.Property->InitializeValue(Scratch);
+	ON_SCOPE_EXIT { T.Property->DestroyValue(Scratch); FMemory::Free(Scratch); };
+	T.Property->CopyCompleteValue(Scratch, T.ValuePtr); // start from current (partial struct JSON keeps other fields)
+	if (!JsonToProperty(Value, T.Property, Scratch, T.Owner, Error))
 	{
 		return MCPError(Error);
 	}
+
+	T.Owner->Modify();
+#if WITH_EDITOR
+	T.Owner->PreEditChange(T.MemberProperty);
+#endif
+	T.Property->CopyCompleteValue(T.ValuePtr, Scratch);
 #if WITH_EDITOR
 	FPropertyChangedEvent Changed(T.Property, EPropertyChangeType::ValueSet);
+	Changed.SetActiveMemberProperty(T.MemberProperty);
 	T.Owner->PostEditChangeProperty(Changed);
 #endif
 	if (AActor* Actor = Cast<AActor>(Object))
@@ -499,8 +518,10 @@ static TSharedPtr<FJsonObject> HandleFunctionCall(const TSharedPtr<FJsonObject>&
 		return MCPError(FString::Printf(TEXT("%s has no function '%s' (use object_describe)"), *Object->GetClass()->GetName(), *FnName));
 	}
 
+	// InitializeStruct/DestroyStruct touch GetStructureSize() bytes (params + locals + padding),
+	// which can exceed ParmsSize; size the buffer for the whole struct.
 	TArray<uint8> Buffer;
-	Buffer.SetNumZeroed(FMath::Max<int32>(Fn->ParmsSize, 1));
+	Buffer.SetNumZeroed(FMath::Max<int32>(Fn->GetStructureSize(), 1));
 	Fn->InitializeStruct(Buffer.GetData());
 	ON_SCOPE_EXIT { Fn->DestroyStruct(Buffer.GetData()); };
 

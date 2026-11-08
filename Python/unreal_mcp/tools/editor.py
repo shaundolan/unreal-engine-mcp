@@ -32,19 +32,22 @@ def register(mcp, get_conn):
     @mcp.tool()
     def editor_action(action: str, asset_path: str = "", level_path: str = "",
                       actor_names: list[str] | None = None, actor_name: str = "",
-                      count: int = 1) -> dict[str, Any]:
+                      count: int = 1, discard_changes: bool = False) -> dict[str, Any]:
         """Perform an editor action.
 
         action: one of undo, redo (count = number of steps), save_all, open_asset (asset_path),
                 load_level (level_path, e.g. "/Game/Maps/Arena"), select_actors (actor_names),
                 focus_actor (actor_name), pie_start, pie_stop.
+        load_level refuses if the current level has unsaved changes unless discard_changes=true
+        (save_all first to keep them). save_all skips an untitled map and says so.
         Every mutating MCP command is its own transaction, so `undo` reverts the last one.
         """
         if action not in EDITOR_ACTIONS:
             return {"success": False, "error": f"unknown action {action!r}; expected one of {EDITOR_ACTIONS}"}
         return call(get_conn, "editor_action", {
             "action": action, "asset_path": asset_path, "level_path": level_path,
-            "actor_names": actor_names or [], "actor_name": actor_name, "count": count})
+            "actor_names": actor_names or [], "actor_name": actor_name, "count": count,
+            "discard_changes": discard_changes})
 
     @mcp.tool()
     def console_command(command: str) -> dict[str, Any]:

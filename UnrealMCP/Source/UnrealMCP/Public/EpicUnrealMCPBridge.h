@@ -6,6 +6,7 @@
 #include "Json.h"
 #include "Interfaces/IPv4/IPv4Address.h"
 #include "MCPCommon.h"
+#include "HAL/ThreadSafeBool.h"
 #include "Commands/EpicUnrealMCPEditorCommands.h"
 #include "Commands/EpicUnrealMCPBlueprintCommands.h"
 #include "Commands/EpicUnrealMCPBlueprintGraphCommands.h"
@@ -70,6 +71,8 @@ private:
 	TSharedRef<FJsonObject> RunOnGameThread(const FString& CommandType, const TSharedPtr<FJsonObject>& Params);
 
 	bool bIsRunning = false;
+	/** Set first thing in StopServer so waiting client threads bail out instead of blocking shutdown. */
+	FThreadSafeBool bStopping = false;
 	TSharedPtr<FSocket> ListenerSocket;
 	FMCPServerRunnable* ServerRunnable = nullptr;
 	FRunnableThread* ServerThread = nullptr;

@@ -13,7 +13,12 @@
 #include "Misc/App.h"
 #include "Misc/EngineVersion.h"
 #include "Misc/Paths.h"
+// FStringOutputDevice moved headers across engine versions.
+#if __has_include("Misc/StringOutputDevice.h")
 #include "Misc/StringOutputDevice.h"
+#endif
+#include "HAL/PlatformProperties.h"
+#include "Misc/OutputDeviceRedirector.h"
 #include "HAL/FileManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -273,7 +278,8 @@ static TSharedPtr<FJsonObject> HandleConsoleCommand(const TSharedPtr<FJsonObject
 	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
 	Out->SetBoolField(TEXT("handled"), bHandled);
 	Out->SetStringField(TEXT("output"), Captured);
-	// Many commands print to the log instead of the passed device.
+	// Many commands print to the log instead of the passed device; flush buffered lines first.
+	GLog->Flush();
 	Out->SetArrayField(TEXT("log"), EntriesToJson(FMCPLogCapture::Get().Query(Before, 200, ELogVerbosity::Log, FString(), FString())));
 	return Out;
 }
@@ -308,8 +314,15 @@ static TSharedPtr<FJsonObject> HandleEditorAction(const TSharedPtr<FJsonObject>&
 	}
 	if (Action == TEXT("save_all"))
 	{
-		const bool bOk = FEditorFileUtils::SaveDirtyPackages(/*bPromptUserToSave*/ false, /*bSaveMapPackages*/ true, /*bSaveContentPackages*/ true);
+		// An untitled (/Temp/) map would pop a modal Save As dialog and stall the game thread.
+		UWorld* World = FEpicUnrealMCPReflectionCommands::GetEditorWorld();
+		const bool bUntitledMap = World && World->GetOutermost()->GetName().StartsWith(TEXT("/Temp/"));
+		const bool bOk = FEditorFileUtils::SaveDirtyPackages(/*bPromptUserToSave*/ false, /*bSaveMapPackages*/ !bUntitledMap, /*bSaveContentPackages*/ true);
 		Out->SetBoolField(TEXT("saved"), bOk);
+		if (bUntitledMap)
+		{
+			Out->SetStringField(TEXT("warning"), TEXT("current map is untitled and was NOT saved; save it once via execute_python: unreal.EditorLoadingAndSavingUtils.save_map(world, '/Game/Maps/Name')"));
+		}
 		return Out;
 	}
 	if (Action == TEXT("open_asset"))
@@ -328,6 +341,20 @@ static TSharedPtr<FJsonObject> HandleEditorAction(const TSharedPtr<FJsonObject>&
 	{
 		FString LevelPath;
 		Params->TryGetStringField(TEXT("level_path"), LevelPath);
+		bool bDiscard = false;
+		Params->TryGetBoolField(TEXT("discard_changes"), bDiscard);
+		if (UWorld* Current = FEpicUnrealMCPReflectionCommands::GetEditorWorld())
+		{
+			UPackage* Pkg = Current->GetOutermost();
+			if (Pkg->IsDirty())
+			{
+				if (!bDiscard)
+				{
+					return MCPError(TEXT("current level has unsaved changes; run save_all first or pass discard_changes=true (loading would otherwise open a modal save prompt)"));
+				}
+				Pkg->SetDirtyFlag(false);
+			}
+		}
 		UWorld* Loaded = UEditorLoadingAndSavingUtils::LoadMap(LevelPath);
 		if (!Loaded)
 		{

@@ -4,6 +4,7 @@
 #include "SocketSubsystem.h"
 #include "HAL/RunnableThread.h"
 #include "HAL/PlatformMisc.h"
+#include "HAL/PlatformTime.h"
 #include "Interfaces/IPv4/IPv4Endpoint.h"
 #include "Async/Async.h"
 #include "Async/Future.h"
@@ -42,8 +43,22 @@ void UEpicUnrealMCPBridge::Initialize(FSubsystemCollectionBase& Collection)
 	const FString BindEnv = FPlatformMisc::GetEnvironmentVariable(TEXT("UNREAL_MCP_BIND"));
 	Token = FPlatformMisc::GetEnvironmentVariable(TEXT("UNREAL_MCP_TOKEN"));
 
-	Port = PortEnv.IsEmpty() ? 55557 : uint16(FCString::Atoi(*PortEnv));
-	FIPv4Address::Parse(BindEnv.IsEmpty() ? TEXT("127.0.0.1") : BindEnv, ServerAddress);
+	const int32 ParsedPort = PortEnv.IsEmpty() ? 55557 : FCString::Atoi(*PortEnv);
+	if (ParsedPort <= 0 || ParsedPort > 65535)
+	{
+		UE_LOG(LogUnrealMCP, Error, TEXT("UnrealMCP: invalid UNREAL_MCP_PORT '%s'; using 55557"), *PortEnv);
+		Port = 55557;
+	}
+	else
+	{
+		Port = uint16(ParsedPort);
+	}
+	// A failed parse would leave 0.0.0.0 (all interfaces): fall back to loopback instead.
+	if (!FIPv4Address::Parse(BindEnv.IsEmpty() ? TEXT("127.0.0.1") : BindEnv, ServerAddress))
+	{
+		UE_LOG(LogUnrealMCP, Error, TEXT("UnrealMCP: UNREAL_MCP_BIND '%s' is not an IPv4 address; using 127.0.0.1"), *BindEnv);
+		ServerAddress = FIPv4Address(127, 0, 0, 1);
+	}
 
 	if (!ServerAddress.IsLoopbackAddress() && Token.IsEmpty())
 	{
@@ -177,7 +192,8 @@ void UEpicUnrealMCPBridge::StartServer()
 	}
 
 	// Sockets must be released through the subsystem, never plain delete.
-	ListenerSocket = MakeShareable(Raw, [](FSocket* S) { ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(S); });
+	ListenerSocket = TSharedPtr<FSocket>(Raw, [](FSocket* S) { ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(S); });
+	bStopping = false;
 	ServerRunnable = new FMCPServerRunnable(this, ListenerSocket);
 	ServerThread = FRunnableThread::Create(ServerRunnable, TEXT("UnrealMCPServerThread"), 0, TPri_Normal);
 	if (!ServerThread)
@@ -200,6 +216,7 @@ void UEpicUnrealMCPBridge::StopServer()
 		return;
 	}
 	bIsRunning = false;
+	bStopping = true; // before joining: client threads waiting on the (this) game thread must give up
 	if (ServerThread)
 	{
 		ServerThread->Kill(true); // calls Stop() and waits
@@ -234,11 +251,9 @@ TSharedRef<FJsonObject> UEpicUnrealMCPBridge::RunOnGameThread(const FString& Com
 		{
 			Transaction = MakeUnique<FScopedTransaction>(FText::FromString(FString::Printf(TEXT("MCP: %s"), *CommandType)));
 		}
+		// Always let the transaction commit, even on failure: Cancel() would drop the undo
+		// record but keep any partial edits, making them impossible to undo.
 		Result = Entry->Handler(Params);
-		if (Transaction.IsValid() && Result.IsValid() && Result->HasField(TEXT("success")) && !Result->GetBoolField(TEXT("success")))
-		{
-			Transaction->Cancel(); // failed command: leave nothing in the undo stack
-		}
 	}
 
 	if (!Result.IsValid())
@@ -297,7 +312,25 @@ TSharedRef<FJsonObject> UEpicUnrealMCPBridge::ExecuteCommandJson(const FString& 
 		}
 	});
 
-	if (!Future.WaitFor(FTimespan::FromSeconds(TimeoutS)))
+	// Wait in slices so editor shutdown (which joins this thread from the game thread) never
+	// blocks on a task that can only run once the game thread is free.
+	const double Deadline = FPlatformTime::Seconds() + TimeoutS;
+	bool bReady = false;
+	while (!(bReady = Future.WaitFor(FTimespan::FromMilliseconds(100))))
+	{
+		if (bStopping || FPlatformTime::Seconds() >= Deadline)
+		{
+			break;
+		}
+	}
+	if (!bReady && bStopping)
+	{
+		TSharedRef<FJsonObject> Stopping = MakeShared<FJsonObject>();
+		Stopping->SetStringField(TEXT("status"), TEXT("error"));
+		Stopping->SetStringField(TEXT("error"), TEXT("editor shutting down"));
+		return Stopping;
+	}
+	if (!bReady)
 	{
 		// The task may still run later; its result is dropped. The client gets a clear error
 		// instead of a hung socket (e.g. a modal dialog is blocking the game thread).
