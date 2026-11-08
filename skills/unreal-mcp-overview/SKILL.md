@@ -24,7 +24,7 @@ If a tool returns "cannot reach Unreal", the editor isn't running or the plugin 
 ## Tool layers (most specific first, most general last)
 | Layer | Tools | Use for |
 |---|---|---|
-| Domain | `scene_brief`, `scene_query`, `actor_inspect`, `scene_compose`, `level_inspect`, `search_assets`, `asset_references`, `asset_manage`, `asset_import`, `material_inspect`, `material_edit`, `material_instance`, `niagara_edit`, `sequence_edit`, `data_table` | Batched, one-call workflows: prefer these |
+| Domain | `scene_brief`, `scene_query`, `actor_inspect`, `scene_compose`, `level_inspect`, `search_assets`, `asset_references`, `asset_manage`, `asset_import`, `material_inspect`, `material_edit`, `material_instance`, `niagara_edit`, `sequence_edit`, `data_table`, `enhanced_input`, `game_setup`, `cpp_source`, `live_coding_compile`, `performance_audit` | Batched, one-call workflows: prefer these |
 | Verification | `pie_test` | Proving gameplay works at runtime |
 | Dedicated | `create_blueprint`, `add_node`, `connect_nodes`, `create_variable`, `create_function`, `spawn_physics_blueprint_actor`, `apply_material_to_actor`, `set_actor_transform`, ... | Blueprint graphs and common actor work, all battle-tested |
 | World building | `create_town`, `create_castle_fortress`, `construct_house`, `create_maze`, `create_tower`, ... | Fast procedural structures out of basic shapes |
@@ -46,3 +46,4 @@ Never report work as done because there were no errors. Verify that the change a
 - `scene-building`: actors, levels, lighting, world building
 - `blueprint-authoring`: Blueprint graphs, variables, functions, compile/fix loop
 - `material-vfx`: materials, material instances, Niagara placement through Python
+- `game-development`: prompt → playable, end to end, proven with `pie_test`

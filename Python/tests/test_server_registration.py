@@ -25,6 +25,7 @@ NEW_TOOLS = {
     "search_assets", "asset_references", "asset_manage", "asset_import",
     "material_inspect", "material_edit", "material_instance", "pie_test",
     "niagara_edit", "sequence_edit", "data_table",
+    "enhanced_input", "game_setup", "cpp_source", "live_coding_compile", "performance_audit",
 }
 
 

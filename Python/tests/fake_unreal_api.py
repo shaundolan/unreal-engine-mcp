@@ -45,11 +45,20 @@ def make_module() -> types.ModuleType:
         pass
 
     class _Class:
-        def __init__(self, name):
-            self._n = name
+        """Stands in for unreal.Class: what static_class() returns. Callable so the fake
+        spawn_actor_from_class can instantiate it."""
+
+        def __init__(self, name, pytype=None):
+            self._n, self._t = name, pytype
 
         def get_name(self):
             return self._n
+
+        def get_path_name(self):
+            return f"/Script/Engine.{self._n}"
+
+        def __call__(self, *a, **k):
+            return self._t(*a, **k)
 
     class Object:
         def __init__(self, name=None, path=None):
@@ -64,7 +73,11 @@ def make_module() -> types.ModuleType:
             return self._path
 
         def get_class(self):
-            return _Class(type(self).__name__)
+            return _Class(type(self).__name__, type(self))
+
+        @classmethod
+        def static_class(cls):
+            return _Class(cls.__name__, cls)
 
         def get_editor_property(self, name):
             if not hasattr(self, name):
@@ -98,6 +111,8 @@ def make_module() -> types.ModuleType:
             super().__init__(*a, **k)
             self.intensity = 5000.0
             self.light_color = Color(255, 255, 255, 255)
+            self.mobility = "ComponentMobility.MOVABLE"
+            self.cast_shadows = True
 
     class Actor(Object):
         def __init__(self, location=None, rotation=None):
@@ -186,10 +201,12 @@ def make_module() -> types.ModuleType:
 
     class World(Object):
         def get_world_settings(self):
-            ws = Object("WorldSettings")
-            ws.kill_z = -100000.0
-            ws.world_partition = None
-            return ws
+            if not hasattr(self, "_ws"):
+                self._ws = Object("WorldSettings")
+                self._ws.kill_z = -100000.0
+                self._ws.world_partition = None
+                self._ws.default_game_mode = None
+            return self._ws
 
     world = World("Untitled", "/Temp/Untitled.Untitled")
     world.streaming_levels = []
@@ -689,6 +706,96 @@ def make_module() -> types.ModuleType:
         @staticmethod
         def get_data_table_column_as_string(table, col):
             return [str(r.get(str(col), "")) for r in table.rows.values()]
+
+    # ---- enhanced input / game framework / paths / perf ----------------------------------
+    class InputActionValueType(enum.Enum):
+        BOOLEAN = 0
+        AXIS1D = 1
+        AXIS2D = 2
+        AXIS3D = 3
+
+    class InputAction(Object):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.value_type = InputActionValueType.BOOLEAN
+
+    class Key(Object):
+        def __init__(self):
+            super().__init__()
+            self.key_name = ""
+
+    class EnhancedActionKeyMapping(Object):
+        def __init__(self, action, key):
+            super().__init__()
+            self.action, self.key, self.modifiers = action, key, []
+
+    class InputMappingContext(Object):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.mappings = []
+
+        def unmap_all(self):
+            self.mappings = []
+
+        def map_key(self, action, key):
+            m = EnhancedActionKeyMapping(action, key)
+            self.mappings.append(m)
+            return m
+
+    class InputAction_Factory:
+        pass
+
+    class InputMappingContext_Factory:
+        pass
+
+    class InputModifierNegate(Object):
+        pass
+
+    class InputModifierSwizzleAxis(Object):
+        pass
+
+    def new_object(cls, outer=None):
+        return cls()
+
+    class SoftClassPath(str):
+        pass
+
+    class SoftObjectPath(str):
+        pass
+
+    class GameMapsSettings(Object):
+        instance = None
+
+        def __init__(self):
+            super().__init__("GameMapsSettings")
+            self.global_default_game_mode = SoftClassPath("/Script/Engine.GameModeBase")
+            self.editor_startup_map = SoftObjectPath("")
+            self.game_default_map = SoftObjectPath("")
+            self.saved = 0
+
+        @classmethod
+        def get_game_maps_settings(cls):
+            if cls.instance is None:
+                cls.instance = cls()
+            return cls.instance
+
+        def save_config(self):
+            self.saved += 1
+
+    class Paths:
+        project = "/tmp/Project/"
+
+        @staticmethod
+        def project_dir():
+            return Paths.project
+
+        @staticmethod
+        def convert_relative_path_to_full(p):
+            return p
+
+    class StaticMeshEditorSubsystem:
+        def get_number_triangles(self, mesh, lod):
+            return getattr(mesh, "triangles", 0)
 
     class EditorLevelUtils:
         @staticmethod
