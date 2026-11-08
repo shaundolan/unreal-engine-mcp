@@ -41,9 +41,41 @@ def _log_assertion(a: dict[str, Any], index: int, entries: list[dict[str, Any]])
     return rec
 
 
+def _run_steps(get_conn, steps: list[dict[str, Any]], sleep) -> list[dict[str, Any]]:
+    """Timeline inside a running PIE session: wait / do (optionally repeated) / check."""
+    out = []
+    for i, step in enumerate(steps):
+        rec: dict[str, Any] = {"step": i}
+        if "wait_s" in step:
+            sleep(float(step["wait_s"]))
+            rec.update(ok=True, waited_s=step["wait_s"])
+        elif "do" in step:
+            repeat = max(1, int(step.get("repeat", 1)))
+            for n in range(repeat):
+                r = run_editor_script(get_conn, "pie_assert", {"exec": step["do"], "assertions": []})
+                if not r.get("success"):
+                    rec.update(ok=False, error=r.get("traceback") or r.get("error"), at_repeat=n)
+                    out.append(rec)
+                    return out
+                if n + 1 < repeat:
+                    sleep(float(step.get("interval_s", 0.05)))
+            rec.update(ok=True, did=step["do"][:80], repeat=repeat)
+        elif "check" in step:
+            r = run_editor_script(get_conn, "pie_assert", {"assertions": step["check"]})
+            if not r.get("success"):
+                rec.update(ok=False, error=r.get("traceback") or r.get("error"))
+                out.append(rec)
+                return out
+            rec.update(ok=all(a.get("passed") for a in r["assertions"]), assertions=r["assertions"])
+        else:
+            rec.update(ok=False, error="step needs one of wait_s, do, check")
+        out.append(rec)
+    return out
+
+
 def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float = 3.0,
                  start_timeout_s: float = 30.0, stop: bool = True,
-                 sleep=time.sleep) -> dict[str, Any]:
+                 sleep=time.sleep, steps: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     world_asserts = [(i, a) for i, a in enumerate(assertions) if a.get("type") not in LOG_TYPES]
     log_asserts = [(i, a) for i, a in enumerate(assertions) if a.get("type") in LOG_TYPES]
 
@@ -62,6 +94,7 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
             return {"success": False, "error": f"PIE did not start within {start_timeout_s}s "
                     "(compile errors? check editor_log)"}
         sleep(duration_s)
+        timeline = _run_steps(get_conn, steps, sleep) if steps else []
         results: list[dict[str, Any]] = []
         if world_asserts:
             r = run_editor_script(get_conn, "pie_assert", {"assertions": [a for _, a in world_asserts]})
@@ -80,14 +113,18 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
 
     results.sort(key=lambda r: r["index"])
     failed = [r for r in results if not r.get("passed")]
-    return {"success": True, "passed": not failed, "total": len(results), "failed_count": len(failed),
+    failed_steps = [s for s in timeline if not s.get("ok")]
+    out_steps = {"steps": timeline} if steps else {}
+    return {"success": True, "passed": not failed and not failed_steps, "total": len(results),
+            "failed_count": len(failed) + len(failed_steps), **out_steps,
             "results": results,
             "errors_in_log": [e["message"] for e in entries if e.get("verbosity") in ("Error", "Fatal")][:20]}
 
 
 def register(mcp, get_conn):
     @mcp.tool()
-    def pie_test(assertions: list[dict[str, Any]], duration_s: float = 3.0, stop: bool = True) -> dict[str, Any]:
+    def pie_test(assertions: list[dict[str, Any]] | None = None, duration_s: float = 3.0, stop: bool = True,
+                 steps: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         """Play the current level in PIE for duration_s, then check assertions. The runtime proof
         that gameplay work actually works. Requires the level to compile and run.
 
@@ -100,6 +137,14 @@ def register(mcp, get_conn):
           {"type":"no_errors"}                       (no Error lines logged during the run)
           {"type":"log_contains","text":"Game Started"}   {"type":"log_absent","text":"Accessed None"}
         ops: == != < <= > >= approx (with "tolerance"). "@player" = player 0's pawn.
-        Returns passed (bool) and per-assertion results with actual values.
+
+        steps: optional timeline run after duration_s, to DRIVE the game and check mid-run:
+          {"wait_s": 1.0}
+          {"do": "player.jump()"}                                    (Python in the PIE world:
+          {"do": "player.add_movement_input(vec([1,0,0]), 1.0)",     player, world, actors,
+           "repeat": 40, "interval_s": 0.05}                          find(label), vec, unreal)
+          {"check": [ ...assertions as above... ]}
+        The final `assertions` run after the timeline. Returns passed (bool), per-step results,
+        and per-assertion results with actual values.
         """
-        return run_pie_test(get_conn, assertions, duration_s=duration_s, stop=stop)
+        return run_pie_test(get_conn, assertions or [], duration_s=duration_s, stop=stop, steps=steps)

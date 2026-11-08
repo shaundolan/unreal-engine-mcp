@@ -90,3 +90,32 @@ def test_pie_test_keep_running(pie, ue, conn):  # noqa: F811
     r = run_pie_test(lambda: conn, [{"type": "actor_exists", "label": "Hero"}], duration_s=0, stop=False,
                      sleep=lambda s: None)
     assert r["passed"] and pie["pie"] is True
+
+
+def test_pie_timeline_drives_the_game(pie, ue, conn):  # noqa: F811
+    hero = _world(ue)
+    hero.add_movement_input = lambda d, scale: hero.set_actor_location(  # one step per call
+        ue.Vector(hero.get_actor_location().x + d.x * 10 * scale, 0, 100), False, False)
+    hero.jump = lambda: setattr(hero, "jumped", True)
+    hero.jumped = False
+    waits = []
+    r = run_pie_test(lambda: conn, [{"type": "property", "target": "@player", "property": "jumped", "value": True}],
+                     duration_s=0, sleep=waits.append, steps=[
+        {"check": [{"type": "distance", "a": "@player", "point": [0, 0, 100], "op": "approx", "value": 0}]},
+        {"do": "player.add_movement_input(vec([1, 0, 0]), 1.0)", "repeat": 5, "interval_s": 0.1},
+        {"wait_s": 0.5},
+        {"check": [{"type": "distance", "a": "@player", "point": [0, 0, 100], "op": ">=", "value": 49}]},
+        {"do": "player.jump()"},
+    ])
+    assert r["passed"], r["steps"]
+    assert [s["ok"] for s in r["steps"]] == [True] * 5
+    assert r["steps"][3]["assertions"][0]["actual"] == 50.0
+    assert waits.count(0.1) == 4 and 0.5 in waits
+
+
+def test_pie_timeline_stops_on_broken_step(pie, ue, conn):  # noqa: F811
+    _world(ue)
+    r = run_pie_test(lambda: conn, [], duration_s=0, sleep=lambda s: None, steps=[
+        {"do": "player.fly_to_moon()"}, {"check": [{"type": "no_errors"}]}, {"bogus": 1}])
+    assert r["passed"] is False and len(r["steps"]) == 1
+    assert "fly_to_moon" in r["steps"][0]["error"] and pie["pie"] is False

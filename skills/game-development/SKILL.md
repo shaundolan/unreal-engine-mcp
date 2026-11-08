@@ -59,9 +59,18 @@ pie_test(duration_s=3, assertions=[
   {"name":"clean run","type":"no_errors"},
   {"type":"log_absent","text":"Accessed None"}])
 ```
-If something fails, read `results[].actual` and `errors_in_log`, fix just that, and re-run.
+Drive the game with `steps` (they run after `duration_s`):
+```json
+steps=[
+  {"check":[{"type":"distance","a":"@player","b":"PlayerStart","op":"<=","value":150}]},
+  {"do":"player.add_movement_input(vec([1,0,0]), 1.0)","repeat":40,"interval_s":0.05},
+  {"check":[{"type":"distance","a":"@player","b":"PlayerStart","op":">=","value":200}]},
+  {"do":"player.jump()"}, {"wait_s":0.3},
+  {"check":[{"type":"python","expr":"player.get_actor_location().z > 150"}]}]
+```
+If something fails, read `results[].actual`, `steps[].assertions` and `errors_in_log`, fix just that, and re-run.
 Then run `performance_audit` and `editor_action(action="save_all")`.
 
 ## Limits today (be honest with the user)
-- No synthetic player input in PIE yet, so movement or combat can't be driven automatically. Assert on spawned state, timers and logic driven by BeginPlay/Tick.
+- PIE input is driven through pawn/controller calls (`add_movement_input`, `jump`, BlueprintCallable functions), not raw key events. Enhanced Input action bindings aren't exercised directly.
 - UMG widget trees, Behavior Tree graphs and AnimBP graphs can't be authored yet. Create the assets and describe the remaining manual steps.

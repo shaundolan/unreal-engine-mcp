@@ -1,4 +1,5 @@
-# Evaluate world assertions inside the running PIE world. ARGS: assertions [...]
+# Evaluate world assertions inside the running PIE world. ARGS: exec (optional code run first, with the
+# same scope as python assertions; e.g. "player.jump()"), assertions [...]
 #   {type: actor_exists, label?, class?, min?=1, max?}
 #   {type: property, target, property ("a.b.c"), op, value, tolerance?}
 #   {type: distance, a, b | point [x,y,z], op, value}
@@ -52,6 +53,10 @@ def _get_path(obj, path):
     return obj
 
 
+_scope = {"unreal": unreal, "world": _world, "actors": _actors, "find": _find, "player": _player, "vec": vec}
+if ARGS.get("exec"):
+    exec(compile(ARGS["exec"], "<pie_step>", "exec"), _scope)
+
 _out = []
 for _i, _a in enumerate(ARGS.get("assertions") or []):
     _t = _a.get("type")
@@ -84,8 +89,7 @@ for _i, _a in enumerate(ARGS.get("assertions") or []):
             _rec["actual"] = round(_d, 2)
             _rec["passed"] = bool(_cmp(_d, _a.get("op", "<="), float(_a["value"]), float(_a.get("tolerance", 0.01))))
         elif _t == "python":
-            _v = eval(_a["expr"], {"unreal": unreal, "world": _world, "actors": _actors, "find": _find,
-                                   "player": _player})
+            _v = eval(_a["expr"], _scope)
             _rec["actual"] = _plain(_v)
             _rec["passed"] = bool(_v)
         else:
