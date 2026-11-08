@@ -47,3 +47,6 @@ Never report work as done because there were no errors. Verify that the change a
 - `blueprint-authoring`: Blueprint graphs, variables, functions, compile/fix loop
 - `material-vfx`: materials, material instances, Niagara placement through Python
 - `game-development`: prompt → playable, end to end, proven with `pie_test`
+
+These skills are also served by the MCP server itself: `skill://index` lists them, `skill://<name>` returns one, and each is
+available as a prompt, so clients without skill support still get them.
