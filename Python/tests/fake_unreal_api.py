@@ -176,6 +176,11 @@ def make_module() -> types.ModuleType:
     class CameraActor(Actor):
         pass
 
+    class Character(Actor):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.health = 100.0
+
     class StaticMesh(Object):
         pass
 
@@ -199,6 +204,10 @@ def make_module() -> types.ModuleType:
             return a
 
         def spawn_actor_from_object(self, obj, loc, rot):
+            if isinstance(obj, NiagaraSystem):
+                a = NiagaraActor(loc, rot)
+                state["actors"].append(a)
+                return a
             a = StaticMeshActor(loc, rot)
             a.static_mesh_component.static_mesh = obj
             state["actors"].append(a)
@@ -211,6 +220,18 @@ def make_module() -> types.ModuleType:
     class UnrealEditorSubsystem:
         def get_editor_world(self):
             return world
+
+        def get_game_world(self):
+            return world if state.get("pie") else None
+
+    class GameplayStatics:
+        @staticmethod
+        def get_all_actors_of_class(w, cls):
+            return [a for a in state["actors"] if isinstance(a, cls)]
+
+        @staticmethod
+        def get_player_pawn(w, index):
+            return state.get("player")
 
     subsystems = {}
 
@@ -478,6 +499,197 @@ def make_module() -> types.ModuleType:
         def update_material_instance(mi):
             pass
 
+    # ---- niagara ---------------------------------------------------------------------------
+    class NiagaraSystem(Object):
+        pass
+
+    class NiagaraComponent(SceneComponent):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.params = {}
+            self.auto_activate = True
+
+        def set_auto_activate(self, v):
+            self.auto_activate = v
+
+    for _kind in ("float", "int", "bool", "vec3", "linear_color", "object"):
+        setattr(NiagaraComponent, f"set_variable_{_kind}",
+                (lambda kind: lambda self, name, value: self.params.__setitem__(name, (kind, value)))(_kind))
+
+    class NiagaraActor(Actor):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.niagara_component = NiagaraComponent()
+            self._components.append(self.niagara_component)
+
+    def _get_component_by_class(self, cls):
+        return next((c for c in self._components if isinstance(c, cls)), None)
+
+    Actor.get_component_by_class = _get_component_by_class
+
+    # ---- sequencer -------------------------------------------------------------------------
+    class FrameRate:
+        def __init__(self, n, d=1):
+            self.numerator, self.denominator = n, d
+
+    class FrameNumber:
+        def __init__(self, v):
+            self.value = v
+
+    class _Channel:
+        def __init__(self):
+            self.keys = []
+
+        def add_key(self, frame, value):
+            self.keys.append((frame.value, value))
+
+    class _Section:
+        def __init__(self, nchannels):
+            self.range = None
+            self.channels = [_Channel() for _ in range(nchannels)]
+            self.camera = None
+
+        def set_range_seconds(self, a, b):
+            self.range = (a, b)
+
+        def get_all_channels(self):
+            return self.channels
+
+        def set_camera_binding_id(self, bid):
+            self.camera = bid
+
+    class MovieScene3DTransformTrack:
+        nch = 9
+
+    class MovieSceneCameraCutTrack:
+        nch = 0
+
+    class _Track:
+        def __init__(self, cls):
+            self.cls, self.sections = cls, []
+
+        def add_section(self):
+            sec = _Section(self.cls.nch)
+            self.sections.append(sec)
+            return sec
+
+    class _Binding:
+        def __init__(self, actor):
+            self.actor, self.tracks = actor, []
+
+        def add_track(self, cls):
+            t = _Track(cls)
+            self.tracks.append(t)
+            return t
+
+    class LevelSequence(Object):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.rate, self.start, self.end = None, None, None
+            self.bindings, self.tracks = [], []
+
+        def set_display_rate(self, r):
+            self.rate = r
+
+        def set_playback_start_seconds(self, s):
+            self.start = s
+
+        def set_playback_end_seconds(self, s):
+            self.end = s
+
+        def add_possessable(self, actor):
+            b = _Binding(actor)
+            self.bindings.append(b)
+            return b
+
+        def add_track(self, cls):
+            t = _Track(cls)
+            self.tracks.append(t)
+            return t
+
+        def get_portable_binding_id(self, root, binding):
+            raise AttributeError("not in this version")  # exercise the fallback chain
+
+        def get_binding_id(self, binding):
+            return ("binding", self.bindings.index(binding))
+
+    class LevelSequenceFactoryNew:
+        pass
+
+    class CineCameraComponent(SceneComponent):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.current_focal_length = 35.0
+
+    class CineCameraActor(Actor):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self._cine = CineCameraComponent()
+            self._components.append(self._cine)
+
+        def get_cine_camera_component(self):
+            return self._cine
+
+    class LevelSequenceEditorBlueprintLibrary:
+        opened = []
+
+        @staticmethod
+        def open_level_sequence(seq):
+            LevelSequenceEditorBlueprintLibrary.opened.append(seq)
+
+    # ---- data tables -----------------------------------------------------------------------
+    class ScriptStruct(Object):
+        def __init__(self, name, path, fields):
+            super().__init__(name, path)
+            self.fields = fields
+
+    class DataTable(Object):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.row_struct = None
+            self.rows = {}
+
+    class DataTableFactory(Object):
+        def __init__(self):
+            super().__init__()
+            self.struct = None
+
+    def _create_with_factory(orig):
+        def create_asset(self, name, pkg, cls, factory):
+            o = orig(self, name, pkg, cls, factory)
+            if isinstance(o, DataTable):
+                o.row_struct = factory.struct
+            return o
+        return create_asset
+
+    _AssetTools.create_asset = _create_with_factory(_AssetTools.create_asset)
+
+    def load_object(outer, path):
+        return state["assets"].get(path.split(".")[0])
+
+    class DataTableFunctionLibrary:
+        @staticmethod
+        def fill_data_table_from_json_string(table, text):
+            import json
+            rows = json.loads(text)
+            fields = set(table.row_struct.fields)
+            if any(set(r) - {"Name"} - fields for r in rows):
+                return False
+            table.rows = {r["Name"]: {k: v for k, v in r.items() if k != "Name"} for r in rows}
+            return True
+
+        @staticmethod
+        def get_data_table_row_names(table):
+            return [Name(n) for n in table.rows]
+
+        @staticmethod
+        def get_data_table_column_names(table):
+            return [Name(f) for f in table.row_struct.fields]
+
+        @staticmethod
+        def get_data_table_column_as_string(table, col):
+            return [str(r.get(str(col), "")) for r in table.rows.values()]
+
     class EditorLevelUtils:
         @staticmethod
         def get_levels(w):
@@ -485,7 +697,7 @@ def make_module() -> types.ModuleType:
 
     for name, obj in list(locals().items()):
         if not name.startswith("_") and name not in ("u", "state", "name", "obj", "world", "registry",
-                                                    "tools", "subsystems", "enum", "types"):
+                                                    "tools", "subsystems", "enum", "types", "anchor"):
             setattr(u, name, obj)
     u.register_asset = _register
     return u

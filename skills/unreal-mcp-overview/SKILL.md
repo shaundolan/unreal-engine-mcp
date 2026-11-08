@@ -24,6 +24,8 @@ If a tool returns "cannot reach Unreal", the editor isn't running or the plugin 
 ## Tool layers (most specific first, most general last)
 | Layer | Tools | Use for |
 |---|---|---|
+| Domain | `scene_brief`, `scene_query`, `actor_inspect`, `scene_compose`, `level_inspect`, `search_assets`, `asset_references`, `asset_manage`, `asset_import`, `material_inspect`, `material_edit`, `material_instance`, `niagara_edit`, `sequence_edit`, `data_table` | Batched, one-call workflows: prefer these |
+| Verification | `pie_test` | Proving gameplay works at runtime |
 | Dedicated | `create_blueprint`, `add_node`, `connect_nodes`, `create_variable`, `create_function`, `spawn_physics_blueprint_actor`, `apply_material_to_actor`, `set_actor_transform`, ... | Blueprint graphs and common actor work, all battle-tested |
 | World building | `create_town`, `create_castle_fortress`, `construct_house`, `create_maze`, `create_tower`, ... | Fast procedural structures out of basic shapes |
 | Reflection | `object_describe`, `property_get`, `property_set`, `function_call` | Reading or writing **any** property and calling **any** UFUNCTION on any object or actor, with no dedicated tool needed |
@@ -35,7 +37,7 @@ If a tool returns "cannot reach Unreal", the editor isn't running or the plugin 
 ## The loop
 1. **Observe**: `get_actors_in_level` / `find_actors_by_name` / `object_describe` / `project_context`. Note `editor_log` → `last_seq`.
 2. **Act**: the most specific tool that fits. In `execute_python`, wrap edits in `with unreal.ScopedEditorTransaction("what"):`.
-3. **Verify**: re-read the state (`property_get`, `object_describe`), check `editor_log(since_seq=last_seq, min_verbosity="Warning")`, and `viewport_capture` for anything visual.
+3. **Verify**: re-read the state (`property_get`, `object_describe`), check `editor_log(since_seq=last_seq, min_verbosity="Warning")`, and `viewport_capture` for anything visual. For gameplay, `pie_test` with assertions is the proof.
 4. If it's wrong: `editor_action(action="undo")`, then fix and retry. After 3 failed attempts on the same step, stop and ask the user.
 
 Never report work as done because there were no errors. Verify that the change actually took effect.

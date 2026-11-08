@@ -1,0 +1,92 @@
+"""pie_test orchestration: start -> wait -> assert in game world -> log checks -> stop."""
+
+import pytest
+from test_editor_scripts import ue  # noqa: F401  (fixture)
+
+from unreal_mcp.tools.testing import run_pie_test
+
+
+@pytest.fixture
+def pie(fake, ue):  # noqa: F811
+    state = ue._state
+    log = []
+
+    def project_context(p):
+        return {"pie_running": bool(state.get("pie"))}
+
+    def editor_action(p):
+        if p["action"] == "pie_start":
+            state["pie"] = True
+            log.append({"seq": len(log) + 1, "verbosity": "Display", "message": "PIE: Play in editor start"})
+            log.extend(state.get("pie_log", []))
+        elif p["action"] == "pie_stop":
+            state["pie"] = False
+        return {"action": p["action"]}
+
+    def editor_log(p):
+        since = p.get("since_seq", 0)
+        return {"entries": [e for e in log if e["seq"] > since], "last_seq": len(log)}
+
+    fake.on("project_context", project_context)
+    fake.on("editor_action", editor_action)
+    fake.on("editor_log", editor_log)
+    return state
+
+
+def _world(ue):  # noqa: F811
+    sub = ue.get_editor_subsystem(ue.EditorActorSubsystem)
+    hero = sub.spawn_actor_from_class(ue.Character, ue.Vector(0, 0, 100), ue.Rotator())
+    hero.set_actor_label("Hero")
+    ue._state["player"] = hero
+    for i in range(3):
+        c = sub.spawn_actor_from_class(ue.StaticMeshActor, ue.Vector(200 * (i + 1), 0, 0), ue.Rotator())
+        c.set_actor_label(f"Coin_{i}")
+    return hero
+
+
+def test_pie_test_passes_and_fails_per_assertion(pie, ue, conn):  # noqa: F811
+    _world(ue)
+    pie["pie_log"] = [{"seq": 2, "verbosity": "Warning", "message": "Game Started"}]
+    r = run_pie_test(lambda: conn, [
+        {"name": "player alive", "type": "property", "target": "@player", "property": "health",
+         "op": ">=", "value": 100},
+        {"type": "actor_exists", "class": "StaticMeshActor", "min": 3, "max": 3},
+        {"type": "actor_exists", "label": "Boss"},
+        {"type": "distance", "a": "@player", "b": "Coin_0", "op": "<=", "value": 250},
+        {"type": "distance", "a": "Hero", "point": [0, 0, 100], "op": "approx", "value": 0},
+        {"type": "python", "expr": "len([a for a in actors if 'Coin' in a.get_actor_label()]) == 3"},
+        {"type": "property", "target": "Hero", "property": "nope", "op": "==", "value": 1},
+        {"type": "log_contains", "text": "game started"},
+        {"type": "no_errors"},
+        {"type": "property", "target": "Hero", "property": "health", "op": "~", "value": 1},
+    ], duration_s=0, sleep=lambda s: None)
+    assert r["success"] and r["total"] == 10
+    passed = {x["index"]: x["passed"] for x in r["results"]}
+    assert passed == {0: True, 1: True, 2: False, 3: True, 4: True, 5: True, 6: False, 7: True, 8: True, 9: False}
+    assert r["results"][0]["name"] == "player alive" and r["results"][3]["actual"] == 223.61
+    assert "AttributeError" in r["results"][6]["error"] and "unknown op" in r["results"][9]["error"]
+    assert r["passed"] is False and r["failed_count"] == 3
+    assert pie["pie"] is False  # stopped afterwards
+
+
+def test_pie_test_detects_errors_in_log(pie, ue, conn):  # noqa: F811
+    _world(ue)
+    pie["pie_log"] = [{"seq": 2, "verbosity": "Error", "message": "Accessed None trying to read Health"}]
+    r = run_pie_test(lambda: conn, [{"type": "no_errors"}, {"type": "log_absent", "text": "accessed none"}],
+                     duration_s=0, sleep=lambda s: None)
+    assert r["passed"] is False and r["failed_count"] == 2
+    assert r["errors_in_log"] == ["Accessed None trying to read Health"]
+
+
+def test_pie_test_refuses_when_already_running(pie, conn):
+    pie["pie"] = True
+    r = run_pie_test(lambda: conn, [{"type": "no_errors"}], duration_s=0, sleep=lambda s: None)
+    assert r["success"] is False and "already running" in r["error"]
+    assert pie["pie"] is True  # left alone
+
+
+def test_pie_test_keep_running(pie, ue, conn):  # noqa: F811
+    _world(ue)
+    r = run_pie_test(lambda: conn, [{"type": "actor_exists", "label": "Hero"}], duration_s=0, stop=False,
+                     sleep=lambda s: None)
+    assert r["passed"] and pie["pie"] is True
