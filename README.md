@@ -29,6 +29,7 @@
 | **API knowledge (offline)** | `unreal_api_search`, `unreal_api_doc`, `unreal_api_build_index`: full-text index of the whole `unreal` Python API, built from your engine's own stub |
 | **Scene & level** | `scene_brief`, `scene_query` (class/label/tag/folder/sphere/box), `actor_inspect`, `scene_compose` (batched spawn/modify/delete with grid/circle/line patterns, one undo step), `level_inspect` |
 | **Assets** | `search_assets`, `asset_references` (dependencies/referencers, transitive), `asset_manage` (duplicate/rename/delete/save/folders/properties), `asset_import` (FBX/glTF/OBJ/textures/audio, from the editor's disk or uploaded from the MCP machine) |
+| **3D modeling (Blender)** | `blender_run` (headless Blender on the MCP machine: bpy + helpers for primitives, bevels, materials, UVs, pivots, FBX/GLB export, preview render returned as an image, then auto-import into Unreal), `blender_status` |
 | **Materials** | `material_inspect`, `material_edit` (build a whole expression graph in one call), `material_instance` |
 | **VFX, cinematics, data** | `niagara_edit` (place systems, set User parameters), `sequence_edit` (Level Sequences: cameras, bindings, transform keys, camera cuts), `data_table` (read / write rows) |
 | **Gameplay & code** | `enhanced_input` (actions + mapping contexts with modifiers), `game_setup` (level/project game mode, default maps), `cpp_source` (read/write project C++, sandboxed to Source/Plugins/Config), `live_coding_compile` (compile and get parsed errors back), `performance_audit` |

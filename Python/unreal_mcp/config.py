@@ -7,6 +7,8 @@ UNREAL_MCP_PROTOCOL    "framed" (plugin >= 0.2) or "legacy" (original unframed p
 UNREAL_MCP_LOG_DIR     Directory for the server log file (default ~/.unreal_mcp/logs)
 UNREAL_MCP_LOG_LEVEL   Python logging level name     (default INFO)
 UNREAL_MCP_API_INDEX   Path of the offline API index (default ~/.unreal_mcp/unreal_api.sqlite)
+UNREAL_MCP_BLENDER     Blender executable for blender_run (default: "blender" on PATH)
+UNREAL_MCP_WORK_DIR    Scratch dir for Blender scripts and exports (default ~/.unreal_mcp/work)
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ class Settings:
     log_dir: Path = field(default_factory=lambda: _HOME / "logs")
     log_level: str = "INFO"
     api_index_path: Path = field(default_factory=lambda: _HOME / "unreal_api.sqlite")
+    blender_path: str = "blender"
+    work_dir: Path = field(default_factory=lambda: _HOME / "work")
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -45,6 +49,8 @@ class Settings:
             log_level=e.get("UNREAL_MCP_LOG_LEVEL", "INFO").upper(),
             api_index_path=Path(e["UNREAL_MCP_API_INDEX"]) if e.get("UNREAL_MCP_API_INDEX")
             else _HOME / "unreal_api.sqlite",
+            blender_path=e.get("UNREAL_MCP_BLENDER", "blender"),
+            work_dir=Path(e["UNREAL_MCP_WORK_DIR"]) if e.get("UNREAL_MCP_WORK_DIR") else _HOME / "work",
         )
 
 

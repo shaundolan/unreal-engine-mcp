@@ -11,6 +11,26 @@ from .python_exec import run_editor_script
 MAX_UPLOAD_BYTES = 150 * 1024 * 1024  # stays well under the 256 MB frame limit after base64
 
 
+def import_assets(get_conn, files: list[str] | None = None, local_files: list[str] | None = None,
+                  destination: str = "/Game/Imported", replace_existing: bool = False, save: bool = True,
+                  destination_name: str = "") -> dict[str, Any]:
+    """Import editor-machine files and/or upload files from this machine (shared with blender_run)."""
+    blobs = []
+    for f in local_files or []:
+        p = Path(f).expanduser()
+        if not p.is_file():
+            return {"success": False, "error": f"{p} not found on the MCP server machine"}
+        if p.stat().st_size > MAX_UPLOAD_BYTES:
+            return {"success": False, "error": f"{p} is larger than {MAX_UPLOAD_BYTES} bytes"}
+        blobs.append({"name": p.name, "data_b64": base64.b64encode(p.read_bytes()).decode()})
+    if not (files or blobs):
+        return {"success": False, "error": "pass files (editor machine) or local_files (this machine)"}
+    return run_editor_script(get_conn, "asset_import", {
+        "files": files or [], "blobs": blobs, "destination": destination,
+        "replace_existing": replace_existing, "save": save, "destination_name": destination_name},
+        timeout_s=600)
+
+
 def register(mcp, get_conn):
     @mcp.tool()
     def search_assets(query: str = "", class_name: str = "", path: str = "/Game", recursive: bool = True,
@@ -54,17 +74,5 @@ def register(mcp, get_conn):
                      exported from Blender on another box).
         Imports are automated (no dialogs). Returns the created asset paths per file.
         """
-        blobs = []
-        for f in local_files or []:
-            p = Path(f).expanduser()
-            if not p.is_file():
-                return {"success": False, "error": f"{p} not found on the MCP server machine"}
-            if p.stat().st_size > MAX_UPLOAD_BYTES:
-                return {"success": False, "error": f"{p} is larger than {MAX_UPLOAD_BYTES} bytes"}
-            blobs.append({"name": p.name, "data_b64": base64.b64encode(p.read_bytes()).decode()})
-        if not (files or blobs):
-            return {"success": False, "error": "pass files (editor machine) or local_files (this machine)"}
-        return run_editor_script(get_conn, "asset_import", {
-            "files": files or [], "blobs": blobs, "destination": destination,
-            "replace_existing": replace_existing, "save": save, "destination_name": destination_name},
-            timeout_s=600)
+        return import_assets(get_conn, files=files, local_files=local_files, destination=destination,
+                             replace_existing=replace_existing, save=save, destination_name=destination_name)

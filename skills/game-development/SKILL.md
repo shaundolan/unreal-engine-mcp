@@ -47,6 +47,7 @@ Data-driven values (damage, speeds, loot) go in a DataTable (`data_table`).
 C++ instead of Blueprint: `cpp_source` (write) → `live_coding_compile` for function bodies. New classes or reflected members need an editor restart.
 
 ## 6. Juice
+Custom props (pickups, crates, doors) come from `blender_run` with `import_destination`: see the `3d-assets` skill.
 `material_edit` / `material_instance` for readable colours (pickups emissive), `niagara_edit` for effects,
 `sequence_edit` for an intro camera.
 

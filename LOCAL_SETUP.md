@@ -92,6 +92,8 @@ The index is saved to `~/.unreal_mcp/unreal_api.sqlite`. Agents use `unreal_api_
 | `UNREAL_MCP_TOKEN` | both | (none) | Shared secret. **Required** when `UNREAL_MCP_BIND` isn't loopback |
 | `UNREAL_MCP_PROTOCOL` | server | `framed` | `legacy` for editors still running the original (pre-0.2) plugin build |
 | `UNREAL_MCP_LOG_DIR` | server | `~/.unreal_mcp/logs` | Server log directory (logs never go to stdout) |
+| `UNREAL_MCP_BLENDER` | server | `blender` on PATH | Blender executable for `blender_run` (4.2+ LTS recommended) |
+| `UNREAL_MCP_WORK_DIR` | server | `~/.unreal_mcp/work` | Blender scripts, exports and preview renders (kept per run for inspection) |
 
 ### Remote editor
 
