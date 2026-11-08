@@ -118,9 +118,40 @@ def run_steps(tools, steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _walk(node: Any):
+    """Yield every node of a nested export (widget trees: children; BT trees: children)."""
+    if isinstance(node, dict):
+        yield node
+        for c in node.get("children") or []:
+            yield from _walk(c)
+
+
+def _tool_checks(tools, checks: list[dict[str, Any]]) -> dict[str, Any]:
+    """{"tool": name, "args": {...}, "expect": "<python expr over r>", "name": ...}: evaluated here,
+    on the tool's JSON result (task files are ours, so eval of their expressions is fine)."""
+    results = []
+    for i, c in enumerate(checks):
+        rec: dict[str, Any] = {"index": i, "type": "tool", "name": c.get("name") or c["tool"]}
+        r = call_tool(tools, c["tool"], c.get("args"))
+        try:
+            rec["passed"] = bool(eval(c["expect"], {"__builtins__": {}}, {  # noqa: S307
+                "r": r, "walk": _walk, "any": any, "all": all, "len": len, "abs": abs, "round": round,
+                "sorted": sorted, "set": set, "str": str, "list": list}))
+        except Exception as e:
+            rec.update(passed=False, error=f"{type(e).__name__}: {e}")
+        if not rec["passed"]:
+            rec["actual"] = r.get("error") if not r.get("success") else "expectation false"
+        results.append(rec)
+    return {"success": True, "passed": all(x["passed"] for x in results), "results": results}
+
+
 def check_task(tools, check: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     passed = True
+    if check.get("tools"):
+        r = _tool_checks(tools, check["tools"])
+        out["tools"] = r
+        passed &= r["passed"]
     if check.get("scene"):
         r = call_tool(tools, "scene_assert", {"assertions": check["scene"]})
         out["scene"] = r
@@ -137,7 +168,7 @@ def check_task(tools, check: dict[str, Any]) -> dict[str, Any]:
 
 def _failures(check_result: dict[str, Any]) -> list[str]:
     msgs = []
-    for stage in ("scene", "pie"):
+    for stage in ("tools", "scene", "pie"):
         r = check_result.get(stage)
         if not r:
             continue
@@ -153,8 +184,16 @@ def _failures(check_result: dict[str, Any]) -> list[str]:
     return msgs
 
 
-def requirement_missing(task: Task) -> str | None:
+def requirement_missing(task: Task, tools: dict[str, Any] | None = None) -> str | None:
+    commands: list[str] | None = None
     for req in task.requires:
+        if req.startswith("command:"):
+            if commands is None:
+                status = call_tool(tools or {}, "unreal_status")
+                commands = status.get("commands", []) if status.get("success") else []
+            if req.split(":", 1)[1] not in commands:
+                return f"editor plugin lacks {req.split(':', 1)[1]} (needs a plugin build with it)"
+            continue
         if req == "blender":
             from .config import Settings
             from .tools.blender import resolve_blender
@@ -186,7 +225,7 @@ def run_agent_cmd(template: str, prompt: str, timeout_s: float, work_dir: Path) 
 def run_task(tools, task: Task, agent: str = "solution", agent_cmd: str = "",
              work_dir: Path | None = None) -> dict[str, Any]:
     rec: dict[str, Any] = {"id": task.id, "domain": task.domain, "title": task.title}
-    missing = requirement_missing(task)
+    missing = requirement_missing(task, tools)
     if missing:
         return {**rec, "status": "skipped", "reason": missing}
     t0 = time.monotonic()

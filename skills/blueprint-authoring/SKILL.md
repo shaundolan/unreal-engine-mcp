@@ -1,26 +1,79 @@
 ---
 name: blueprint-authoring
 description: >
-  Blueprint authoring with the local UnrealMCP tools: create a Blueprint, add
-  components/variables/functions, build event graphs node by node, compile, and
-  fix errors. Use when creating or editing Blueprints or debugging compile errors.
+  Build and edit Blueprints with bp_export / bp_apply: variables, components, functions, event graphs,
+  pin defaults and links in one atomic call, compiled with structured errors. Also widget trees
+  (widget_apply) and Behavior Trees (bt_build). Use for any gameplay logic, UI or AI work.
 ---
 
-# Blueprint Authoring
+# Blueprint authoring
 
-## Cycle
-1. **Inspect**: `read_blueprint_content`, `analyze_blueprint_graph`, `get_blueprint_variable_details`, `get_blueprint_function_details`.
-2. **Declare**: `create_blueprint(name, parent_class)` (assets go to `/Game/Blueprints/`), `add_component_to_blueprint`, `create_variable`, `create_function` + `add_function_input` / `add_function_output`.
-3. **Graph**: `add_event_node` (BeginPlay, Tick, ...), `add_node` (node types are listed in Guides/blueprint-graph-guide.md), `connect_nodes`, `set_node_property`. Note every `node_id` that comes back; connections need them.
-4. **Compile**: `compile_blueprint`. Then `editor_log(since_seq=..., min_verbosity="Warning")` to read the compiler messages.
-5. **Verify**: `analyze_blueprint_graph` and check every intended connection exists. For runtime behaviour, spawn it (`spawn_blueprint_actor`) and run PIE (`editor_action pie_start` → `editor_log` → `pie_stop`).
+The loop is **export → plan → `bp_apply` → read `compile` → fix → `pie_test`**. A `bp_apply` call is atomic: if any op fails or the
+Blueprint doesn't compile, the whole batch is undone (`rolled_back: true`) and `failed` / `compile.errors` say why.
+Use `dry_run: true` to try a batch without keeping it.
 
-## Rules
-- Pure nodes (getters, math, `K2_GetActorLocation`, make/break struct) have **no exec pins**. Wire data only.
-- `K2_` prefix: some AActor functions have it (`K2_GetActorLocation`, `K2_SetActorLocation`, `K2_DestroyActor`) and some don't (`GetActorForwardVector`, `GetOwner`). Confirm with `object_describe(class_name="Actor", filter="Location")`.
-- Fix narrowly: add the missing node or connection. Don't rebuild the whole graph.
-- Defaults on the class default object: `property_set(path="/Game/Blueprints/BP_X.Default__BP_X_C", property="Health", value=100)`.
+## Read first
+`bp_export(blueprint)` returns variables (with current values), components, and every graph's nodes. Each node has a `kind`
+with the same fields `add_node` takes, pins with types and defaults, and links as `"<node id>.<pin>"`. Use those node ids to
+connect to existing nodes. Template events (BeginPlay, Tick, ActorBeginOverlap) start out `disabled`; adding the same event
+re-enables that node instead of creating a duplicate.
 
-## When the dedicated tools aren't enough
-`execute_python` with `unreal.BlueprintEditorLibrary` (5.1+) covers more, e.g. reparenting, `compile_blueprint`, and finding the event graph. Search first: `unreal_api_search("blueprint editor library")`.
-Graph authoring from a declarative spec (one call for a whole graph) is on the Phase 2 roadmap (`bp_author`).
+## One call builds a feature
+```json
+bp_apply(blueprint="/Game/Game/BP_Coin", create_parent="Actor", operations=[
+  {"op":"add_variable","name":"Value","type":"int","default":10,"instance_editable":true},
+  {"op":"add_component","name":"Trigger","class":"SphereComponent","as_root":true,"properties":{"SphereRadius":80}},
+  {"op":"add_component","name":"Mesh","class":"StaticMeshComponent","parent":"Trigger",
+   "properties":{"StaticMesh":"/Engine/BasicShapes/Cylinder.Cylinder","RelativeScale3D":[0.6,0.6,0.1],
+                 "BodyInstance.CollisionProfileName":"NoCollision"}},
+  {"op":"add_node","id":"hit","kind":"component_event","component":"Trigger","event":"OnComponentBeginOverlap"},
+  {"op":"add_node","id":"destroy","kind":"call_function","function":"DestroyActor"},
+  {"op":"connect","from":"hit.then","to":"destroy.exec"}])
+```
+- **Ids** are your own aliases, valid within the call. The result maps them to node GUIDs (`ids`) for later calls.
+- **Pins** match by name or label, case-insensitive (`exec`, `then`, `else`, `ReturnValue`, `self`/`Target`).
+  - An unknown pin lists the node's real pins in the error.
+  - A by-reference input, e.g. `SetValueAsVector.KeyName`, gets a MakeLiteral node wired in automatically when you give it a value in `pins`.
+- **Functions** are found across KismetSystemLibrary, KismetMathLibrary, GameplayStatics, Actor, Pawn, Character, controllers, UserWidget, AI and Blackboard libraries, and the Blueprint itself.
+  - Pass `"class"` to pick one, e.g. `"class":"BlackboardComponent"` for `SetValueAsVector`, or `"class":"UserWidget"` for `AddToViewport`.
+  - `K2_` prefixes are tried for you, so `DestroyActor` finds `K2_DestroyActor`.
+  - If unsure of a name, search with `unreal_api_search`.
+- **Class defaults** go through `set_defaults`, which is applied after compiling and accepts paths like
+  `"CharacterMovement.MaxWalkSpeed"`, `"AIControllerClass"` or `"AutoPossessAI":"PlacedInWorldOrSpawned"`.
+
+## Node kinds
+`event` (BeginPlay, Tick, ActorBeginOverlap, AnyDamage, EndPlay; widgets: Construct; BT tasks: ExecuteAI) ·
+`custom_event` (+inputs) · `component_event` (OnComponentBeginOverlap, OnComponentHit, ...) · `call_function` ·
+`get_var` / `set_var` · `branch` · `sequence` · `cast` · `self` · `macro` (DoOnce, Gate, ForLoop, ForEachLoop, IsValid) ·
+`spawn_actor` · `node` with any K2Node class, e.g. `K2Node_CreateWidget` with `pins: {"Class": "/Game/UI/WBP_HUD.WBP_HUD_C"}`.
+
+## Recipes
+- **Show a HUD.** On BeginPlay (pawn, controller or a placed actor): `GetPlayerController` → `K2Node_CreateWidget.OwningPlayer`,
+  `CreateWidget.ReturnValue` → `AddToViewport.self`.
+- **AI that runs a tree.** AIController Blueprint:
+  - BeginPlay → `RunBehaviorTree`, with `pins: {"BTAsset": ".../BT_X.BT_X"}`.
+  - For a Blackboard value: `self` → `GetBlackboard.Target` → `SetValueAsVector.self`, with `pins: {"KeyName": "Goal", "VectorValue": [x, y, z]}`.
+  - On the Character Blueprint: `set_defaults {"AIControllerClass": ".../BP_AI.BP_AI_C", "AutoPossessAI": "PlacedInWorldOrSpawned"}`.
+- **Function with a return value.** `add_function` with `inputs` and `outputs`. Its nodes are `<Name>_entry` and `<Name>_result`; add nodes with `"graph":"<Name>"`.
+
+## Widgets (UMG)
+`widget_apply(widget, create=true, operations=[...])`:
+- The first `add` becomes the root, usually a `CanvasPanel`.
+- Canvas children take `slot: {anchors, position, size, alignment, auto_size}`.
+- Conveniences: `text`, `font_size`, `color`, `percent`, `fill_color`.
+- Mark widgets you'll drive from logic with `is_variable: true`. They become variables for `bp_apply` `get_var` on the widget Blueprint.
+
+## Behavior Trees
+`bt_build(tree, blackboard, keys=[...], root={...})`:
+- Composites: Selector, Sequence, SimpleParallel. Tasks: MoveTo, Wait, RotateToFaceBBEntry, RunBehavior, or Blueprint tasks.
+- Decorators: Blackboard, Cooldown, Loop, TimeLimit. Services: DefaultFocus, ...
+- Blackboard key properties take the key name.
+- Numbers like `AcceptableRadius` / `WaitTime` take a value, or `{"key":"Name"}` to read them from the Blackboard.
+- The whole tree is validated before anything changes.
+- AI movement needs a NavMesh: place a `NavMeshBoundsVolume` with `scene_compose`. It builds automatically, and `pie_test` waits for it.
+
+## Gotchas
+- Python's script names differ from C++: `unreal.WidgetLibrary` is `WidgetBlueprintLibrary`, `unreal.AIBlueprintHelperLibrary` doesn't
+  exist in Python (use the Blueprint node), and BT `MoveTo` params are `ValueOrBBKey` structs (handled by `bt_build`).
+- An actor spawned already inside a trigger gets no BeginOverlap. Test pickups by moving the pawn into them (`pie_test` steps).
+- Legacy node-by-node tools (`add_node`, `connect_nodes`, ...) still work, but `bp_apply` is faster, atomic and reports better errors.

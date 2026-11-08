@@ -1,0 +1,240 @@
+{
+  "id": "ai-guard-patrol",
+  "domain": "ai",
+  "title": "Behavior Tree guard walks to its goal",
+  "prompt": "Make an AI guard: a blackboard {root}/BB_Guard with a vector key Goal; a behavior tree {root}/BT_Guard that moves to Goal and then waits; an AIController Blueprint {root}/BP_GuardAI that runs the tree on BeginPlay and sets Goal to (1200, 1200, 100); and a Character Blueprint {root}/BP_Guard controlled by it (auto-possessed when placed). Place one guard at (-800, -800, 100). The floor and nav bounds are already in the level. In play the guard must walk toward Goal.",
+  "requires": [
+    "command:bt_build",
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "NavMeshBoundsVolume",
+            "label": "NavBounds",
+            "location": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              40,
+              40,
+              5
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "bt_export",
+        "args": {
+          "tree": "{root}/BT_Guard"
+        },
+        "name": "tree moves to Goal",
+        "expect": "r['success'] and any(k['name'] == 'Goal' and k['type'] == 'vector' for k in r['blackboard']['keys']) and any(n['type'] == 'MoveTo' and n.get('properties', {}).get('BlackboardKey') == 'Goal' for n in walk(r['root']))"
+      }
+    ],
+    "pie": {
+      "duration_s": 6,
+      "assertions": [
+        {
+          "type": "python",
+          "expr": "any(a.get_class().get_name() == 'BP_Guard_C' and a.get_controller() is not None and a.get_controller().get_class().get_name() == 'BP_GuardAI_C' for a in actors)",
+          "name": "guard possessed by BP_GuardAI"
+        },
+        {
+          "type": "python",
+          "expr": "any(a.get_class().get_name() == 'BP_Guard_C' and dist(a, [-800, -800, 100]) >= 400 for a in actors)",
+          "name": "guard walked toward Goal"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "bt_build",
+      "args": {
+        "tree": "{root}/BT_Guard",
+        "blackboard": "{root}/BB_Guard",
+        "keys": [
+          {
+            "name": "Goal",
+            "type": "vector"
+          }
+        ],
+        "root": {
+          "type": "Sequence",
+          "children": [
+            {
+              "type": "MoveTo",
+              "properties": {
+                "BlackboardKey": "Goal",
+                "AcceptableRadius": 50
+              }
+            },
+            {
+              "type": "Wait",
+              "properties": {
+                "WaitTime": 3.0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_GuardAI",
+        "create_parent": "AIController",
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "run",
+            "kind": "call_function",
+            "function": "RunBehaviorTree",
+            "pins": {
+              "BTAsset": "{root}/BT_Guard.BT_Guard"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "me",
+            "kind": "self"
+          },
+          {
+            "op": "add_node",
+            "id": "bb",
+            "kind": "call_function",
+            "function": "GetBlackboard"
+          },
+          {
+            "op": "add_node",
+            "id": "set",
+            "kind": "call_function",
+            "function": "SetValueAsVector",
+            "class": "BlackboardComponent",
+            "pins": {
+              "KeyName": "Goal",
+              "VectorValue": [
+                1200,
+                1200,
+                100
+              ]
+            }
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "run.exec"
+          },
+          {
+            "op": "connect",
+            "from": "run.then",
+            "to": "set.exec"
+          },
+          {
+            "op": "connect",
+            "from": "me.self",
+            "to": "bb.Target"
+          },
+          {
+            "op": "connect",
+            "from": "bb.ReturnValue",
+            "to": "set.self"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Guard",
+        "create_parent": "Character",
+        "operations": [
+          {
+            "op": "set_defaults",
+            "properties": {
+              "AIControllerClass": "{root}/BP_GuardAI.BP_GuardAI_C",
+              "AutoPossessAI": "PlacedInWorldOrSpawned"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Guard.BP_Guard",
+            "label": "Guard",
+            "location": [
+              -800,
+              -800,
+              100
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

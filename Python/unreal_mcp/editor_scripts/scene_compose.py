@@ -110,4 +110,12 @@ with unreal.ScopedEditorTransaction("MCP scene_compose"):
             _results.append({"index": _i, "ok": False, "error": f"{type(_e).__name__}: {_e}"})
             if ARGS.get("stop_on_error"):
                 break
+# Nav bounds placed from code don't trigger the editor's navigation build the way a hand-placed
+# volume does; without it AI MoveTo silently goes nowhere.
+_nav = any("navmesh" in str(_op.get("class") or "").lower() or "navmesh" in str(_op.get("target") or "").lower()
+           or str(_op.get("label") or "").lower().startswith("nav") for _op in (ARGS.get("operations") or []))
+if _nav and _ok:
+    _ensure_navmesh()
 result = {"succeeded": _ok, "failed": len(_results) - _ok, "results": _results}
+if _nav and _ok:
+    result["navigation_rebuilt"] = True

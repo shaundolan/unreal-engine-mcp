@@ -235,8 +235,66 @@ static TSharedPtr<FJsonValue> PropertyToJson(FProperty* Prop, const void* ValueP
 	return MakeShared<FJsonValueString>(Text);
 }
 
-static bool JsonToProperty(const TSharedPtr<FJsonValue>& Value, FProperty* Prop, void* ValuePtr, UObject* Owner, FString& OutError)
+/** [1,2,3] for vectors/rotators/colors/points: map array items onto the struct's fields in order. */
+static TSharedPtr<FJsonValue> ArrayToStructJson(const TSharedPtr<FJsonValue>& Value, FProperty* Prop)
 {
+	const FStructProperty* SP = CastField<FStructProperty>(Prop);
+	if (!SP || !Value.IsValid() || Value->Type != EJson::Array)
+	{
+		return nullptr;
+	}
+	static const TMap<FName, TArray<const TCHAR*>> Fields = {
+		{ NAME_Vector, { TEXT("X"), TEXT("Y"), TEXT("Z") } },
+		{ NAME_Vector2D, { TEXT("X"), TEXT("Y") } },
+		{ NAME_Vector4, { TEXT("X"), TEXT("Y"), TEXT("Z"), TEXT("W") } },
+		{ NAME_Rotator, { TEXT("Pitch"), TEXT("Yaw"), TEXT("Roll") } },
+		{ NAME_LinearColor, { TEXT("R"), TEXT("G"), TEXT("B"), TEXT("A") } },
+		{ NAME_Color, { TEXT("R"), TEXT("G"), TEXT("B"), TEXT("A") } },
+		{ NAME_IntPoint, { TEXT("X"), TEXT("Y") } },
+		{ FName(TEXT("Margin")), { TEXT("Left"), TEXT("Top"), TEXT("Right"), TEXT("Bottom") } },
+	};
+	const TArray<const TCHAR*>* Names = Fields.Find(SP->Struct->GetFName());
+	const TArray<TSharedPtr<FJsonValue>>& Items = Value->AsArray();
+	if (!Names || Items.Num() == 0 || Items.Num() > Names->Num())
+	{
+		return nullptr;
+	}
+	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+	if (SP->Struct->GetFName() == FName(TEXT("Margin")) && Items.Num() == 1)
+	{
+		for (const TCHAR* N : *Names) Obj->SetField(N, Items[0]); // uniform padding
+	}
+	else
+	{
+		for (int32 I = 0; I < Items.Num(); ++I) Obj->SetField((*Names)[I], Items[I]);
+		if (SP->Struct->GetFName() == NAME_LinearColor && Items.Num() == 3) Obj->SetNumberField(TEXT("A"), 1.0);
+		if (SP->Struct->GetFName() == NAME_Color && Items.Num() == 3) Obj->SetNumberField(TEXT("A"), 255);
+	}
+	return MakeShared<FJsonValueObject>(Obj);
+}
+
+static bool JsonToProperty(const TSharedPtr<FJsonValue>& InValue, FProperty* Prop, void* ValuePtr, UObject* Owner, FString& OutError)
+{
+	TSharedPtr<FJsonValue> AsStruct = ArrayToStructJson(InValue, Prop);
+	// UE 5.4+ "value or blackboard key" structs (BT node params like MoveTo.AcceptableRadius):
+	// a plain value sets DefaultValue, {"key": "Name"} binds a blackboard key.
+	if (const FStructProperty* SP = CastField<FStructProperty>(Prop); !AsStruct.IsValid() && SP && InValue.IsValid()
+		&& SP->Struct->GetName().StartsWith(TEXT("ValueOrBBKey_")))
+	{
+		TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+		const TSharedPtr<FJsonObject>* In = nullptr;
+		FString KeyName;
+		if (InValue->TryGetObject(In) && ((*In)->TryGetStringField(TEXT("key"), KeyName) || (*In)->TryGetStringField(TEXT("Key"), KeyName)))
+		{
+			Obj->SetStringField(TEXT("Key"), KeyName);
+		}
+		else if (InValue->Type != EJson::Object)
+		{
+			Obj->SetField(TEXT("DefaultValue"), InValue);
+		}
+		if (Obj->Values.Num()) AsStruct = MakeShared<FJsonValueObject>(Obj);
+	}
+	const TSharedPtr<FJsonValue>& Value = AsStruct.IsValid() ? AsStruct : InValue;
 	if (FJsonObjectConverter::JsonValueToUProperty(Value, Prop, ValuePtr))
 	{
 		return true;
@@ -440,18 +498,34 @@ static TSharedPtr<FJsonObject> HandlePropertySet(const TSharedPtr<FJsonObject>& 
 	{
 		return MCPError(Error);
 	}
-	FMCPPropertyTarget T;
-	if (!ResolvePropertyPath(Object, PropPath, T, Error))
+	TSharedPtr<FJsonValue> Old, New;
+	if (!FEpicUnrealMCPReflectionCommands::SetPropertyByPath(Object, PropPath, Value, Error, &Old, &New))
 	{
 		return MCPError(Error);
 	}
+	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+	Out->SetField(TEXT("old_value"), Old);
+	Out->SetField(TEXT("new_value"), New);
+	return Out;
+}
+
+bool FEpicUnrealMCPReflectionCommands::SetPropertyByPath(UObject* Root, const FString& PropPath, const TSharedPtr<FJsonValue>& Value,
+	FString& Error, TSharedPtr<FJsonValue>* OutOld, TSharedPtr<FJsonValue>* OutNew)
+{
+	FMCPPropertyTarget T;
+	if (!Root || !ResolvePropertyPath(Root, PropPath, T, Error))
+	{
+		if (!Root) Error = TEXT("null object");
+		return false;
+	}
 	if (T.Property->HasAnyPropertyFlags(CPF_EditConst))
 	{
-		UE_LOG(LogUnrealMCP, Warning, TEXT("property_set: %s is EditConst; writing anyway"), *PropPath);
+		UE_LOG(LogUnrealMCP, Warning, TEXT("set property: %s is EditConst; writing anyway"), *PropPath);
 	}
-
-	const TSharedPtr<FJsonValue> Old = PropertyToJson(T.Property, T.ValuePtr);
-
+	if (OutOld)
+	{
+		*OutOld = PropertyToJson(T.Property, T.ValuePtr);
+	}
 	// Convert into a scratch value first, so a bad value never leaves a partial write or an
 	// unbalanced PreEditChange (components unregister in PreEditChange, re-register in Post).
 	void* Scratch = FMemory::Malloc(FMath::Max(T.Property->GetSize(), 1), T.Property->GetMinAlignment());
@@ -460,9 +534,8 @@ static TSharedPtr<FJsonObject> HandlePropertySet(const TSharedPtr<FJsonObject>& 
 	T.Property->CopyCompleteValue(Scratch, T.ValuePtr); // start from current (partial struct JSON keeps other fields)
 	if (!JsonToProperty(Value, T.Property, Scratch, T.Owner, Error))
 	{
-		return MCPError(Error);
+		return false;
 	}
-
 	T.Owner->Modify();
 #if WITH_EDITOR
 	T.Owner->PreEditChange(T.MemberProperty);
@@ -473,15 +546,48 @@ static TSharedPtr<FJsonObject> HandlePropertySet(const TSharedPtr<FJsonObject>& 
 	Changed.SetActiveMemberProperty(T.MemberProperty);
 	T.Owner->PostEditChangeProperty(Changed);
 #endif
-	if (AActor* Actor = Cast<AActor>(Object))
+	if (AActor* Actor = Cast<AActor>(Root))
 	{
 		Actor->MarkComponentsRenderStateDirty();
 	}
+	if (OutNew)
+	{
+		*OutNew = PropertyToJson(T.Property, T.ValuePtr);
+	}
+	return true;
+}
 
-	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
-	Out->SetField(TEXT("old_value"), Old);
-	Out->SetField(TEXT("new_value"), PropertyToJson(T.Property, T.ValuePtr));
-	return Out;
+int32 FEpicUnrealMCPReflectionCommands::SetPropertiesByPath(UObject* Root, const TSharedPtr<FJsonObject>& Props, TArray<FString>& OutErrors)
+{
+	int32 Set = 0;
+	if (!Props.IsValid())
+	{
+		return 0;
+	}
+	for (const auto& Pair : Props->Values)
+	{
+		const FString Key(*Pair.Key);
+		FString Err;
+		if (SetPropertyByPath(Root, Key, Pair.Value, Err))
+		{
+			++Set;
+		}
+		else
+		{
+			OutErrors.Add(FString::Printf(TEXT("%s: %s"), *Key, *Err));
+		}
+	}
+	return Set;
+}
+
+TSharedPtr<FJsonValue> FEpicUnrealMCPReflectionCommands::GetPropertyByPath(UObject* Root, const FString& PropPath, FString& Error)
+{
+	FMCPPropertyTarget T;
+	if (!Root || !ResolvePropertyPath(Root, PropPath, T, Error))
+	{
+		return nullptr;
+	}
+	return PropertyToJson(T.Property, T.ValuePtr);
 }
 
 static TSharedPtr<FJsonObject> HandleFunctionCall(const TSharedPtr<FJsonObject>& Params)

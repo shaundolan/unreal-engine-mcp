@@ -119,3 +119,15 @@ def test_pie_timeline_stops_on_broken_step(pie, ue, conn):  # noqa: F811
         {"do": "player.fly_to_moon()"}, {"check": [{"type": "no_errors"}]}, {"bogus": 1}])
     assert r["passed"] is False and len(r["steps"]) == 1
     assert "fly_to_moon" in r["steps"][0]["error"] and pie["pie"] is False
+
+
+def test_pie_until_step_drives_until_condition(pie, ue, conn):  # noqa: F811
+    hero = _world(ue)
+    r = run_pie_test(lambda: conn, [{"type": "python", "expr": "player.get_actor_location().x >= 300"}], duration_s=0,
+                     sleep=lambda s: None, steps=[
+        {"do": "player.set_actor_location(vec([player.get_actor_location().x + 50, 0, 100]), False, False)",
+         "until": "player.get_actor_location().x >= 300", "timeout_s": 5},
+        {"until": "False", "timeout_s": 0}])
+    assert r["steps"][0]["ok"] and r["steps"][0]["tries"] == 6 and hero.get_actor_location().x == 300
+    assert r["steps"][1]["ok"] is False and "still false" in r["steps"][1]["error"]
+    assert r["results"][0]["passed"] and r["passed"] is False

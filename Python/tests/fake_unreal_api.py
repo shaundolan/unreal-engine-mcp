@@ -842,6 +842,13 @@ def make_module() -> types.ModuleType:
         def save_config(self):
             self.saved += 1
 
+    class SystemLibrary:
+        commands: list = []
+
+        @staticmethod
+        def execute_console_command(world, command, player=None):
+            SystemLibrary.commands.append(command)
+
     class Paths:
         project = "/tmp/Project/"
 

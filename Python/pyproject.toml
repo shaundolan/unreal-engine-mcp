@@ -1,6 +1,6 @@
 [project]
 name = "unreal-engine-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local, open MCP server for driving a live Unreal Editor: Python execution, reflection, observation, Blueprint graphs and world building."
 readme = "README_advanced.md"
 requires-python = ">=3.10,<3.14"

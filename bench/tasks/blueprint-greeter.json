@@ -1,0 +1,128 @@
+{
+  "id": "blueprint-greeter",
+  "domain": "blueprints",
+  "title": "BeginPlay Blueprint logic",
+  "prompt": "Create an Actor Blueprint {root}/BP_Greeter whose BeginPlay prints the string 'UE-Bench greeter says hi' (Print String), and place one in the level. The level already has a floor and a PlayerStart.",
+  "requires": [
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_class().get_name() == 'BP_Greeter_C']) == 1",
+        "name": "one greeter placed"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "log_contains",
+          "text": "UE-Bench greeter says hi",
+          "name": "BeginPlay printed"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Greeter",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "print",
+            "kind": "call_function",
+            "function": "PrintString",
+            "pins": {
+              "InString": "UE-Bench greeter says hi"
+            }
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "print.exec"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Greeter.BP_Greeter",
+            "label": "Greeter",
+            "location": [
+              300,
+              0,
+              50
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

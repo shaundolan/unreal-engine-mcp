@@ -32,19 +32,24 @@ Check `enabled_plugins` for EnhancedInput (default in 5.x) before relying on it.
 WASD (SwizzleAxis/Negate), Mouse2D and gamepad mappings in one call.
 
 ## 4. Game framework
-- `create_blueprint(name="BP_ArenaGameMode", parent_class="GameModeBase")` and the player character
-  (`parent_class="Character"`), or reuse the template character if the project has one (`search_assets(class_name="Blueprint")`).
-- Defaults through reflection on the class default object:
-  `property_set(path="/Game/Blueprints/BP_ArenaGameMode.Default__BP_ArenaGameMode_C", property="DefaultPawnClass", value="/Game/Blueprints/BP_Hero.BP_Hero_C")`.
-- `game_setup(level_game_mode="/Game/Blueprints/BP_ArenaGameMode.BP_ArenaGameMode_C")`, then `editor_action(action="save_all")`.
+One `bp_apply` per Blueprint (see the `blueprint-authoring` skill):
+- `BP_ArenaGameMode` (`create_parent="GameModeBase"`) with
+  `set_defaults {"DefaultPawnClass": "/Game/Game/BP_Hero.BP_Hero_C"}`, then
+  `game_setup(level_game_mode="/Game/Game/BP_ArenaGameMode.BP_ArenaGameMode_C")`.
+- The player: reuse the template character if the project has one (`search_assets(class_name="Blueprint")`), or
+  `create_parent="Character"` plus Enhanced Input events.
 
-## 5. Gameplay logic (Blueprint)
-Use the `blueprint-authoring` skill: variables (`create_variable`), events (`add_event_node`), nodes (`add_node`),
-wiring (`connect_nodes`), `compile_blueprint`, then read `editor_log` for compiler errors.
-Typical pickups: a BP with a sphere collision component, OnComponentBeginOverlap → cast to the player → add score → DestroyActor.
-Data-driven values (damage, speeds, loot) go in a DataTable (`data_table`).
-
-C++ instead of Blueprint: `cpp_source` (write) → `live_coding_compile` for function bodies. New classes or reflected members need an editor restart.
+## 5. Gameplay logic, UI, AI
+- **Pickups and interactions:** `bp_apply` with a Sphere trigger as root and `component_event OnComponentBeginOverlap` → logic → `DestroyActor`.
+  Data-driven values (damage, speeds, loot) go in a DataTable (`data_table`).
+- **HUD:** `widget_apply` (CanvasPanel, ProgressBar `HealthBar`, TextBlock `ScoreText`, `is_variable: true`), shown from BeginPlay
+  with `K2Node_CreateWidget` → `AddToViewport`.
+- **Enemies:**
+  - `bt_build` makes the Blackboard keys and tree (patrol: MoveTo `Goal` + Wait; chase: a Blackboard decorator on `Target` → MoveTo `Target`).
+  - The AIController Blueprint runs `RunBehaviorTree` on BeginPlay.
+  - The enemy Character's `set_defaults` sets `AIControllerClass` and `AutoPossessAI`.
+  - A `NavMeshBoundsVolume` covering the floor builds automatically.
+- **C++ instead of Blueprint:** `cpp_source` (write) → `live_coding_compile` for function bodies. New classes or reflected members need an editor restart.
 
 ## 6. Juice
 Custom props (pickups, crates, doors) come from `blender_run` with `import_destination`: see the `3d-assets` skill.
@@ -55,7 +60,7 @@ Custom props (pickups, crates, doors) come from `blender_run` with `import_desti
 ```json
 pie_test(duration_s=3, assertions=[
   {"name":"player spawned","type":"actor_exists","class":"Character","min":1},
-  {"name":"10 coins","type":"python","expr":"len([a for a in actors if 'Coin' in a.get_actor_label()]) == 10"},
+  {"name":"10 coins","type":"python","expr":"len([a for a in actors if a.get_class().get_name() == 'BP_Coin_C']) == 10"},
   {"name":"player on floor","type":"distance","a":"@player","b":"PlayerStart","op":"<=","value":300},
   {"name":"clean run","type":"no_errors"},
   {"type":"log_absent","text":"Accessed None"}])
@@ -73,5 +78,7 @@ If something fails, read `results[].actual`, `steps[].assertions` and `errors_in
 Then run `performance_audit` and `editor_action(action="save_all")`.
 
 ## Limits today (be honest with the user)
-- PIE input is driven through pawn/controller calls (`add_movement_input`, `jump`, BlueprintCallable functions), not raw key events. Enhanced Input action bindings aren't exercised directly.
-- UMG widget trees, Behavior Tree graphs and AnimBP graphs can't be authored yet. Create the assets and describe the remaining manual steps.
+- PIE input is driven through pawn and controller calls (`add_movement_input`, `jump`, BlueprintCallable functions), not raw key events.
+  Enhanced Input action bindings aren't exercised directly.
+- Animation Blueprint graphs and Niagara module graphs can't be authored structurally yet. Use existing assets and parameters.
+- Live Coding is Windows-only. On a Linux editor, rebuild instead.

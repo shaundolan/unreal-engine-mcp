@@ -19,6 +19,7 @@
 #include "Commands/EpicUnrealMCPPythonCommands.h"
 #include "Commands/EpicUnrealMCPReflectionCommands.h"
 #include "Commands/EpicUnrealMCPObservationCommands.h"
+#include "Commands/MCPAuthoringCommands.h"
 
 DEFINE_LOG_CATEGORY(LogUnrealMCP);
 
@@ -135,6 +136,9 @@ void UEpicUnrealMCPBridge::RegisterAllCommands()
 	FEpicUnrealMCPPythonCommands::Register(R);
 	FEpicUnrealMCPReflectionCommands::Register(R);
 	FEpicUnrealMCPObservationCommands::Register(R);
+	FMCPBlueprintAuthoring::Register(R);
+	FMCPWidgetAuthoring::Register(R);
+	FMCPBehaviorTreeAuthoring::Register(R);
 
 	UE_LOG(LogUnrealMCP, Display, TEXT("UnrealMCP: %d commands registered"), R.Commands.Num());
 }

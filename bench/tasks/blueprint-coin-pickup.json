@@ -1,0 +1,189 @@
+{
+  "id": "blueprint-coin-pickup",
+  "domain": "gameplay",
+  "title": "Overlap pickup collected in play",
+  "prompt": "Create {root}/BP_Coin: a sphere trigger (radius at least 60) as its root, a visible static mesh, and an integer variable Value with default 10. When anything overlaps the trigger, the coin destroys itself. Place one coin at (400, 0, 100), straight ahead of the PlayerStart at (0, 0, 100), so the player collects it by moving forward (+X).",
+  "requires": [
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_class().get_name() == 'BP_Coin_C']) == 1",
+        "name": "coin placed"
+      },
+      {
+        "type": "python",
+        "expr": "unreal.get_default_object(unreal.load_class(None, '{root}/BP_Coin.BP_Coin_C')).get_editor_property('Value') == 10",
+        "name": "Value defaults to 10"
+      }
+    ],
+    "tools": [
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Coin"
+        },
+        "name": "sphere trigger + mesh",
+        "expect": "r['success'] and any(c['class'] == 'SphereComponent' for c in r['components']) and any(c['class'] == 'StaticMeshComponent' for c in r['components'])"
+      }
+    ],
+    "pie": {
+      "duration_s": 1,
+      "steps": [
+        {
+          "check": [
+            {
+              "type": "python",
+              "name": "coin present at start",
+              "expr": "len([a for a in actors if a.get_class().get_name() == 'BP_Coin_C']) == 1"
+            }
+          ]
+        },
+        {
+          "do": "player.add_movement_input(vec([1, 0, 0]), 1.0)",
+          "until": "len([a for a in actors if a.get_class().get_name() == 'BP_Coin_C']) == 0",
+          "timeout_s": 10,
+          "interval_s": 0.03
+        }
+      ],
+      "assertions": [
+        {
+          "type": "python",
+          "name": "coin collected by walking into it",
+          "expr": "len([a for a in actors if a.get_class().get_name() == 'BP_Coin_C']) == 0"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Coin",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_variable",
+            "name": "Value",
+            "type": "int",
+            "default": 10,
+            "instance_editable": true
+          },
+          {
+            "op": "add_component",
+            "name": "Trigger",
+            "class": "SphereComponent",
+            "as_root": true,
+            "properties": {
+              "SphereRadius": 80
+            }
+          },
+          {
+            "op": "add_component",
+            "name": "Mesh",
+            "class": "StaticMeshComponent",
+            "parent": "Trigger",
+            "properties": {
+              "StaticMesh": "/Engine/BasicShapes/Cylinder.Cylinder",
+              "RelativeScale3D": [
+                0.6,
+                0.6,
+                0.1
+              ],
+              "BodyInstance.CollisionProfileName": "NoCollision"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "hit",
+            "kind": "component_event",
+            "component": "Trigger",
+            "event": "OnComponentBeginOverlap"
+          },
+          {
+            "op": "add_node",
+            "id": "destroy",
+            "kind": "call_function",
+            "function": "DestroyActor"
+          },
+          {
+            "op": "connect",
+            "from": "hit.then",
+            "to": "destroy.exec"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Coin.BP_Coin",
+            "label": "Coin",
+            "location": [
+              400,
+              0,
+              100
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

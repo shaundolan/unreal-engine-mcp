@@ -3,6 +3,8 @@
 Tested 2026-11-08: Unreal 5.8.4 (Linux zip from unrealengine.com/linux), Ubuntu, GTX 1080 8 GB, driver 580.
 Results: smoke 16/16, UE-Bench reference 15/15, baseline 0/15 (`bench/results/2026-11-08-ue5.8.4-linux/`).
 
+Plugin dev loop: `scripts/ue_linux.sh build|launch|quit|rebuild` (rebuild = quit over MCP, compile, relaunch, wait for ping).
+
 ```bash
 E=~/Downloads/Linux_Unreal_Engine_5.8.4          # wherever the zip was unpacked (77 GB)
 P=$PWD/FlopperamUnrealMCP/FlopperamUnrealMCP.uproject

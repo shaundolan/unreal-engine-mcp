@@ -41,9 +41,9 @@ Owns: materials, Niagara, sequencer, landscape/foliage, animation, lighting tool
 2. Run `docs/WINDOWS_TEST.md`; fix compile and smoke failures. *(gamedev)*
 3. Build the API index from the real stub and record the symbol count. Use it to fix fake-API drift in `tests/fake_unreal_api.py`. *(Forge)*
 4. Run every editor script once against the live editor, through a pie_test/smoke harness per tool. Fix any API mismatches the fake hid. *(gamedev + techart)*
-5. Blueprint v2 (C++): `bp_export` GraphSpec → `bp_author` diff apply in one transaction, `bp_dry_run`. *(gamedev)*
-6. UMG widget tree authoring (C++). *(gamedev)*
-7. Behavior Tree / Blackboard authoring (C++). *(gamedev)*
+5. ~~Blueprint v2~~: done (`bp_export` / `bp_apply`: atomic, dry run, compile errors, auto-wired by-ref literals). *(gamedev)*
+6. ~~UMG widget tree authoring~~: done (`widget_export` / `widget_apply`). *(gamedev)*
+7. ~~Behavior Tree / Blackboard authoring~~: done (`bt_export` / `bt_build`; verified: a guard walks its route in PIE). *(gamedev)*
 8. ~~Blender bridge tool~~: done (`blender_run`/`blender_status`, `3d-assets` skill). Next: skeletal/animation export recipes. *(techart)*
 9. ~~UE-Bench v0~~: done (15 tasks, oracle + near-miss tests in CI). Next: v1 to 60 tasks, adding Blueprint/UMG/BT once the C++ lands. *(Probe)*
 10. Demo 1 "prompt → playable" recording: Nerve Live Flow plus an editor timelapse. *(gamedev + techart, Quill writes it up)*

@@ -188,3 +188,18 @@ def asset_summary(ad):
 
 def asset_registry():
     return unreal.AssetRegistryHelpers.get_asset_registry()
+
+
+def _ensure_navmesh():
+    """Script-placed nav bounds: register them, drop NavMesh data sized before the bounds existed
+    (it hits a tiny tile limit), and rebuild. Mirrors the manual fix: delete RecastNavMesh, Build Paths."""
+    w = editor_world()
+    nav = unreal.NavigationSystemV1.get_navigation_system(w)
+    sub = actor_sub()
+    acts = sub.get_all_level_actors()
+    for v in [a for a in acts if a.get_class().get_name() == "NavMeshBoundsVolume"]:
+        if nav is not None:
+            nav.on_navigation_bounds_updated(v)
+    for a in [a for a in acts if a.get_class().get_name() == "RecastNavMesh"]:
+        sub.destroy_actor(a)
+    unreal.SystemLibrary.execute_console_command(w, "RebuildNavigation")

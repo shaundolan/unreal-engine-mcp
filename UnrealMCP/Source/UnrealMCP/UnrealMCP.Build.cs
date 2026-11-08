@@ -59,7 +59,11 @@ public class UnrealMCP : ModuleRules
 				"Projects",
 				"AssetRegistry",
 				"RenderCore",          // FlushRenderingCommands for viewport_capture
-				"PythonScriptPlugin"   // execute_python
+				"PythonScriptPlugin",  // execute_python
+				"UMG",                 // widget_apply
+				"UMGEditor",           // UWidgetBlueprint
+				"AIModule",            // bt_build
+				"GameplayTasks"
 			}
 		);
 		

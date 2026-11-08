@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from . import call
-from .python_exec import run_editor_script
+from .python_exec import run_editor_script, run_python
 
 LOG_TYPES = ("log_contains", "log_absent", "no_errors")
 _POLL_S = 0.25
@@ -24,6 +24,52 @@ def _wait_for_pie(get_conn, running: bool, timeout_s: float) -> bool:
             return True
         time.sleep(_POLL_S)
     return False
+
+
+# Per nav bounds volume: is there NavMesh inside it? Optionally kick a rebuild.
+_NAV_PROBE = """
+w = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+vols = [a for a in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()
+        if a.get_class().get_name() == "NavMeshBoundsVolume"]
+empty = 0
+for v in vols:
+    origin, extent = v.get_actor_bounds(False)
+    if unreal.NavigationSystemV1.project_point_to_navigation(w, origin, None, None, extent) is None:
+        empty += 1
+if empty and ARGS_REBUILD:
+    _ensure_navmesh()
+result = {"volumes": len(vols), "empty": empty,
+          "building": bool(unreal.NavigationSystemV1.is_navigation_being_built(w))}
+"""
+
+
+def _common_source() -> str:
+    from ..editor_scripts import source
+    return source("_common") + "\n"
+
+
+def _wait_for_navigation(get_conn, timeout_s: float, sleep) -> bool | None:
+    """A NavMesh missing or still building when PIE starts leaves the play world without one (AI
+    MoveTo silently fails). Volumes placed from scripts may never have been built. Rebuild once if
+    any volume has no NavMesh, then poll until every volume has NavMesh and nothing is building.
+    Returns None when the check is unavailable (no navigation API / no editor)."""
+    deadline = time.monotonic() + timeout_s
+    rebuilt = False
+    while True:
+        code = _common_source() + _NAV_PROBE.replace("ARGS_REBUILD", "True" if not rebuilt else "False")
+        r = run_python(get_conn, code, timeout_s=30)
+        if not r.get("success"):
+            return None
+        state = r.get("result") or {}
+        if not state.get("volumes"):
+            return True
+        if state.get("empty") and not rebuilt:
+            rebuilt = True
+        elif not state.get("empty") and not state.get("building"):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        sleep(0.5)
 
 
 def _log_assertion(a: dict[str, Any], index: int, entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -49,6 +95,27 @@ def _run_steps(get_conn, steps: list[dict[str, Any]], sleep) -> list[dict[str, A
         if "wait_s" in step:
             sleep(float(step["wait_s"]))
             rec.update(ok=True, waited_s=step["wait_s"])
+        elif "until" in step:
+            # Drive until a condition holds: robust where a fixed repeat count depends on frame rate.
+            deadline = time.monotonic() + float(step.get("timeout_s", 10.0))
+            tries = 0
+            while True:
+                r = run_editor_script(get_conn, "pie_assert", {
+                    "exec": step.get("do") or "", "assertions": [{"type": "python", "expr": step["until"]}]})
+                tries += 1
+                if not r.get("success"):
+                    rec.update(ok=False, error=r.get("traceback") or r.get("error"), tries=tries)
+                    out.append(rec)
+                    return out
+                if r["assertions"][0].get("passed"):
+                    rec.update(ok=True, until=step["until"][:80], tries=tries)
+                    break
+                if time.monotonic() >= deadline:
+                    waited = step.get("timeout_s", 10.0)
+                    rec.update(ok=False, error=f"'{step['until'][:80]}' still false after {waited}s",
+                               tries=tries, last=r["assertions"][0].get("actual"))
+                    break
+                sleep(float(step.get("interval_s", 0.05)))
         elif "do" in step:
             repeat = max(1, int(step.get("repeat", 1)))
             for n in range(repeat):
@@ -85,6 +152,7 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
     if ctx.get("pie_running"):
         return {"success": False, "error": "PIE is already running; stop it first (editor_action pie_stop)"}
 
+    nav_ready = _wait_for_navigation(get_conn, 60.0, sleep)
     since = call(get_conn, "editor_log", {"lines": 1}).get("last_seq", 0)
     started = call(get_conn, "editor_action", {"action": "pie_start"})
     if not started.get("success"):
@@ -115,7 +183,8 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
     failed = [r for r in results if not r.get("passed")]
     failed_steps = [s for s in timeline if not s.get("ok")]
     out_steps = {"steps": timeline} if steps else {}
-    return {"success": True, "passed": not failed and not failed_steps, "total": len(results),
+    nav = {} if nav_ready is None else {"navigation_ready": nav_ready}
+    return {"success": True, "passed": not failed and not failed_steps, "total": len(results), **nav,
             "failed_count": len(failed) + len(failed_steps), **out_steps,
             "results": results,
             "errors_in_log": [e["message"] for e in entries if e.get("verbosity") in ("Error", "Fatal")][:20]}
@@ -144,6 +213,8 @@ def register(mcp, get_conn):
           {"do": "player.add_movement_input(vec([1,0,0]), 1.0)",     player, world, actors,
            "repeat": 40, "interval_s": 0.05}                          find(label), vec, unreal)
           {"check": [ ...assertions as above... ]}
+          {"do": "player.add_movement_input(vec([1,0,0]), 1.0)", "until": "find('Coin') is None",
+           "timeout_s": 8}                                  (repeat do until the expression holds)
         The final `assertions` run after the timeline. Returns passed (bool), per-step results,
         and per-assertion results with actual values.
         """

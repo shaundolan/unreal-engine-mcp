@@ -42,9 +42,15 @@ uv run python -m unreal_mcp.bench run --agent cmd --label "claude-code opus" \
 
 The agent command gets the prompt as `{prompt}` (one argument), as `{prompt_file}` (a path), or on stdin, so any MCP-capable agent works: Claude Code, Cursor CLI, or a local model behind an agent loop.
 
-## v0 tasks (15)
+## Tasks (19)
 scene ×6 (grid, light ring, cleanup, tagging, transforms, greybox arena), assets ×1, materials ×3 (graph, instance,
-apply), cinematics ×1, input ×1, performance ×1, modeling ×1 (Blender → import → place), gameplay ×1 (PIE: spawn on ground).
+apply), cinematics ×1, input ×1, performance ×1, modeling ×1 (Blender → import → place), gameplay ×2 (PIE: spawn on ground;
+coin collected by walking into it), blueprints ×1 (BeginPlay logic seen in the PIE log), ui ×1 (HUD built and on screen), ai ×1 (Behavior
+Tree guard walks to its goal on a NavMesh).
+
+Tasks marked `requires: ["command:<name>"]` need a plugin build with that command; the fake-editor CI skips them, so they are
+validated against a live editor (see `bench/results/`). `check.tools` entries call a tool and evaluate `expect` over its JSON
+result (`walk(tree)` yields every node of a widget or BT export).
 
 ## Adding tasks
 Write `tasks/<id>.json` (the id must match the file name) and run `uv run pytest tests/test_bench.py`. If a checker needs an API that `tests/fake_unreal_api.py` lacks, add it to the fake with the **real** UE name and signature. Add a near-miss entry to `MUTATIONS` in the test whenever a checker has a subtle condition.
