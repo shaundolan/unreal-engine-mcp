@@ -7,6 +7,9 @@
 #include "Interfaces/IPv4/IPv4Address.h"
 #include "MCPCommon.h"
 #include "HAL/ThreadSafeBool.h"
+#include "Containers/Queue.h"
+#include "Containers/Ticker.h"
+#include "Async/Future.h"
 #include "Commands/EpicUnrealMCPEditorCommands.h"
 #include "Commands/EpicUnrealMCPBlueprintCommands.h"
 #include "Commands/EpicUnrealMCPBlueprintGraphCommands.h"
@@ -69,6 +72,25 @@ private:
 
 	void RegisterAllCommands();
 	TSharedRef<FJsonObject> RunOnGameThread(const FString& CommandType, const TSharedPtr<FJsonObject>& Params);
+
+	/**
+	 * Commands from client threads are queued and executed ONLY from the core ticker at a safe point:
+	 * never re-entrantly from task-graph pumping inside a modal / slow task / package save (running
+	 * editor code there crashed Slate: FindWindowByPlatformWindow during a validation slow task).
+	 */
+	using FPromisePtr = TSharedPtr<TPromise<TSharedPtr<FJsonObject>>, ESPMode::ThreadSafe>;
+	struct FPendingCommand
+	{
+		FString Type;
+		TSharedPtr<FJsonObject> Params;
+		FPromisePtr Promise;
+	};
+	TQueue<FPendingCommand, EQueueMode::Mpsc> Pending;
+	FTSTicker::FDelegateHandle DrainHandle;
+	bool bDraining = false;
+	bool DrainPending(float DeltaTime);
+	void FailPending(const TCHAR* Reason);
+	static bool IsSafePointForCommands();
 
 	bool bIsRunning = false;
 	/** Set first thing in StopServer so waiting client threads bail out instead of blocking shutdown. */

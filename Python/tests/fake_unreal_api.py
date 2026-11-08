@@ -781,17 +781,25 @@ def make_module() -> types.ModuleType:
             super().__init__()
             self.action, self.key, self.modifiers = action, key, []
 
-    class InputMappingContext(Object):
+    class InputMappingContextMappingData(Object):
         def __init__(self, *a, **k):
             super().__init__(*a, **k)
             self.mappings = []
 
-        def unmap_all(self):
+    class InputMappingContext(Object):
+        """UE 5.8 layout: map_key writes default_key_mappings.mappings; legacy `mappings` stays empty."""
+
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
             self.mappings = []
+            self.default_key_mappings = InputMappingContextMappingData()
+
+        def unmap_all(self):
+            self.default_key_mappings.mappings = []
 
         def map_key(self, action, key):
             m = EnhancedActionKeyMapping(action, key)
-            self.mappings.append(m)
+            self.default_key_mappings.mappings.append(m)
             return m
 
     class InputAction_Factory:

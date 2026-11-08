@@ -9,6 +9,10 @@
 #include "Async/Async.h"
 #include "Async/Future.h"
 #include "ScopedTransaction.h"
+#include "Framework/Application/SlateApplication.h"
+#include "UObject/GarbageCollection.h"
+#include "UObject/UObjectGlobals.h"
+#include "Misc/CoreMisc.h"
 #include "Commands/EpicUnrealMCPEditorCommands.h"
 #include "Commands/EpicUnrealMCPBlueprintCommands.h"
 #include "Commands/EpicUnrealMCPBlueprintGraphCommands.h"
@@ -194,6 +198,8 @@ void UEpicUnrealMCPBridge::StartServer()
 	// Sockets must be released through the subsystem, never plain delete.
 	ListenerSocket = TSharedPtr<FSocket>(Raw, [](FSocket* S) { ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(S); });
 	bStopping = false;
+	DrainHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &UEpicUnrealMCPBridge::DrainPending), 0.0f);
 	ServerRunnable = new FMCPServerRunnable(this, ListenerSocket);
 	ServerThread = FRunnableThread::Create(ServerRunnable, TEXT("UnrealMCPServerThread"), 0, TPri_Normal);
 	if (!ServerThread)
@@ -225,6 +231,9 @@ void UEpicUnrealMCPBridge::StopServer()
 	}
 	delete ServerRunnable; // joins client threads
 	ServerRunnable = nullptr;
+	FTSTicker::GetCoreTicker().RemoveTicker(DrainHandle);
+	DrainHandle.Reset();
+	FailPending(TEXT("editor shutting down"));
 	if (ListenerSocket.IsValid())
 	{
 		ListenerSocket->Close();
@@ -296,21 +305,7 @@ TSharedRef<FJsonObject> UEpicUnrealMCPBridge::ExecuteCommandJson(const FString& 
 		MakeShared<TPromise<TSharedPtr<FJsonObject>>, ESPMode::ThreadSafe>();
 	TFuture<TSharedPtr<FJsonObject>> Future = Promise->GetFuture();
 
-	TWeakObjectPtr<UEpicUnrealMCPBridge> WeakThis(this);
-	AsyncTask(ENamedThreads::GameThread, [WeakThis, CommandType, Params, Promise]()
-	{
-		if (UEpicUnrealMCPBridge* Self = WeakThis.Get())
-		{
-			Promise->SetValue(TSharedPtr<FJsonObject>(Self->RunOnGameThread(CommandType, Params)));
-		}
-		else
-		{
-			TSharedPtr<FJsonObject> Gone = MakeShared<FJsonObject>();
-			Gone->SetStringField(TEXT("status"), TEXT("error"));
-			Gone->SetStringField(TEXT("error"), TEXT("editor shutting down"));
-			Promise->SetValue(Gone);
-		}
-	});
+	Pending.Enqueue(FPendingCommand{ CommandType, Params, Promise });
 
 	// Wait in slices so editor shutdown (which joins this thread from the game thread) never
 	// blocks on a task that can only run once the game thread is free.
@@ -337,7 +332,7 @@ TSharedRef<FJsonObject> UEpicUnrealMCPBridge::ExecuteCommandJson(const FString& 
 		TSharedRef<FJsonObject> TimedOut = MakeShared<FJsonObject>();
 		TimedOut->SetStringField(TEXT("status"), TEXT("error"));
 		TimedOut->SetStringField(TEXT("error"), FString::Printf(
-			TEXT("%s timed out after %.0fs waiting for the game thread (modal dialog open? long compile?)"), *CommandType, TimeoutS));
+			TEXT("%s timed out after %.0fs waiting for the game thread (a modal dialog, slow task or long compile is blocking the editor)"), *CommandType, TimeoutS));
 		return TimedOut;
 	}
 	return Future.Get().ToSharedRef();
@@ -349,4 +344,50 @@ FString UEpicUnrealMCPBridge::ExecuteCommand(const FString& CommandType, const T
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Out);
 	FJsonSerializer::Serialize(ExecuteCommandJson(CommandType, Params), Writer);
 	return Out;
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// Safe-point dispatch
+// ---------------------------------------------------------------------------------------------
+
+bool UEpicUnrealMCPBridge::IsSafePointForCommands()
+{
+	if (GIsSlowTask || IsGarbageCollecting() || UE::IsSavingPackage())
+	{
+		return false;
+	}
+	if (FSlateApplication::IsInitialized() && FSlateApplication::Get().GetActiveModalWindow().IsValid())
+	{
+		return false; // a modal loop is pumping the ticker; editor state is mid-transition
+	}
+	return true;
+}
+
+bool UEpicUnrealMCPBridge::DrainPending(float /*DeltaTime*/)
+{
+	if (bDraining || !IsSafePointForCommands())
+	{
+		return true; // keep ticking; try again next frame
+	}
+	TGuardValue<bool> Guard(bDraining, true);
+	// Commands run one at a time; a command may open its own modal/slow task, so re-check between them.
+	FPendingCommand Cmd;
+	while (IsSafePointForCommands() && Pending.Dequeue(Cmd))
+	{
+		Cmd.Promise->SetValue(TSharedPtr<FJsonObject>(RunOnGameThread(Cmd.Type, Cmd.Params)));
+	}
+	return true;
+}
+
+void UEpicUnrealMCPBridge::FailPending(const TCHAR* Reason)
+{
+	FPendingCommand Cmd;
+	while (Pending.Dequeue(Cmd))
+	{
+		TSharedPtr<FJsonObject> Err = MakeShared<FJsonObject>();
+		Err->SetStringField(TEXT("status"), TEXT("error"));
+		Err->SetStringField(TEXT("error"), Reason);
+		Cmd.Promise->SetValue(Err);
+	}
 }

@@ -206,7 +206,9 @@ def run_task(tools, task: Task, agent: str = "solution", agent_cmd: str = "",
     elif agent != "none":
         raise ValueError(f"unknown agent {agent!r}")
     result = check_task(tools, substitute(task.check, values))
-    rec.update(status="passed" if result["passed"] else "failed", failures=_failures(result),
+    step_failures = [f"agent step {s['step']} {s['tool']}: {str(s.get('error'))[-300:]}"
+                     for s in rec.get("agent", {}).get("steps", []) if not s["ok"]]
+    rec.update(status="passed" if result["passed"] else "failed", failures=step_failures + _failures(result),
                elapsed_s=round(time.monotonic() - t0, 1), check=result)
     return rec
 

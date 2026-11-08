@@ -28,6 +28,23 @@ for _a in ARGS.get("actions") or []:
     _actions[_a["name"]] = _ia
     _report["actions"].append({"path": _ia.get_path_name(), "created": _new, "value_type": _vt})
 
+def _maps_get(imc):
+    """UE 5.6+ keeps mappings in default_key_mappings.mappings; the top-level `mappings` is legacy."""
+    try:
+        data = imc.get_editor_property("default_key_mappings")
+        return list(data.get_editor_property("mappings")), data
+    except Exception:
+        return list(imc.get_editor_property("mappings")), None
+
+
+def _maps_set(imc, maps, data):
+    if data is not None:
+        data.set_editor_property("mappings", maps)
+        imc.set_editor_property("default_key_mappings", data)
+    else:
+        imc.set_editor_property("mappings", maps)
+
+
 for _c in ARGS.get("contexts") or []:
     _imc, _new = _load_or_create(_c["name"], unreal.InputMappingContext, unreal.InputMappingContext_Factory)
     if _c.get("replace", True):
@@ -49,11 +66,13 @@ for _c in ARGS.get("contexts") or []:
             _mods.append(unreal.new_object(_cls, _imc))
         if _mods:
             # map_key returns a copy; write modifiers back through the mappings array.
-            _all = list(_imc.get_editor_property("mappings"))
+            _all, _data = _maps_get(_imc)
+            if not _all:
+                raise RuntimeError("map_key added no mapping (unknown key name?)")
             _last = _all[-1]
             _last.set_editor_property("modifiers", _mods)
             _all[-1] = _last
-            _imc.set_editor_property("mappings", _all)
+            _maps_set(_imc, _all, _data)
         _maps.append(f"{_m['key']} -> {_ia.get_name()}" + (f" [{', '.join(_m['modifiers'])}]" if _mods else ""))
     _eal.save_loaded_asset(_imc, only_if_is_dirty=False)
     _report["contexts"].append({"path": _imc.get_path_name(), "created": _new, "mappings": _maps})

@@ -1,0 +1,23 @@
+# Running the editor on Linux
+
+Tested 2026-11-08: Unreal 5.8.4 (Linux zip from unrealengine.com/linux), Ubuntu, GTX 1080 8 GB, driver 580.
+Results: smoke 16/16, UE-Bench reference 15/15, baseline 0/15 (`bench/results/2026-11-08-ue5.8.4-linux/`).
+
+```bash
+E=~/Downloads/Linux_Unreal_Engine_5.8.4          # wherever the zip was unpacked (77 GB)
+P=$PWD/FlopperamUnrealMCP/FlopperamUnrealMCP.uproject
+$E/Engine/Build/BatchFiles/Linux/Build.sh FlopperamUnrealMCPEditor Linux Development -Project="$P" -WaitMutex
+$E/Engine/Binaries/Linux/UnrealEditor "$P" \
+  "-ini:Engine:[/Script/PythonScriptPlugin.PythonScriptPluginSettings]:bDeveloperMode=True"
+cd Python && uv run python ../scripts/smoke.py && uv run python -m unreal_mcp.bench run --agent solution
+```
+
+Notes:
+- **Pre-RTX GPUs** (Pascal, e.g. GTX 10xx) have no mesh shaders, so Vulkan SM6 is skipped. The sample project
+  targets SM5 as well as SM6, so the editor falls back to SM5 instead of exiting with "Vulkan device could not be created".
+- **Close the editor over MCP** before rebuilding the plugin (no hot reload on Linux):
+  `execute_python("import unreal; unreal.SystemLibrary.quit_editor()")`.
+- **Live Coding is Windows-only.** `live_coding_compile` won't work here. Use a full rebuild instead.
+- **A known 5.8.4 engine ensure** (`FAppTime ... IsInGameThread()` from `UpdateReflectionSceneData`) appears once per
+  session. It's an engine bug, harmless; dismiss it.
+- Rendering uses about 2–4 GB of VRAM for the sample and bench levels. Free the GPU of other models first.

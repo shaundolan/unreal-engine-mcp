@@ -15,8 +15,9 @@ def test_enhanced_input(ue, tools):  # noqa: F811
     assert r["success"] and [a["value_type"] for a in r["actions"]] == ["AXIS2D", "BOOLEAN"]
     assert r["contexts"][0]["mappings"] == ["SpaceBar -> IA_Jump", "S -> IA_Move [SwizzleAxis, Negate]"]
     imc = ue._state["assets"]["/Game/Input/IMC_Default"]
-    assert [m.key.key_name for m in imc.mappings] == ["SpaceBar", "S"]
-    assert [type(x).__name__ for x in imc.mappings[1].modifiers] == ["InputModifierSwizzleAxis", "InputModifierNegate"]
+    assert [m.key.key_name for m in imc.default_key_mappings.mappings] == ["SpaceBar", "S"]
+    assert [type(x).__name__ for x in imc.default_key_mappings.mappings[1].modifiers]
+    assert imc.mappings == []  # legacy property unused on 5.8 == ["InputModifierSwizzleAxis", "InputModifierNegate"]
     again = tools["enhanced_input"](actions=[{"name": "IA_Move", "value_type": "Axis2D"}])
     assert again["actions"][0]["created"] is False
     assert tools["enhanced_input"](actions=[{"name": "IA_X", "value_type": "Axis9D"}])["success"] is False
