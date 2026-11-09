@@ -72,7 +72,12 @@ public class UnrealMCP : ModuleRules
 				"AnimGraphRuntime",
 				"AnimationBlueprintLibrary", // anim_asset_apply: notifies
 				"GameplayTags",        // gameplay_tags
-				"LevelEditor"          // level_open: ULevelEditorSubsystem::NewLevel
+				"LevelEditor",         // level_open: ULevelEditorSubsystem::NewLevel
+				"MetasoundEngine",     // metasound_apply: UMetaSoundBuilderSubsystem
+				"MetasoundFrontend",   // metasound_export / metasound_nodes: document + node registry
+				"MetasoundGraphCore",
+				"MetasoundEditor",     // BuildToAsset / FindOrBeginBuilding
+				"AudioExtensions"
 			}
 		);
 		
