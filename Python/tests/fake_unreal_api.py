@@ -723,8 +723,21 @@ def make_module() -> types.ModuleType:
             super().__init__()
             self.struct = None
 
+    class DataAsset(Object):
+        pass
+
+    class PrimaryDataAsset(DataAsset):
+        pass
+
+    class DataAssetFactory(Object):
+        def __init__(self):
+            super().__init__()
+            self.data_asset_class = None
+
     def _create_with_factory(orig):
         def create_asset(self, name, pkg, cls, factory):
+            if isinstance(factory, DataAssetFactory):  # UE: the factory picks the class, asset_class may be None
+                return _register(factory.data_asset_class(name, f"{pkg}/{name}.{name}"))
             o = orig(self, name, pkg, cls, factory)
             if isinstance(o, DataTable):
                 o.row_struct = factory.struct
@@ -746,6 +759,11 @@ def make_module() -> types.ModuleType:
                 return False
             table.rows = {r["Name"]: {k: v for k, v in r.items() if k != "Name"} for r in rows}
             return True
+
+        @staticmethod
+        def export_data_table_to_json_string(table):
+            import json
+            return json.dumps([{"Name": k, **v} for k, v in table.rows.items()])
 
         @staticmethod
         def get_data_table_row_names(table):

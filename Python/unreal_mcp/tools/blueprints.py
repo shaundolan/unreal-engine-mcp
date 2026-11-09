@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import bp_analysis
 from . import call
 
 _LARGE = 300.0
@@ -79,6 +80,40 @@ def register(mcp, get_conn):
           {"op":"remove_variable","name":"Old"}
           {"op":"set_defaults","properties":{"AutoPossessAI":"PlacedInWorldOrSpawned",
            "CharacterMovement.MaxWalkSpeed":300}}   (class defaults, applied after compiling)
+        Interfaces, dispatchers, timelines, macros, local variables (see the blueprint-authoring skill):
+          create_parent="Interface" makes a Blueprint Interface: add_function ops declare its functions
+              (no outputs = an event in implementers). create_parent="MacroLibrary" makes a macro library.
+          {"op":"implement_interface","interface":"/Game/BPI_Interact"}  then {"kind":"event","event":"Interact"}
+              (functions with outputs get a graph named after them: add nodes with "graph":"<Function>")
+          {"op":"add_node","kind":"interface_message","interface":"/Game/BPI_Interact","function":"Interact"}
+              (call on any object; "interface_call" for an interface-typed target)
+          {"op":"add_dispatcher","name":"OnOpened","inputs":[{"name":"By","type":"object:Actor"}]}
+          {"kind":"call_dispatcher","dispatcher":"OnOpened"} / bind_dispatcher / unbind_dispatcher /
+              clear_dispatcher, "class":"/Game/BP_Door" for another Blueprint's (wire its Target pin);
+              bind_dispatcher "event":"<custom_event id>" wires the handler; make the handler with
+              {"kind":"custom_event","name":"HandleOpened","dispatcher":"OnOpened","class":"/Game/BP_Door"}
+              (same parameters). {"kind":"create_delegate","function":"Name"} for a function delegate.
+          {"kind":"timeline","name":"Lift","length":2,"loop":false,"autoplay":false,"tracks":[
+              {"name":"Alpha","type":"float","keys":[[0,0],[2,1,"cubic"]]},
+              {"name":"Offset","type":"vector","keys":[[0,[0,0,0]],[2,[0,0,300]]]},
+              {"name":"Tint","type":"color","keys":[[0,[1,0,0,1]]]}, {"name":"Ding","type":"event","keys":[1.0]}]}
+              pins: Play, PlayFromStart, Stop, Reverse, ReverseFromEnd, SetNewTime / Update, Finished, Direction,
+              one output per track
+          {"op":"add_local_variable","function":"Calc","name":"Tmp","type":"float","default":0}
+              (get_var/set_var in that function find it)
+          {"op":"add_function","name":"Area","pure":true,...}   {"op":"add_macro","name":"Clamp01",
+              "inputs":[{"name":"In","type":"exec"},{"name":"V","type":"float"}],"outputs":[...]}
+              -> nodes "<Name>_entry" / "<Name>_exit"; use it with {"kind":"macro","macro":"Clamp01"}
+              ("library":"/Game/ML_Utils" for a macro library's)
+          {"kind":"operator","op":"+","type":"float"} (+ - * / > >= < <= == !=: the 5.x promotable operator,
+              typed by "type" or by what you connect)
+          {"kind":"select","options":3,"index_type":"int"|"bool"|"enum:/Game/E_Rarity","type":"float"}
+          {"kind":"switch","on":"int"|"string"|"name"|"enum:/Game/E_Rarity","cases":["A","B"]}  (int: start/count)
+          {"kind":"make_struct","struct":"/Game/S_Item"} / {"kind":"break_struct",...}
+          {"kind":"format_text","format":"{Name} has {HP} HP"}   (an input pin per {argument})
+          {"kind":"get_data_table_row","table":"/Game/DT_Items","row":"Sword"}  (Out Row typed to the row struct)
+          {"kind":"async_action","function":"<factory>","class":"<AsyncAction class>"}, {"kind":"ai_move_to"}
+        Enum pins take entry names or display names ("Rare").
         "graph" on add_node picks the graph (default EventGraph). "x","y" place nodes (else auto-layout).
         Existing nodes are referenced by the ids from bp_export. Returns success, failed ops with
         reasons (unknown pins list the available ones), ids (alias -> node id), compile status/errors.
@@ -87,3 +122,29 @@ def register(mcp, get_conn):
         return _finish(call(get_conn, "bp_apply", {
             "blueprint": blueprint, "operations": operations, "create_parent": create_parent,
             "compile": compile, "atomic": atomic, "dry_run": dry_run, "save": save}, timeout=_LARGE))
+
+    @mcp.tool()
+    def bp_explain(blueprint: str) -> dict[str, Any]:
+        """Understand a Blueprint quickly: entry points (events, custom/component/key events, functions) with
+        the execution flow of each ("BeginPlay -> GetPlayerPawn -> Cast to BP_Hero -> ..."), variables read
+        and written per entry point, external calls by class, components, interfaces, dispatchers,
+        timelines, and a dependency graph (parent, components, called classes, casts, assets). Returns JSON
+        plus `markdown`, a short human summary. Read-only."""
+        spec = call(get_conn, "bp_export", {"blueprint": blueprint, "graphs": [], "include_pins": True}, timeout=_LARGE)
+        if not spec.get("success"):
+            return spec
+        return {"success": True, **bp_analysis.explain(spec)}
+
+    @mcp.tool()
+    def bp_review(blueprint: str, tick_budget: int = bp_analysis.TICK_NODE_BUDGET) -> dict[str, Any]:
+        """Lint a Blueprint. Findings (rule, severity error|warning|info, graph, node id, message):
+        compile_error, unwired_exec (an impure node nothing executes), dead_node, unused_variable,
+        write_only_variable, tick_heavy (more than tick_budget nodes per frame), cast_in_tick,
+        expensive_in_tick (GetAllActorsOfClass, spawning, printing...), latent_in_tick, missing_is_valid
+        (an object variable used as a call target with no IsValid check), infinite_loop_risk (exec cycles
+        without a Delay, While loops, self-recursive events). Also returns the bp_explain summary and
+        `markdown`. ok=true when there are no errors or warnings."""
+        spec = call(get_conn, "bp_export", {"blueprint": blueprint, "graphs": [], "include_pins": True}, timeout=_LARGE)
+        if not spec.get("success"):
+            return spec
+        return {"success": True, **bp_analysis.review(spec, tick_budget=tick_budget)}
