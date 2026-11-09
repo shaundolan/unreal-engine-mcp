@@ -33,10 +33,13 @@ def register(mcp, get_conn):
           {"op":"output","from":"mul","property":"EmissiveColor"}
         class: MaterialExpression* class with or without the prefix (Constant, Constant3Vector,
         ScalarParameter, VectorParameter, TextureSampleParameter2D, TextureCoordinate, Multiply,
-        Add, Lerp, Fresnel, Panner, Time, Sine, ...). Outputs: BaseColor, Metallic, Specular,
-        Roughness, EmissiveColor, Opacity, OpacityMask, Normal, AmbientOcclusion,
-        WorldPositionOffset. Pin names: "" = default; multi-output nodes use "R","G","B","A" or
-        "RGB"; inputs like "A","B","Alpha","UVs","Exponent".
+        Add, Lerp, Fresnel, Panner, Time, Sine, ...). Outputs (every UE 5.8 material input):
+        BaseColor, Metallic, Specular, Roughness, Anisotropy, EmissiveColor, Opacity, OpacityMask,
+        Normal, Tangent, WorldPositionOffset, SubsurfaceColor, ClearCoat, ClearCoatRoughness (=
+        CustomData0/1, for MSM_CLEAR_COAT), AmbientOcclusion, Refraction, PixelDepthOffset,
+        ShadingModel, Displacement, SurfaceThickness, CustomizedUV0..7, FrontMaterial (Substrate,
+        when r.Substrate is on), MaterialAttributes. Pin names: "" = default; multi-output nodes
+        use "R","G","B","A" or "RGB"; inputs like "A","B","Alpha","UVs","Exponent".
         """
         return run_editor_script(get_conn, "material_edit", {
             "path": path, "operations": operations or [], "create": create, "clear": clear,

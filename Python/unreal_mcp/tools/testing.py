@@ -6,11 +6,39 @@ ticking, so the server sleeps between short commands instead of blocking the gam
 
 from __future__ import annotations
 
+import re
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 from . import call
+from .observation import capture_png
 from .python_exec import run_editor_script, run_python
+
+SPAWN_KEYS = ("location", "rotation", "scale", "properties", "label", "name", "possess", "player", "collision",
+              "destroy_previous")
+
+
+def default_capture_dir() -> Path:
+    return Path(tempfile.gettempdir()) / "unreal_mcp" / "captures"
+
+
+def spawn_params(cls: str, opts: dict[str, Any]) -> dict[str, Any]:
+    return {"class": cls, **{k: opts[k] for k in SPAWN_KEYS if opts.get(k) is not None}}
+
+
+def run_capture_step(get_conn, step: dict[str, Any], capture_dir: Path) -> dict[str, Any]:
+    """{"capture": "name", "width": 1600, "height": 900}: the PIE frame as <capture_dir>/<name>.png."""
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", str(step["capture"]) or "capture")
+    w, h = int(step.get("width") or 0), int(step.get("height") or 0)
+    r = capture_png(get_conn, max_width=max(w, 8192), source="pie", width=w, height=h)
+    if not r.get("success"):
+        return {"ok": False, "error": r.get("error")}
+    capture_dir.mkdir(parents=True, exist_ok=True)
+    path = capture_dir / (name if name.endswith(".png") else f"{name}.png")
+    path.write_bytes(r["png"])
+    return {"ok": True, "capture": str(path), "width": r.get("width"), "height": r.get("height")}
 
 LOG_TYPES = ("log_contains", "log_absent", "no_errors")
 _POLL_S = 0.25
@@ -182,11 +210,33 @@ def _log_assertion(a: dict[str, Any], index: int, entries: list[dict[str, Any]])
     return rec
 
 
-def _run_steps(get_conn, steps: list[dict[str, Any]], sleep) -> list[dict[str, Any]]:
+def _run_steps(get_conn, steps: list[dict[str, Any]], sleep,
+               capture_dir: Path | None = None) -> list[dict[str, Any]]:
     """Timeline inside a running PIE session: wait / do (optionally repeated) / check."""
     out = []
     for i, step in enumerate(steps):
         rec: dict[str, Any] = {"step": i}
+        if "spawn" in step:
+            r = call(get_conn, "spawn_in_pie", spawn_params(step["spawn"], step))
+            rec.update(ok=bool(r.get("success")), **{k: v for k, v in r.items() if k != "success"})
+            if not rec["ok"]:
+                out.append(rec)
+                return out
+            out.append(rec)
+            continue
+        if "possess" in step:
+            r = call(get_conn, "pie_possess", {"target": step["possess"], "player": int(step.get("player", 0)),
+                                               "destroy_previous": bool(step.get("destroy_previous", False))})
+            rec.update(ok=bool(r.get("success")), **{k: v for k, v in r.items() if k != "success"})
+            if not rec["ok"]:
+                out.append(rec)
+                return out
+            out.append(rec)
+            continue
+        if "capture" in step:
+            rec.update(run_capture_step(get_conn, step, capture_dir or default_capture_dir()))
+            out.append(rec)
+            continue
         if "wait_s" in step:
             sleep(float(step["wait_s"]))
             rec.update(ok=True, waited_s=step["wait_s"])
@@ -243,14 +293,15 @@ def _run_steps(get_conn, steps: list[dict[str, Any]], sleep) -> list[dict[str, A
             rec.update(ok=all(a.get("passed") for a in r["assertions"]), assertions=r["assertions"])
         else:
             rec.update(ok=False, error="step needs one of wait_s, do, until, check, press, hold, axis, look, "
-                       "release_all, frame_stats")
+                       "release_all, frame_stats, spawn, possess, capture")
         out.append(rec)
     return out
 
 
 def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float = 3.0,
                  start_timeout_s: float = 30.0, stop: bool = True,
-                 sleep=time.sleep, steps: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                 sleep=time.sleep, steps: list[dict[str, Any]] | None = None, width: int = 1280,
+                 height: int = 720, mode: str = "new_window", capture_dir: str = "") -> dict[str, Any]:
     world_asserts = [(i, a) for i, a in enumerate(assertions) if a.get("type") not in LOG_TYPES]
     log_asserts = [(i, a) for i, a in enumerate(assertions) if a.get("type") in LOG_TYPES]
 
@@ -262,7 +313,10 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
 
     nav_ready, nav_rebuilt = _wait_for_navigation(get_conn, 60.0, sleep)
     since = call(get_conn, "editor_log", {"lines": 1}).get("last_seq", 0)
-    started = call(get_conn, "editor_action", {"action": "pie_start"})
+    start: dict[str, Any] = {"action": "pie_start", "mode": mode}
+    if width and height:
+        start.update(width=int(width), height=int(height))  # a fixed render size: offscreen PIE windows are unreliable
+    started = call(get_conn, "editor_action", start)
     if not started.get("success"):
         return started
     try:
@@ -270,7 +324,7 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
             return {"success": False, "error": f"PIE did not start within {start_timeout_s}s "
                     "(compile errors? check editor_log)"}
         sleep(duration_s)
-        timeline = _run_steps(get_conn, steps, sleep) if steps else []
+        timeline = _run_steps(get_conn, steps, sleep, Path(capture_dir) if capture_dir else None) if steps else []
         results: list[dict[str, Any]] = []
         if world_asserts:
             r = run_editor_script(get_conn, "pie_assert", {"assertions": [a for _, a in world_asserts]})
@@ -301,7 +355,8 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
 def register(mcp, get_conn):
     @mcp.tool()
     def pie_test(assertions: list[dict[str, Any]] | None = None, duration_s: float = 3.0, stop: bool = True,
-                 steps: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                 steps: list[dict[str, Any]] | None = None, width: int = 1280, height: int = 720,
+                 mode: str = "new_window", capture_dir: str = "") -> dict[str, Any]:
         """Play the current level in PIE for duration_s, then check assertions. The runtime proof
         that gameplay work actually works. Requires the level to compile and run.
 
@@ -336,11 +391,45 @@ def register(mcp, get_conn):
         Frame timings:
           {"frame_stats": 120}  or  {"frame_stats": 300, "max_p95_ms": 33.3, "min_fps": 30}
             -> frame/game/render/rhi/gpu ms (avg, p95, p99, min, max) and fps_avg; limits fail the step.
+        Spawning, possession and screenshots in the PIE world:
+          {"spawn": "/Game/BP_Car", "location": [0,0,100], "rotation": [0,90,0], "label": "Car",
+           "properties": {"Speed": 900}, "possess": true}   (properties are set BEFORE BeginPlay)
+          {"possess": "Car"}                         (player 0 possesses that pawn; "player": n)
+          {"capture": "after_jump", "width": 1600, "height": 900}  (PNG in capture_dir; path in result)
+        PIE renders at width x height (default 1280x720, exact even in an offscreen editor); mode
+        "new_window" or "viewport". capture_dir defaults to <tmp>/unreal_mcp/captures.
         The final `assertions` run after the timeline. Returns passed (bool), per-step results,
         per-assertion results with actual values, and navmesh_repaired=true when NavMesh had to be
         rebuilt before play.
         """
-        return run_pie_test(get_conn, assertions or [], duration_s=duration_s, stop=stop, steps=steps)
+        return run_pie_test(get_conn, assertions or [], duration_s=duration_s, stop=stop, steps=steps,
+                            width=width, height=height, mode=mode, capture_dir=capture_dir)
+
+    @mcp.tool()
+    def spawn_in_pie(actor_class: str, location: list[float] | None = None, rotation: list[float] | None = None,
+                     scale: Any = None, properties: dict[str, Any] | None = None, label: str = "",
+                     possess: bool = False, player: int = 0, collision: str = "always") -> dict[str, Any]:
+        """Spawn an actor of any class into the RUNNING PIE world (start PIE with editor_action pie_start).
+
+        actor_class: Blueprint asset "/Game/BP_Car", class path "/Script/Engine.StaticMeshActor" or a
+        native class name. rotation is [pitch, yaw, roll]; scale a number or [x, y, z].
+        properties {"Speed": 900, "CharacterMovement.MaxWalkSpeed": 300} are set BEFORE construction
+        scripts and BeginPlay (deferred spawn: what Python's begin_deferred_actor_spawn_from_class cannot
+        finish). Paths that only exist after construction (Blueprint-added components) are set right
+        after it and listed in properties_set_after_construction.
+        possess=true makes player `player` possess it (a Pawn). collision: always | adjust | dont_spawn.
+        Returns name, label, class, location, has_begun_play, properties_set."""
+        return call(get_conn, "spawn_in_pie", spawn_params(actor_class, {
+            "location": location, "rotation": rotation, "scale": scale, "properties": properties,
+            "label": label or None, "possess": possess, "player": player, "collision": collision}))
+
+    @mcp.tool()
+    def pie_possess(target: str, player: int = 0, destroy_previous: bool = False) -> dict[str, Any]:
+        """In a running PIE session, make player `player` possess the pawn labelled or named `target`
+        (its AI controller lets go). destroy_previous removes the pawn the player had before.
+        Returns possessed, controller, previous_pawn."""
+        return call(get_conn, "pie_possess", {"target": target, "player": player,
+                                              "destroy_previous": destroy_previous})
 
     @mcp.tool()
     def pie_input(key: str = "", action: str = "", mode: str = "press", value: Any = None,

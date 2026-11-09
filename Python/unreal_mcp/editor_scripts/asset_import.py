@@ -14,7 +14,7 @@ def _import():
     for f in files:
         if not _os.path.isfile(f):
             raise FileNotFoundError(f"{f} does not exist on the editor machine")
-    tasks, existing = [], {}
+    tasks, existing, released = [], {}, {}
     for f in files:
         t = unreal.AssetImportTask()
         t.set_editor_property("filename", f)
@@ -26,7 +26,11 @@ def _import():
         if ARGS.get("destination_name") and len(files) == 1:
             t.set_editor_property("destination_name", ARGS["destination_name"])
             name = ARGS["destination_name"]
-        existing[f] = unreal.EditorAssetLibrary.does_asset_exist(f"{dest}/{name}")
+        target = f"{dest}/{sanitize_asset_name(name)}"
+        existing[f] = unreal.EditorAssetLibrary.does_asset_exist(target)
+        if not existing[f]:
+            # A force-deleted asset at this path may still be in memory: the importer would find it and refuse.
+            released[f] = release_stale_path(target)
         tasks.append(t)
     unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks(tasks)
     out = []
@@ -35,6 +39,8 @@ def _import():
         o = {"file": f, "imported": paths, "ok": bool(paths)}
         if existing[f]:
             o["replaced" if replace else "existed"] = True
+        if released.get(f):
+            o["released_stale"] = released[f]
         if not paths and existing[f] and not replace:
             o["error"] = "an asset with this name already exists; pass replace_existing=true"
         out.append(o)
