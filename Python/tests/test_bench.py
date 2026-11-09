@@ -12,9 +12,19 @@ from unreal_mcp import bench
 TASKS = bench.load_tasks()
 
 
+@pytest.fixture(scope="module")
+def gen3d_server():
+    from gen3d_mock import MockGen3D
+    srv = MockGen3D()  # the real servers/gen3d app with the mock backend (gen3d-* tasks)
+    yield srv
+    srv.close()
+
+
 @pytest.fixture
-def editor(fake, ue, tools, monkeypatch):  # noqa: F811
+def editor(fake, ue, tools, monkeypatch, gen3d_server, tmp_path):  # noqa: F811
     """Fake editor with engine basic shapes and a PIE that spawns a pawn at the PlayerStart."""
+    monkeypatch.setenv("UNREAL_MCP_GEN3D_URL", gen3d_server.url)
+    monkeypatch.setenv("UNREAL_MCP_WORK_DIR", str(tmp_path / "work"))
     state = ue._state
     for shape in ("Cube", "Cylinder", "Plane", "Sphere"):
         ue.register_asset(ue.StaticMesh(shape, f"/Engine/BasicShapes/{shape}.{shape}"))
@@ -125,6 +135,9 @@ MUTATIONS = {  # near-miss solutions the checkers must reject
     "perf-shadow-budget": lambda t: t.solution[0]["args"]["operations"].pop(),
     "anim-blendspace-locomotion": lambda t: t.solution[0]["args"]["operations"][0]["samples"][2].update(x=400),
     "gas-heal-effect": lambda t: t.solution[0]["args"]["operations"][0]["modifiers"][0].update(magnitude=20),
+    "gen3d-barrel-prop": lambda t: t.solution[0]["args"].update(height_cm=120),
+    "gen3d-character-walk": lambda t: t.solution[1]["args"].update(
+        animations=["/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle"]),  # idles instead of walking
 }
 
 

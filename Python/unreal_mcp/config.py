@@ -17,6 +17,8 @@ UNREAL_MCP_EPIC_MODE   "meta" (default): epic_list_toolsets / epic_describe_tool
                        lazily; "expand": also register every Epic toolset tool as its own prefixed tool at startup
 UNREAL_MCP_EPIC_TOOLSETS  expand mode: comma-separated, case-insensitive substrings of the toolsets to expand
                        (default: all except UnrealMCP.*, which this server already provides natively)
+UNREAL_MCP_GEN3D_URL   Local text/image->3D server for mesh_generate (default http://127.0.0.1:8765)
+UNREAL_MCP_GEN3D_TOKEN Bearer token of that server (its --token), if it has one
 """
 
 from __future__ import annotations
@@ -45,6 +47,8 @@ class Settings:
     epic_prefix: str = "epic_"
     epic_mode: str = "meta"
     epic_toolsets: tuple[str, ...] = ()
+    gen3d_url: str = "http://127.0.0.1:8765"
+    gen3d_token: str | None = None
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -70,6 +74,8 @@ class Settings:
             epic_prefix=e.get("UNREAL_MCP_EPIC_PREFIX", "epic_"),
             epic_mode=epic_mode,
             epic_toolsets=tuple(t.strip() for t in e.get("UNREAL_MCP_EPIC_TOOLSETS", "").split(",") if t.strip()),
+            gen3d_url=e.get("UNREAL_MCP_GEN3D_URL") or "http://127.0.0.1:8765",
+            gen3d_token=e.get("UNREAL_MCP_GEN3D_TOKEN") or None,
         )
 
 

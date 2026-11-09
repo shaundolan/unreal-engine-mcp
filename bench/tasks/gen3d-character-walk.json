@@ -1,0 +1,72 @@
+{
+  "id": "gen3d-character-walk",
+  "domain": "generation",
+  "title": "Character from an image, walking with the Mannequin animations",
+  "prompt": "Generate a 3D character from the image {bench}/assets/character_tpose.png (a figure in a T pose) with mesh_generate, 180 cm tall, imported as {root}/SM_Hero. Rig it with auto_rig as the skeletal mesh {root}/SKM_Hero, retarget the template Mannequin's walk (/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd) onto it, and place it in the level as a SkeletalMeshActor labelled Hero that loops the retargeted walk.",
+  "requires": [
+    "gen3d",
+    "blender",
+    "asset:/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"
+  ],
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "asset_exists",
+        "path": "{root}/SKM_Hero",
+        "class": "SkeletalMesh"
+      },
+      {
+        "type": "python",
+        "name": "about 180 cm tall",
+        "expr": "abs(asset('{root}/SKM_Hero').get_bounds().box_extent.z * 2 - 180) < 10"
+      },
+      {
+        "type": "python",
+        "name": "Hero shows SKM_Hero",
+        "expr": "find('Hero') is not None and find('Hero').get_editor_property('skeletal_mesh_component').get_editor_property('skeletal_mesh_asset').get_path_name().startswith('{root}/SKM_Hero')"
+      },
+      {
+        "type": "python",
+        "name": "loops a walk retargeted to its skeleton",
+        "expr": "(lambda a: a is not None and 'Walk' in a.get_name() and a.get_skeleton() == asset('{root}/SKM_Hero').get_editor_property('skeleton'))(find('Hero').get_editor_property('skeletal_mesh_component').get_editor_property('animation_data').get_editor_property('anim_to_play'))"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "mesh_generate",
+      "args": {
+        "image_path": "{bench}/assets/character_tpose.png",
+        "subject": "character",
+        "height_cm": 180,
+        "target_tris": 8000,
+        "texture_size": 512,
+        "out_name": "SM_Hero",
+        "destination": "{root}",
+        "collision": "none",
+        "lods": 0,
+        "show_preview": false
+      }
+    },
+    {
+      "tool": "auto_rig",
+      "args": {
+        "mesh": "{root}/SM_Hero",
+        "type": "humanoid",
+        "out_name": "SKM_Hero",
+        "destination": "{root}",
+        "animations": [
+          "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd"
+        ],
+        "place_actor": "Hero",
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "show_preview": false
+      }
+    }
+  ]
+}

@@ -896,4 +896,6 @@ def make_module() -> types.ModuleType:
     add_anim_gas(u)
     from fake_unreal_platform import add_platform
     add_platform(u)
+    from fake_unreal_gen3d import add_gen3d
+    add_gen3d(u)
     return u

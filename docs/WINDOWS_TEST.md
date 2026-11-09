@@ -183,6 +183,58 @@ cd Python; uv run python ..\scripts\epic_mcp_smoke.py --url http://127.0.0.1:856
       whether `bp_apply` through `call_tool` creates and compiles a Blueprint. For example: `toolset_name=UnrealMCP.Blueprint`,
       `tool_name=bp_apply`, `arguments={"blueprint":"/Game/Native/BP_T","create_parent":"Actor","operations":[{"op":"add_variable","name":"Score","type":"int"}]}`.
       Expected: `success: true` and `compile` status ok.
+## 9b. Local 3D generation on the 4090 (branch feat/gen3d)
+The generation server runs on this box and uses the GPU. The MCP server and the editor can be here or on Linux.
+
+Licences:
+- `triposr` (MIT) and `flux-schnell` (Apache-2.0) are commercial-safe.
+- Hunyuan3D 2.1 is **not licensed in the EU/UK**. See `servers/gen3d/README.md`, and skip it if you are there.
+
+1. Prerequisites: Python 3.11, plus the CUDA Toolkit 12.4 and the VS 2022 C++ build tools (already installed in step
+   0).
+2. Install TripoSR and the server dependencies:
+   ```powershell
+   cd C:\gen3d; py -3.11 -m venv venv; .\venv\Scripts\Activate.ps1
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+   pip install -r <repo>\servers\gen3d\requirements.txt
+   git clone https://github.com/VAST-AI-Research/TripoSR.git; pip install -r TripoSR\requirements.txt
+   $env:TRIPOSR_DIR = "C:\gen3d\TripoSR"
+   huggingface-cli login     # accept the FLUX.1-schnell terms on huggingface.co first
+   ```
+3. Start it. The first job downloads about 2 GB of TripoSR weights and about 33 GB of FLUX weights.
+   ```powershell
+   $env:GEN3D_TOKEN = "<random-secret>"
+   python <repo>\servers\gen3d\gen3d_server.py --backend triposr --t2i flux-schnell --host 0.0.0.0 --preload
+   ```
+   Note the peak VRAM in Task Manager. Expect about 6 GB for TripoSR and about 13 GB for FLUX with CPU offload.
+4. Point the MCP server at it.
+   - Same box: the defaults work.
+   - Another box: set `UNREAL_MCP_GEN3D_URL=http://<ip>:8765` and `UNREAL_MCP_GEN3D_TOKEN`, and allow TCP 8765 in
+     Windows Firewall (Private profile).
+5. Check:
+   - [ ] `gen3d_status` shows `triposr`, `MIT`, the GPU and its free VRAM.
+   - [ ] Run `mesh_generate(prompt="a wooden barrel with iron hoops", height_cm=90, out_name="SM_Barrel",
+     destination="/Game/Generated")`.
+     - Expect `success`, `size_cm[2]` ≈ 90 and a textured barrel in the viewport.
+     - Note `generation_s` and the total time.
+   - [ ] Run `mesh_generate(image_path="<repo>/bench/assets/character_tpose.png", subject="character",
+     height_cm=180, out_name="SM_Hero", collision="none", lods=0)`, then
+     `auto_rig(mesh="/Game/Generated/SM_Hero", place_actor="Hero")`.
+     - Needs the Mannequin first: `python scripts\install_mannequin.py`.
+     - Expect the IK Rig chains to include Spine, LeftArm and RightLeg.
+     - Expect `MF_Unarmed_Walk_Fwd_Hero` in `/Game/Characters/Generated/Anims`.
+     - Linux reference (mock backend, live 5.8.4): the IK Rig had 11 chains (Spine, Neck, Head, Left/Right
+       Leg, Foot, Clavicle, Arm). The skeleton root was clean (scale 1) because the rig ships as GLB.
+     - On D3D12, check that the root bone's local scale is 1. It shows on the skeleton's reference pose:
+       `skeleton.get_reference_pose().get_ref_bone_pose('root')`.
+   - [ ] PIE: Hero walks in place with the Mannequin walk. Take a `viewport_capture` of it, and add a light first:
+     a new level is black.
+     - Note whether it walks forwards, backwards or sideways.
+     - If not forwards, re-run `auto_rig` with `rotate=[0,0,180]` or `[0,0,90]` and report which worked.
+   - [ ] Bench: `uv run python -m unreal_mcp.bench run --agent solution --filter "gen3d-*"` passes 2/2.
+   - [ ] Optional: try other backends and record VRAM and quality for each.
+     - `--backend sf3d`: only for revenue under US$1M.
+     - `--backend hunyuan3d` with `backend_params={"texture": false}`: only outside the EU/UK.
 
 ## 10. Finish and report
 ```powershell
@@ -195,4 +247,5 @@ Paste back:
 - both bench scoreboards;
 - the step 6 results (the input effect, the frame_stats JSON, the Live Coding result);
 - the package time and launcher path;
+- the gen3d results from step 9b: timings, VRAM, walk direction, and the bench result (2/2);
 - anything surprising in `editor.log`.

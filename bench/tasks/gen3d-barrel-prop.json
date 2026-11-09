@@ -1,0 +1,73 @@
+{
+  "id": "gen3d-barrel-prop",
+  "domain": "generation",
+  "title": "Generate a 90 cm barrel prop with collision",
+  "prompt": "Generate a wooden barrel prop with a local 3D generation model (mesh_generate), 90 cm tall, as {root}/Props/SM_Barrel with collision, and place one at the origin labelled Barrel, resting on the ground (Z = 0).",
+  "requires": [
+    "gen3d",
+    "blender"
+  ],
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "asset_exists",
+        "path": "{root}/Props/SM_Barrel",
+        "class": "StaticMesh"
+      },
+      {
+        "type": "python",
+        "name": "90 cm tall (+-3)",
+        "expr": "abs(asset('{root}/Props/SM_Barrel').get_bounds().box_extent.z * 2 - 90) < 3"
+      },
+      {
+        "type": "python",
+        "name": "pivot at the bottom",
+        "expr": "abs((lambda b: b.origin.z - b.box_extent.z)(asset('{root}/Props/SM_Barrel').get_bounds())) < 1"
+      },
+      {
+        "type": "python",
+        "name": "has collision",
+        "expr": "(lambda s, m: s.get_simple_collision_count(m) + s.get_convex_collision_count(m) > 0)(unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem), asset('{root}/Props/SM_Barrel'))"
+      },
+      {
+        "type": "python",
+        "name": "barrel placed on the ground",
+        "expr": "find('Barrel') is not None and abs(find('Barrel').get_actor_location().z) < 1 and find('Barrel').get_editor_property('static_mesh_component').get_editor_property('static_mesh').get_path_name().startswith('{root}/Props/SM_Barrel')"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "mesh_generate",
+      "args": {
+        "prompt": "a wooden barrel with dark iron hoops",
+        "height_cm": 90,
+        "target_tris": 3000,
+        "texture_size": 512,
+        "out_name": "SM_Barrel",
+        "destination": "{root}/Props",
+        "collision": "convex",
+        "lods": 2,
+        "show_preview": false
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/Props/SM_Barrel.SM_Barrel",
+            "label": "Barrel",
+            "location": [
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
