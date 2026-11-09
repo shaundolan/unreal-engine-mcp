@@ -14,7 +14,10 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "GameFramework/Actor.h"
+#include "K2Node_CallArrayFunction.h"
+#include "K2Node_CallDataTableFunction.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_CommutativeAssociativeBinaryOperator.h"
 #include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
@@ -22,6 +25,7 @@
 #include "K2Node_ExecutionSequence.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
+#include "K2Node_GetArrayItem.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_MacroInstance.h"
 #include "K2Node_Self.h"
@@ -341,6 +345,13 @@ static UEdGraphPin* FindPin(UEdGraphNode* N, const FString& InName, EEdGraphPinD
 		DC && Dir != EGPD_Input && (Want == TEXT("as") || Want == TEXT("result") || Want == TEXT("castresult")))
 	{
 		return DC->GetCastResultPin();
+	}
+	// The "Get" array node's pins are Array / Dimension 1 / Output; accept Array_Get's parameter names.
+	if (Cast<UK2Node_GetArrayItem>(N))
+	{
+		const TCHAR* ArrayAlias = Want == TEXT("targetarray") ? TEXT("array")
+			: (Want == TEXT("index") ? TEXT("dimension1") : ((Want == TEXT("item") || Want == TEXT("returnvalue")) ? TEXT("output") : nullptr));
+		if (ArrayAlias) return FindPinExact(N, ArrayAlias, Dir);
 	}
 	// Friendly aliases for exec and common pins.
 	FString Alias;
@@ -802,6 +813,8 @@ static bool WireLiteral(UEdGraphPin* Pin, const TSharedPtr<FJsonValue>& Value, F
 		Err = FString::Printf(TEXT("could not wire a literal into by-ref pin %s"), *Pin->PinName.ToString());
 		return false;
 	}
+	Lit->NodeConnectionListChanged();
+	Owner->NodeConnectionListChanged();
 	return true;
 }
 
@@ -885,6 +898,57 @@ static UEdGraph* StandardMacro(const FString& Name)
 		if (G && Norm(G->GetName()) == Norm(Name)) return G;
 	}
 	return nullptr;
+}
+
+/** The node class the editor's action menu spawns for a function (UBlueprintFunctionNodeSpawner::Create).
+ *  A plain K2Node_CallFunction for an ArrayParm function (Array_Length, Array_Add, ...) never resolves its
+ *  wildcard pins, so a connected array stays "wildcard" and the Blueprint fails to compile. */
+static TSubclassOf<UK2Node_CallFunction> CallNodeClassFor(const UFunction* F)
+{
+	if (F->HasMetaData(FBlueprintMetadata::MD_CommutativeAssociativeBinaryOperator) && F->HasAllFunctionFlags(FUNC_BlueprintPure))
+	{
+		return UK2Node_CommutativeAssociativeBinaryOperator::StaticClass();
+	}
+	if (F->HasMetaData(FBlueprintMetadata::MD_DataTablePin)) return UK2Node_CallDataTableFunction::StaticClass();
+	if (F->HasMetaData(FBlueprintMetadata::MD_ArrayParam)) return UK2Node_CallArrayFunction::StaticClass();
+	return UK2Node_CallFunction::StaticClass();
+}
+
+static UK2Node_CallFunction* NewCallFunctionNode(UEdGraph* G, UFunction* F)
+{
+	// FGraphNodeCreator, with the node class chosen at runtime.
+	G->Modify();
+	UK2Node_CallFunction* N = NewObject<UK2Node_CallFunction>(G, CallNodeClassFor(F), NAME_None, RF_Transactional);
+	G->AddNode(N, false, false);
+	N->CreateNewGuid();
+	N->SetFromFunction(F);
+	N->PostPlacedNewNode();
+	if (N->Pins.Num() == 0) N->AllocateDefaultPins();
+	return N;
+}
+
+/** True if any pin of N is still an unresolved wildcard while linked (it would fail to compile). */
+static UEdGraphPin* LinkedWildcardPin(UEdGraphNode* N)
+{
+	for (UEdGraphPin* P : N->Pins)
+	{
+		if (P && !P->bOrphanedPin && P->LinkedTo.Num() > 0 && P->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard) return P;
+	}
+	return nullptr;
+}
+
+/** What the graph editor does after a drag-connect or break (FDragConnection::DroppedOnPin): the pin-level
+ *  PinConnectionListChanged already ran inside the schema; the node-level notification makes macro instances
+ *  (ForEachLoop, ...) reconstruct with their resolved wildcard type. If a linked pin is still a wildcard after
+ *  that, reconstruct once more so PostReconstructNode re-propagates from the links (array nodes do). */
+static void NotifyConnectionChanged(UEdGraphNode* N)
+{
+	if (!N || !IsValid(N)) return;
+	N->NodeConnectionListChanged();
+	if (UK2Node* K = Cast<UK2Node>(N); K && LinkedWildcardPin(K))
+	{
+		K->ReconstructNode();
+	}
 }
 
 /** Creates (or, for events, reuses) a node from an add_node op. */
@@ -983,7 +1047,14 @@ static UEdGraphNode* CreateNodeFromOp(FApplyContext& Ctx, UEdGraph* G, const TSh
 			F = FindCallable(BP, Str(TEXT("function")), Str(TEXT("class")), Err);
 		}
 		if (!F) return nullptr;
-		UK2Node_CallFunction* N = NewNode<UK2Node_CallFunction>(G, [&](UK2Node_CallFunction* C) { C->SetFromFunction(F); });
+		// Array_Get is BlueprintInternalUseOnly: the editor's "Get" node is K2Node_GetArrayItem.
+		if (F->GetOwnerClass() == UKismetArrayLibrary::StaticClass() && F->GetFName() == TEXT("Array_Get"))
+		{
+			UEdGraphNode* N = NewNode<UK2Node_GetArrayItem>(G, [](UK2Node_GetArrayItem*) {});
+			PlaceNode(Ctx, G, N, Op);
+			return N;
+		}
+		UK2Node_CallFunction* N = NewCallFunctionNode(G, F);
 		PlaceNode(Ctx, G, N, Op);
 		return N;
 	}
@@ -1322,6 +1393,8 @@ static bool OpConnect(FApplyContext& Ctx, const TSharedPtr<FJsonObject>& Op, FSt
 		Err = FString::Printf(TEXT("connection %s -> %s failed: %s"), *From, *To, *Resp.Message.ToString());
 		return false;
 	}
+	NotifyConnectionChanged(A);
+	NotifyConnectionChanged(B);
 	return true;
 }
 
@@ -1353,11 +1426,11 @@ static bool OpDisconnect(FApplyContext& Ctx, const TSharedPtr<FJsonObject>& Op, 
 			return false;
 		}
 		B->Modify();
-		PA->BreakLinkTo(PB);
+		GetDefault<UEdGraphSchema_K2>()->BreakSinglePinLink(PA, PB); // notifies both nodes (wildcards revert)
 	}
 	else
 	{
-		PA->BreakAllPinLinks(true);
+		GetDefault<UEdGraphSchema_K2>()->BreakPinLinks(*PA, true);
 	}
 	return true;
 }
@@ -1540,6 +1613,20 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 					"Wire something into %s.%s"), *Pair.Key, *N->GetNodeTitle(ENodeTitleType::ListView).ToString(), *Pair.Key, *P->PinName.ToString()));
 				break;
 			}
+		}
+	}
+
+	// A linked pin that is still a wildcard means a type never propagated (the compile error that
+	// follows is vague: "The type of X is undetermined"). Name the node and pin.
+	for (const auto& Pair : Ctx.Aliases)
+	{
+		UEdGraphNode* N = Pair.Value;
+		if (!N || !IsValid(N) || !N->GetGraph()) continue;
+		if (const UEdGraphPin* P = LinkedWildcardPin(N))
+		{
+			Warnings.Add(FString::Printf(TEXT("'%s' (%s) pin %s is still a wildcard although it is connected: connect a typed pin "
+				"(e.g. an array variable) to it, or use a typed function"), *Pair.Key, *N->GetNodeTitle(ENodeTitleType::ListView).ToString(),
+				*P->PinName.ToString()));
 		}
 	}
 
