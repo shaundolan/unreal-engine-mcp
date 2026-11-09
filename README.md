@@ -34,7 +34,7 @@
 | **VFX, cinematics, data** | `niagara_edit` (place systems, set User parameters), `sequence_edit` (Level Sequences: cameras, bindings, transform keys, camera cuts), `data_table` (read / write rows) |
 | **Blueprints, UI, AI** | `bp_export` / `bp_apply` (whole Blueprints as a JSON graph spec: variables, components, functions, nodes, pins and links, applied atomically and compiled with structured errors; dry run), `widget_export` / `widget_apply` (UMG widget trees with canvas anchors and slots), `bt_export` / `bt_build` (Blackboard keys and Behavior Trees from one nested spec) |
 | **Gameplay & code** | `enhanced_input` (actions + mapping contexts with modifiers), `game_setup` (level/project game mode, default maps), `cpp_source` (read/write project C++, sandboxed to Source/Plugins/Config), `live_coding_compile` (compile and get parsed errors back), `performance_audit`, `package_project` / `package_status` (background UAT BuildCookRun to a standalone build) |
-| **Runtime verification** | `pie_test`: play the level in PIE, then assert on actors, properties, distances, Python expressions and the log (e.g. "no errors", "player health ≥ 100") |
+| **Runtime verification** | `pie_test`: play the level in PIE, drive it with real key / Enhanced Input action presses, holds, axes and mouse look, measure frame/game/GPU times, then assert on actors, properties, distances, Python expressions and the log (e.g. "no errors", "player health ≥ 100"). `pie_input` and `frame_stats` work in a running PIE session too |
 | **Blueprint graphs** | `add_node` (23+ node types), `connect_nodes`, `delete_node`, `set_node_property`, `add_event_node`, `create_variable`, `set_blueprint_variable_properties`, `create_function`, `add_function_input/output`, `rename_function`, `delete_function` |
 | **Blueprint assets** | `create_blueprint`, `add_component_to_blueprint`, `set_static_mesh_properties`, `set_physics_properties`, `compile_blueprint`, `read_blueprint_content`, `analyze_blueprint_graph`, `get_blueprint_variable_details`, `get_blueprint_function_details` |
 | **Actors & materials** | `get_actors_in_level`, `find_actors_by_name`, `set_actor_transform`, `delete_actor`, `spawn_physics_blueprint_actor`, `get_available_materials`, `apply_material_to_actor/blueprint`, `set_mesh_material_color`, `get_actor_material_info` |
@@ -86,7 +86,7 @@ cd Python && uv sync --group dev && uv run pytest && uv run ruff check .
 ```
 The tests run against `tests/fake_unreal.py`, a fake of the plugin's wire protocol, so they don't need an engine.
 Against a real editor: `uv run python ../scripts/smoke.py`. Build and test steps for Windows are in
-[docs/WINDOWS_TEST.md](docs/WINDOWS_TEST.md). After editing the plugin, run `scripts/sync_plugin.sh` (or `.ps1`) to update the sample project's copy.
+[docs/WINDOWS_TEST.md](docs/WINDOWS_TEST.md). The plugin dev loop is `scripts/ue_linux.sh` or `scripts\ue_windows.ps1`: build, launch, quit and rebuild, per `UNREAL_MCP_PORT`. After editing the plugin, run `scripts/sync_plugin.sh` (or `.ps1`) to update the sample project's copy.
 
 Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 

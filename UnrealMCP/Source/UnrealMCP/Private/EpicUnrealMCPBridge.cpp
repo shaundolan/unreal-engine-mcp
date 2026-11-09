@@ -21,6 +21,7 @@
 #include "Commands/MCPWorldCommands.h"
 #include "Commands/EpicUnrealMCPObservationCommands.h"
 #include "Commands/MCPAuthoringCommands.h"
+#include "Commands/MCPPlayCommands.h"
 
 DEFINE_LOG_CATEGORY(LogUnrealMCP);
 
@@ -88,6 +89,7 @@ void UEpicUnrealMCPBridge::Initialize(FSubsystemCollectionBase& Collection)
 void UEpicUnrealMCPBridge::Deinitialize()
 {
 	StopServer();
+	FMCPPlayCommands::Shutdown();
 	Super::Deinitialize();
 }
 
@@ -148,6 +150,7 @@ void UEpicUnrealMCPBridge::RegisterAllCommands()
 	FMCPWidgetAuthoring::Register(R);
 	FMCPBehaviorTreeAuthoring::Register(R);
 	FMCPWorldCommands::Register(R);
+	FMCPPlayCommands::Register(R);
 
 	UE_LOG(LogUnrealMCP, Display, TEXT("UnrealMCP: %d commands registered"), R.Commands.Num());
 }

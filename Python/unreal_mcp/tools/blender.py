@@ -8,6 +8,7 @@ Free 3D asset pipeline: the agent writes bpy code using the prelude helpers
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -20,13 +21,28 @@ from ..config import Settings
 from .assets import import_assets
 
 _OUTPUT_TAIL = 4000
+_IS_WINDOWS = os.name == "nt"
+
+
+def _windows_blender_installs() -> list[Path]:
+    """The Blender installer doesn't add itself to PATH on Windows; look where it puts itself (newest first)."""
+    roots = [os.environ.get(v) for v in ("ProgramFiles", "ProgramW6432", "LOCALAPPDATA")]
+    found = []
+    for root in filter(None, roots):
+        found += Path(root).glob("Blender Foundation/Blender*/blender.exe")
+        found += Path(root).glob("Programs/Blender Foundation/Blender*/blender.exe")
+    return sorted(set(found), key=lambda p: p.parent.name, reverse=True)
 
 
 def resolve_blender(settings: Settings) -> str | None:
     p = Path(settings.blender_path).expanduser()
     if p.is_file():
         return str(p)
-    return shutil.which(settings.blender_path)
+    found = shutil.which(settings.blender_path)
+    if found or not _IS_WINDOWS or settings.blender_path != "blender":
+        return found
+    installs = _windows_blender_installs()
+    return str(installs[0]) if installs else None
 
 
 def run_blender(code: str, args: dict[str, Any] | None = None, timeout_s: float = 300.0,
@@ -41,15 +57,18 @@ def run_blender(code: str, args: dict[str, Any] | None = None, timeout_s: float 
     out_dir = run_dir / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
     prelude = run_dir / "prelude.py"
-    prelude.write_text(resources.files("unreal_mcp").joinpath("blender_prelude.py").read_text())
-    (run_dir / "user.py").write_text(code)
-    (run_dir / "args.json").write_text(json.dumps(args or {}))
+    # Explicit UTF-8 everywhere: Windows' default code page would mangle non-ASCII in scripts and JSON.
+    prelude.write_text(resources.files("unreal_mcp").joinpath("blender_prelude.py").read_text(encoding="utf-8"),
+                       encoding="utf-8")
+    (run_dir / "user.py").write_text(code, encoding="utf-8")
+    (run_dir / "args.json").write_text(json.dumps(args or {}), encoding="utf-8")
     result_file = run_dir / "result.json"
     cmd = [exe, "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(prelude), "--",
            str(result_file), str(out_dir), str(run_dir / "args.json"), str(run_dir / "user.py")]
     t0 = time.monotonic()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=run_dir)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=timeout_s, cwd=run_dir)
     except subprocess.TimeoutExpired:
         return {"success": False, "error": f"Blender did not finish within {timeout_s}s", "run_dir": str(run_dir)}
     except OSError as e:
@@ -60,7 +79,7 @@ def run_blender(code: str, args: dict[str, Any] | None = None, timeout_s: float 
     if not result_file.is_file():
         return {"success": False, "error": f"Blender exited with code {proc.returncode} before the script "
                 "finished (see output_tail)", **base}
-    r = json.loads(result_file.read_text())
+    r = json.loads(result_file.read_text(encoding="utf-8"))
     for e in r.get("exports", []):
         p = Path(e["path"])
         e["bytes"] = p.stat().st_size if p.is_file() else 0
@@ -84,7 +103,8 @@ def register(mcp, get_conn):
                     "error": "Blender not found; install it or set UNREAL_MCP_BLENDER"}
         try:
             v = subprocess.run([exe, "-b", "--factory-startup", "--version"], capture_output=True,
-                               text=True, timeout=60).stdout.strip().splitlines()
+                               text=True, encoding="utf-8", errors="replace",
+                               timeout=60).stdout.strip().splitlines()
         except (OSError, subprocess.TimeoutExpired) as e:
             return {"success": False, "available": False, "path": exe, "error": str(e)}
         return {"success": True, "available": True, "path": exe, "version": v[0] if v else "unknown"}

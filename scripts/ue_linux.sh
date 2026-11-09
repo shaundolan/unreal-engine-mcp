@@ -1,41 +1,82 @@
 #!/usr/bin/env bash
-# Linux plugin dev loop for the sample project.
-#   scripts/ue_linux.sh build      sync plugin copy + compile (editor must be closed)
+# Linux plugin dev loop for the sample project (Windows: scripts/ue_windows.ps1).
+#   scripts/ue_linux.sh build      sync plugin copy + compile (this project's editor must be closed)
 #   scripts/ue_linux.sh launch     start the editor offscreen (no window) and wait until the MCP plugin answers ping
 #   scripts/ue_linux.sh launch-gui same, with a visible editor window
 # Offscreen is the default for automation: in UE 5.8.4 Linux/Vulkan a stale window swapchain
 # ("AcquireNextImage() failed due to the outdated swapchain") can deadlock the RHI/render/game threads.
-#   scripts/ue_linux.sh quit       close the editor over MCP (falls back to SIGTERM)
+#   scripts/ue_linux.sh quit       close the editor over MCP (falls back to SIGTERM of the editor this script started)
 #   scripts/ue_linux.sh rebuild    quit + build + launch
-# UE_PROJECT selects another .uproject (default: the sample project). UE_ROOT defaults to ~/Downloads/Linux_Unreal_Engine_5.8.4; logs go to $UE_LOG_DIR (default /tmp/unreal-mcp).
+# UE_PROJECT selects another .uproject (default: the sample project). UE_ROOT defaults to ~/Downloads/Linux_Unreal_Engine_5.8.4;
+# Logs (build.log, editor.log) and the editor pid file go to $UE_LOG_DIR (default /tmp/unreal-mcp/<port>).
+# UNREAL_MCP_PORT / UNREAL_MCP_TOKEN pick the editor: the launched editor listens there, and ping/quit only talk to it.
+# Several editors (one per port) can share a machine: quit only ever signals the PID this script started on that port,
+# never every UnrealEditor process, and launch refuses if the port answers or the project is already open elsewhere.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 UE_ROOT="${UE_ROOT:-$HOME/Downloads/Linux_Unreal_Engine_5.8.4}"
 PROJECT="${UE_PROJECT:-$REPO/FlopperamUnrealMCP/FlopperamUnrealMCP.uproject}"
-LOG_DIR="${UE_LOG_DIR:-/tmp/unreal-mcp}"
+PORT="${UNREAL_MCP_PORT:-55557}"
+export UNREAL_MCP_PORT="$PORT"
+LOG_DIR="${UE_LOG_DIR:-/tmp/unreal-mcp/$PORT}"
+PID_FILE="$LOG_DIR/editor.pid"
+EDITOR_LOG="$LOG_DIR/editor.log"
 mkdir -p "$LOG_DIR"
 
+# PIDs of editors that already have $PROJECT open (any port).
+project_editors() {
+  local p
+  for p in $(pgrep -x UnrealEditor 2>/dev/null || true); do
+    if tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -qF -- "$PROJECT"; then echo "$p"; fi
+  done
+}
+
+# UnrealConnection() reads UNREAL_MCP_HOST/PORT/TOKEN from the environment.
 ping_editor() {
   (cd "$REPO/Python" && timeout 12 uv run --quiet python -c "
-from unreal_mcp.connection import UnrealConnection; from unreal_mcp.config import Settings
-c = UnrealConnection(Settings()); c.MAX_CONNECT_ATTEMPTS = 1
+from unreal_mcp.connection import UnrealConnection
+c = UnrealConnection(); c.MAX_CONNECT_ATTEMPTS = 1
 r = c.send_command('ping', {}, timeout=8); raise SystemExit(0 if r.get('status') == 'success' else 1)" 2>/dev/null)
 }
 
+our_pid() {
+  local pid
+  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  # alive AND still an UnrealEditor (a stale pid file must never make us signal a recycled pid)
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q UnrealEditor; then
+    echo "$pid"
+  fi
+}
+
 do_quit() {
-  if ! pgrep -x UnrealEditor >/dev/null; then echo "editor not running"; return 0; fi
-  (cd "$REPO/Python" && timeout 20 uv run --quiet python -c "
-from unreal_mcp.connection import UnrealConnection; from unreal_mcp.config import Settings
-UnrealConnection(Settings()).send_command('execute_python', {'code': 'import unreal; unreal.SystemLibrary.quit_editor()'}, timeout=15)" || true)
-  for _ in $(seq 1 45); do pgrep -x UnrealEditor >/dev/null || { echo "editor closed"; return 0; }; sleep 2; done
-  echo "editor did not quit; sending SIGTERM"; pkill -TERM -x UnrealEditor || true; sleep 5
+  local pid
+  pid="$(our_pid)"
+  if ! ping_editor; then
+    if [ -z "$pid" ]; then echo "no editor on port $PORT"; return 0; fi
+  else
+    (cd "$REPO/Python" && timeout 20 uv run --quiet python -c "
+from unreal_mcp.connection import UnrealConnection
+UnrealConnection().send_command('execute_python', {'code': 'import unreal; unreal.SystemLibrary.quit_editor()'}, timeout=15)" || true)
+  fi
+  if [ -z "$pid" ]; then
+    # Not started by this script: we can only wait for the port to go quiet.
+    for _ in $(seq 1 45); do ping_editor || { echo "editor closed"; return 0; }; sleep 2; done
+    echo "editor on port $PORT did not quit (not started by this script, so not killing it)"; return 1
+  fi
+  for _ in $(seq 1 45); do kill -0 "$pid" 2>/dev/null || { echo "editor closed"; rm -f "$PID_FILE"; return 0; }; sleep 2; done
+  echo "editor did not quit; sending SIGTERM to $pid"; kill -TERM "$pid" 2>/dev/null || true; sleep 5; rm -f "$PID_FILE"
 }
 
 do_build() {
+  local open
+  open="$(project_editors)"
+  if [ -n "$open" ]; then echo "the project is open in editor pid(s) $(echo $open) - quit it first"; return 1; fi
   bash "$REPO/scripts/sync_plugin.sh" >/dev/null
+  # -NoHotReloadFromIDE: with ANY other editor running from the same engine, UBT otherwise builds a hot-reload
+  # libUnrealEditor-UnrealMCP-NNNN.so that UnrealEditor.modules never points to, so the next launch loads stale code.
   local log="$LOG_DIR/build.log"
   if "$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh" "$(basename "$PROJECT" .uproject)Editor" Linux Development \
-      -Project="$PROJECT" -WaitMutex >"$log" 2>&1; then
+      -Project="$PROJECT" -WaitMutex -NoHotReloadFromIDE >"$log" 2>&1; then
     echo "build ok ($(grep -c 'warning:' "$log" || true) warnings) -> $log"
   else
     echo "BUILD FAILED -> $log"; grep -E ": error|fatal error" "$log" | sed 's|.*/Source/UnrealMCP/||' | sort -u | head -40; return 1
@@ -45,12 +86,19 @@ do_build() {
 do_launch() {
   local mode=("-RenderOffscreen")
   [ "${1:-}" = "gui" ] && mode=()
-  if pgrep -x UnrealEditor >/dev/null; then echo "editor already running"; return 0; fi
-  setsid "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$PROJECT" -nosplash "${mode[@]}" -abslog="$LOG_DIR/editor.log" \
+  if ping_editor; then echo "an editor already answers on port $PORT"; return 0; fi
+  if [ -n "$(our_pid)" ]; then echo "editor $(our_pid) is still starting or hung; run quit first"; return 1; fi
+  local open
+  open="$(project_editors)"
+  if [ -n "$open" ]; then echo "the project is already open in editor pid(s) $(echo $open) on another port"; return 1; fi
+  UNREAL_MCP_PORT="$PORT" setsid "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$PROJECT" -nosplash "${mode[@]}" \
+    -abslog="$EDITOR_LOG" \
     "-ini:Engine:[/Script/PythonScriptPlugin.PythonScriptPluginSettings]:bDeveloperMode=True" >/dev/null 2>&1 &
+  local pid=$!
+  echo "$pid" >"$PID_FILE"
   for i in $(seq 1 180); do
-    if ping_editor; then sleep 10; echo "editor ready after ~$((i * 5))s"; return 0; fi
-    pgrep -x UnrealEditor >/dev/null || { echo "EDITOR EXITED"; tail -20 "$LOG_DIR/editor.log"; return 1; }
+    if ping_editor; then sleep 10; echo "editor $pid ready on port $PORT after ~$((i * 5))s"; return 0; fi
+    kill -0 "$pid" 2>/dev/null || { echo "EDITOR EXITED"; tail -20 "$EDITOR_LOG"; rm -f "$PID_FILE"; return 1; }
     sleep 5
   done
   echo "editor did not answer within 15 min"; return 1

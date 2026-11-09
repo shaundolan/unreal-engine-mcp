@@ -131,3 +131,87 @@ def test_pie_until_step_drives_until_condition(pie, ue, conn):  # noqa: F811
     assert r["steps"][0]["ok"] and r["steps"][0]["tries"] == 6 and hero.get_actor_location().x == 300
     assert r["steps"][1]["ok"] is False and "still false" in r["steps"][1]["error"]
     assert r["results"][0]["passed"] and r["passed"] is False
+
+
+def test_pie_input_steps_send_keys_and_actions(pie, fake, ue, conn):  # noqa: F811
+    _world(ue)
+    sent = []
+
+    def pie_input(p):
+        sent.append(p)
+        if p.get("key") == "Nope":
+            return {"success": False, "error": "unknown key 'Nope'"}
+        return {"key": p.get("key"), "action": p.get("action"), "mode": p.get("mode"), "pawn": "Hero"}
+
+    fake.on("pie_input", pie_input)
+    fake.on("frame_stats", lambda p: {"done": True, "frames": 3, "wanted": 3, "fps_avg": 125.0,
+                                      "frame_ms": {"avg": 8.0, "p95": 9.5}, "gpu_ms": {"avg": 4.0}})
+    waits = []
+    r = run_pie_test(lambda: conn, [], duration_s=0, sleep=waits.append, steps=[
+        {"press": "SpaceBar"},
+        {"hold": "W", "duration_s": 1.5, "async": True},
+        {"axis": "/Game/Input/IA_Move", "value": [0, 1], "duration_s": 2},
+        {"look": [5, -2], "duration_s": 0.5},
+        {"look": [1, 0], "action": "/Game/Input/IA_Look", "player": 1},
+        {"release_all": True},
+        {"frame_stats": 3, "max_p95_ms": 33.3, "min_fps": 30},
+        {"frame_stats": {"frames": 3}, "max_gpu_ms": 1.0},
+    ])
+    assert [s["ok"] for s in r["steps"]] == [True] * 7 + [False], r["steps"]
+    assert "gpu_ms.avg 4.0 > 1.0" in r["steps"][7]["error"] and r["passed"] is False
+    assert r["steps"][6]["frame_stats"]["fps_avg"] == 125.0 and "wanted" not in r["steps"][6]["frame_stats"]
+    assert r["steps"][0]["input"] == [{"key": "SpaceBar", "mode": "press", "pawn": "Hero"}]
+    inputs = [p for p in sent if p.get("mode") != "release_all"]
+    assert inputs[0] == {"key": "SpaceBar", "mode": "press", "duration_s": 0.1}
+    assert inputs[1] == {"key": "W", "mode": "hold", "duration_s": 1.5}
+    assert inputs[2] == {"action": "/Game/Input/IA_Move", "mode": "axis", "value": [0, 1], "duration_s": 2.0}
+    assert inputs[3] == {"key": "MouseX", "mode": "axis", "value": 5.0, "duration_s": 0.5}
+    assert inputs[4] == {"key": "MouseY", "mode": "axis", "value": -2.0, "duration_s": 0.5}
+    assert inputs[5] == {"action": "/Game/Input/IA_Look", "mode": "axis", "value": [1.0, 0.0],
+                         "duration_s": 0.5, "player": 1}
+    assert [p["mode"] for p in sent].count("release_all") == 1
+    # blocking steps wait for their input to finish; the async hold does not
+    assert 0.1 + 0.05 in waits and 2.0 + 0.05 in waits and 1.5 + 0.05 not in waits
+
+    bad = run_pie_test(lambda: conn, [], duration_s=0, sleep=lambda s: None,
+                       steps=[{"press": "Nope"}, {"press": "SpaceBar"}])
+    assert bad["passed"] is False and len(bad["steps"]) == 1 and "unknown key" in bad["steps"][0]["error"]
+
+
+def test_pie_test_reports_navmesh_repair(pie, ue, conn, monkeypatch):  # noqa: F811
+    from unreal_mcp.tools import testing
+    _world(ue)
+    probes = iter([{"volumes": 1, "empty": 1, "building": False}, {"volumes": 1, "empty": 0, "building": True},
+                   {"volumes": 1, "empty": 0, "building": False}])
+    rebuild_requested = []
+
+    def fake_run_python(get_conn, code, timeout_s=30):
+        rebuild_requested.append("if empty and True" in code)
+        return {"success": True, "result": next(probes)}
+
+    monkeypatch.setattr(testing, "run_python", fake_run_python)
+    r = run_pie_test(lambda: conn, [{"type": "actor_exists", "label": "Hero"}], duration_s=0, sleep=lambda s: None)
+    assert r["passed"] and r["navigation_ready"] is True and r["navmesh_repaired"] is True
+    assert rebuild_requested == [True, False, False]  # rebuilt once, then only polled
+
+    probes = iter([{"volumes": 1, "empty": 0, "building": False}])
+    r = run_pie_test(lambda: conn, [], duration_s=0, sleep=lambda s: None)
+    assert r["navigation_ready"] is True and r["navmesh_repaired"] is False
+
+
+def test_frame_stats_and_pie_input_tools(fake, tools, monkeypatch):
+    from unreal_mcp.tools import testing
+    monkeypatch.setattr(testing.time, "sleep", lambda s: None)
+    reads = iter([{"done": False, "frames": 10}, {"done": True, "frames": 60, "frame_ms": {"avg": 16.7}}])
+    seen = []
+
+    def frame_stats(p):
+        seen.append(p["action"])
+        return {"frames": p.get("frames")} if p["action"] == "start" else next(reads)
+
+    fake.on("frame_stats", frame_stats)
+    r = tools["frame_stats"](60)
+    assert r["success"] and r["frames"] == 60 and seen == ["start", "read", "read"]
+    fake.on("pie_input", lambda p: p)
+    r = tools["pie_input"](key="SpaceBar", mode="hold", duration_s=2)
+    assert r == {"success": True, "key": "SpaceBar", "mode": "hold", "duration_s": 2, "player": 0}

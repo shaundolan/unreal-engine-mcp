@@ -11,8 +11,13 @@ _EXT = (".h", ".hpp", ".cpp", ".inl", ".cs", ".ini", ".uplugin", ".uproject")
 
 def _resolve(rel):
     full = _os.path.realpath(_os.path.join(_root, rel))
-    inside = _os.path.relpath(full, _root)
-    if inside.startswith("..") or inside.split(_os.sep)[0] not in _ALLOWED_TOP + ("Config",):
+    try:
+        inside = _os.path.relpath(full, _root)
+    except ValueError:  # Windows: another drive
+        inside = ".."
+    # Windows paths are case-insensitive ("source/x.cpp" is Source/x.cpp)
+    top = _os.path.normcase(inside.split(_os.sep)[0])
+    if inside.startswith("..") or top not in {_os.path.normcase(t) for t in _ALLOWED_TOP + ("Config",)}:
         raise PermissionError(f"{rel!r} is outside Source/, Plugins/ or Config/")
     return full
 
