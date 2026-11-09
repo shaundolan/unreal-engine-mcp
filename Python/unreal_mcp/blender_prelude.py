@@ -11,8 +11,8 @@ import bpy
 
 _argv = _sys.argv[_sys.argv.index("--") + 1:]
 _RESULT_FILE, OUT_DIR = _Path(_argv[0]), _Path(_argv[1])
-ARGS = _json.loads(_Path(_argv[2]).read_text())
-_USER_CODE = _Path(_argv[3]).read_text()
+ARGS = _json.loads(_Path(_argv[2]).read_text(encoding="utf-8"))
+_USER_CODE = _Path(_argv[3]).read_text(encoding="utf-8")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 _EXPORTS, _PREVIEWS = [], []
 

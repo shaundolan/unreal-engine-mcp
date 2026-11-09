@@ -19,7 +19,9 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -58,7 +60,7 @@ class Task:
 def load_tasks(tasks_dir: Path = DEFAULT_TASKS_DIR, pattern: str = "*") -> list[Task]:
     tasks = []
     for p in sorted(Path(tasks_dir).glob("*.json")):
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
         if d["id"] != p.stem:
             raise ValueError(f"{p.name}: id {d['id']!r} must match the file name")
         if fnmatch.fnmatch(d["id"], pattern) or fnmatch.fnmatch(d["domain"], pattern):
@@ -206,20 +208,34 @@ def requirement_missing(task: Task, tools: dict[str, Any] | None = None) -> str 
     return None
 
 
+def split_command(template: str, windows: bool | None = None) -> list[str]:
+    """Split an --agent-cmd template. POSIX rules eat the backslashes of Windows paths, so on Windows
+    split without escapes and drop the quotes around each word."""
+    windows = (os.name == "nt") if windows is None else windows
+    if not windows:
+        return shlex.split(template)
+    words = shlex.split(template, posix=False)
+    return [w[1:-1] if len(w) >= 2 and w[0] == w[-1] and w[0] in "'\"" else w for w in words]
+
+
 def run_agent_cmd(template: str, prompt: str, timeout_s: float, work_dir: Path) -> dict[str, Any]:
     work_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = work_dir / "prompt.txt"
-    prompt_file.write_text(prompt)
+    prompt_file.write_text(prompt, encoding="utf-8")
     argv = [a.replace("{prompt_file}", str(prompt_file)).replace("{prompt}", prompt)
-            for a in shlex.split(template)]
+            for a in split_command(template)]
+    # Windows: "claude" is claude.exe or an npm claude.cmd shim; CreateProcess needs the full name.
+    if argv and os.name == "nt":
+        argv[0] = shutil.which(argv[0]) or argv[0]
     t0 = time.monotonic()
     try:
-        p = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=timeout_s)
+        p = subprocess.run(argv, input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=timeout_s)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": f"agent timed out after {timeout_s}s", "elapsed_s": timeout_s}
     except OSError as e:
         return {"ok": False, "error": f"could not start agent: {e}", "elapsed_s": 0}
-    (work_dir / "agent_output.txt").write_text((p.stdout or "") + (p.stderr or ""))
+    (work_dir / "agent_output.txt").write_text((p.stdout or "") + (p.stderr or ""), encoding="utf-8")
     return {"ok": p.returncode == 0, "exit_code": p.returncode, "elapsed_s": round(time.monotonic() - t0, 1),
             "output_tail": ((p.stdout or "") + (p.stderr or ""))[-2000:]}
 
@@ -324,8 +340,8 @@ def main(argv: list[str] | None = None) -> int:
     label = a.label or f"{a.agent} {stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "results.json").write_text(json.dumps({"label": label, "summary": summary, "results": results},
-                                                     indent=1, default=str))
-    (out_dir / "scoreboard.md").write_text(scoreboard_markdown(summary, results, label))
+                                                     indent=1, default=str), encoding="utf-8")
+    (out_dir / "scoreboard.md").write_text(scoreboard_markdown(summary, results, label), encoding="utf-8")
     print(f"\n{summary['passed']}/{summary['scored']} passed -> {out_dir}")
     return 0 if summary["passed"] == summary["scored"] else 1
 
