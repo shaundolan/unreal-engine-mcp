@@ -2,7 +2,7 @@
   "id": "anim-attack-montage",
   "domain": "animation",
   "title": "Attack montage with sections and a Hit notify",
-  "prompt": "Make an attack montage {root}/AM_Attack from /Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_01 in the DefaultGroup.DefaultSlot slot, with three sections: Windup at 0 s, Strike at 0.4 s and Recover at 0.9 s (played in that order), and a named notify Hit at 0.45 s that the Animation Blueprint can react to (AnimNotify_Hit).",
+  "prompt": "Make an attack montage {root}/AM_Attack from /Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_01 in the DefaultSlot slot (DefaultGroup), with three sections: Windup at 0 s, Strike at 0.4 s and Recover at 0.9 s (played in that order), and a named notify Hit at 0.45 s that the Animation Blueprint can react to (AnimNotify_Hit).",
   "requires": [
     "command:anim_asset_apply",
     "asset:/Game/Characters/Mannequins/Meshes/SK_Mannequin"
@@ -16,7 +16,7 @@
           "asset": "{root}/AM_Attack"
         },
         "name": "montage of MM_Attack_01 in DefaultSlot",
-        "expect": "r['success'] and r['class'] == 'AnimMontage' and any(t['slot'] == 'DefaultGroup.DefaultSlot' and any(s['sequence'].endswith('MM_Attack_01') for s in t['segments']) for t in r['slots'])"
+        "expect": "r['success'] and r['class'] == 'AnimMontage' and any(t['slot'] == 'DefaultSlot' and any(s['sequence'].endswith('MM_Attack_01') for s in t['segments']) for t in r['slots'])"
       },
       {
         "tool": "anim_inspect",

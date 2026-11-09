@@ -168,6 +168,29 @@ def add_build_deps(build_cs: str, deps=GAS_DEPS) -> str:
     return build_cs[: m.end()] + insert + build_cs[m.end() :]
 
 
+def tag_names(value: Any) -> list[str]:
+    """Tag names inside a property_get JSON value (FInheritedTagContainer / FGameplayTagContainer)."""
+    if isinstance(value, str):
+        return re.findall(r'TagName="([^"]+)"', value)
+    found: list[str] = []
+
+    def walk(v: Any, key: str = "") -> None:
+        if isinstance(v, dict):
+            if key in ("removed", "Removed"):
+                return
+            for k, x in v.items():
+                if k.lower() == "tagname" and isinstance(x, str):
+                    found.append(x)
+                else:
+                    walk(x, k)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x, key)
+
+    walk(value.get("Added", value.get("added", value)) if isinstance(value, dict) else value)
+    return list(dict.fromkeys(found))
+
+
 def register(mcp, get_conn):
     def tags_in(ops: list[dict[str, Any]]) -> list[str]:
         seen: list[str] = []
@@ -177,6 +200,29 @@ def register(mcp, get_conn):
                     if t not in seen:
                         seen.append(t)
         return seen
+
+    def script_op(body: dict[str, Any]) -> dict[str, Any]:
+        """One gas_edit editor-script op -> flat {success, ...}; GE tag components read via property_get."""
+        r = run_editor_script(get_conn, "gas_edit", {"operations": [body]}, timeout_s=300)
+        if not r.get("success"):
+            return r
+        res = (r.get("results") or [{}])[0]
+        out = {"success": bool(res.pop("ok", False)), **{k: v for k, v in res.items() if k not in ("index", "op")}}
+        for c in out.pop("tag_components", None) or []:
+            g = call(get_conn, "property_get", {"path": c["path"], "property": c["property"]})
+            out[c["field"]] = tag_names(g.get("value"))
+        return out
+
+    def finish_tags(asset: str, r: dict[str, Any]) -> dict[str, Any]:
+        """Set GE tag-component properties (not reachable from Python) with C++ property_set, then compile+save."""
+        created = r.get("created")
+        for p in r.get("pending", []):
+            s = call(get_conn, "property_set", {"path": p["path"], "property": p["property"], "value": p["value"]})
+            if not s.get("success"):
+                return {"success": False, "error": f"{p['property']}: {s.get('error')}", "created": created}
+        out = script_op({"op": "finalize", "asset": asset})
+        out["created"] = created
+        return out
 
     def grant(op: dict[str, Any]) -> dict[str, Any]:
         character = op.get("character", "")
@@ -356,13 +402,9 @@ def register(mcp, get_conn):
             rec: dict[str, Any] = {"index": i, "op": kind}
             if kind in PY_OPS:
                 body = {k: v for k, v in op.items() if k != "graph"}
-                r = run_editor_script(get_conn, "gas_edit", {"operations": [body]}, timeout_s=300)
-                if r.get("success"):
-                    res = (r.get("results") or [{}])[0]
-                    r = {
-                        "success": bool(res.pop("ok", False)),
-                        **{k: v for k, v in res.items() if k not in ("index", "op")},
-                    }
+                r = script_op(body)
+                if r.get("success") and r.get("pending"):
+                    r = finish_tags(op["asset"], r)
                 if r.get("success") and op.get("graph"):
                     g = _finish(
                         call(
@@ -408,9 +450,4 @@ def register(mcp, get_conn):
         """Read a GameplayEffect Blueprint (duration_policy, duration, period, modifiers [attribute, op,
         magnitude], asset_tags, granted_tags) or a GameplayAbility Blueprint (tags, cost/cooldown effects,
         instancing)."""
-        r = run_editor_script(get_conn, "gas_edit", {"operations": [{"op": "inspect", "asset": asset}]})
-        if not r.get("success"):
-            return r
-        res = (r.get("results") or [{}])[0]
-        ok = bool(res.pop("ok", False))
-        return {"success": ok, **{k: v for k, v in res.items() if k not in ("index", "op")}}
+        return script_op({"op": "inspect", "asset": asset})

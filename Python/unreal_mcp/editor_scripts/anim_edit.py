@@ -52,7 +52,8 @@ def _enum(enum_cls, value):
 
 
 def _save(asset):
-    _eal.save_loaded_asset(asset, only_if_is_dirty=False)
+    if not _eal.save_loaded_asset(asset, only_if_is_dirty=False):
+        raise OSError(f"could not save {asset.get_path_name()} (read-only file? see editor_log)")
 
 
 def op_set_sequence(op):

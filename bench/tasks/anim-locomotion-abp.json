@@ -151,9 +151,9 @@
           },
           {
             "op": "add_node",
-            "id": "move",
-            "kind": "call_function",
-            "function": "GetCharacterMovement",
+            "id": "cmove",
+            "kind": "get_var",
+            "variable": "CharacterMovement",
             "class": "Character"
           },
           {
@@ -212,11 +212,11 @@
           {
             "op": "connect",
             "from": "cast.as",
-            "to": "move.self"
+            "to": "cmove.self"
           },
           {
             "op": "connect",
-            "from": "move.ReturnValue",
+            "from": "cmove.CharacterMovement",
             "to": "falling.self"
           },
           {

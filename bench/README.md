@@ -42,13 +42,17 @@ uv run python -m unreal_mcp.bench run --agent cmd --label "claude-code opus" \
 
 The agent command gets the prompt as `{prompt}` (one argument), as `{prompt_file}` (a path), or on stdin, so any MCP-capable agent works: Claude Code, Cursor CLI, or a local model behind an agent loop.
 
-## Tasks (20)
+## Tasks (24)
 scene ×6 (grid, light ring, cleanup, tagging, transforms, greybox arena), assets ×1, materials ×3 (graph, instance,
 apply), cinematics ×1, input ×1, performance ×1, modeling ×1 (Blender → import → place), gameplay ×2 (PIE: spawn on ground;
 coin collected by walking into it), blueprints ×1 (BeginPlay logic seen in the PIE log), ui ×1 (HUD built and on screen), ai ×1 (Behavior
 Tree guard walks to its goal on a NavMesh), plus `demo-arena-playable`: the demo-1 golden path (Blender coin, HUD, game mode
-score, a chasing enemy, coins collected in play, score and HUD verified).
+score, a chasing enemy, coins collected in play, score and HUD verified), animation ×3 (1D locomotion BlendSpace,
+attack montage with sections and a Hit notify, locomotion AnimBP with idle/move/jump states) and gas ×1 (instant heal
+effect + tagged ability).
 
+`requires` also takes `asset:<path>` (content the task builds on, e.g. the template Mannequin from
+`scripts/install_mannequin.py`) and `class:<Name>` (an engine plugin's class, e.g. `class:GameplayEffect`).
 Tasks marked `requires: ["command:<name>"]` need a plugin build with that command; the fake-editor CI skips them, so they are
 validated against a live editor (see `bench/results/`). `check.tools` entries call a tool and evaluate `expect` over its JSON
 result (`walk(tree)` yields every node of a widget or BT export).

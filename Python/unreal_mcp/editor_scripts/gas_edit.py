@@ -125,14 +125,36 @@ def _ge_component(cdo, cls_name):
     for c in comps:
         if c is not None and c.get_class().get_name() == cls_name:
             return c
-    comp = unreal.new_object(getattr(unreal, cls_name), cdo)
+    # GE components are not BlueprintType, so they are not attributes of `unreal`: load the class.
+    cls = getattr(unreal, cls_name, None) or unreal.load_class(None, f"/Script/GameplayAbilities.{cls_name}")
+    if cls is None:
+        raise LookupError(f"{cls_name} not found (GameplayAbilities 5.3+)")
+    comp = unreal.new_object(cls, cdo)
     comps.append(comp)
     _prop(cdo, ["ge_components", "gecomponents", "g_e_components"], comps, set_it=True)
     return comp
 
 
-def _inherited(tags):
-    return _struct("InheritedTagContainer", f"(Added={_tags_text(tags)})")
+# GE components are not Python-exposed types, so their (private) tag properties are set by the gas_edit tool
+# through the C++ property_set command on these object paths, then op "finalize" compiles and saves.
+_TAG_PROPS = {"AssetTagsGameplayEffectComponent": ("asset_tags", "InheritableAssetTags"),
+              "TargetTagsGameplayEffectComponent": ("granted_tags", "InheritableGrantedTagsContainer")}
+
+
+def _pending_tags(cdo, op):
+    pending = []
+    for cls_name, (field, prop) in _TAG_PROPS.items():
+        if op.get(field):
+            comp = _ge_component(cdo, cls_name)
+            pending.append({"path": comp.get_path_name(), "property": prop, "value": f"(Added={_tags_text(op[field])})"})
+    return pending
+
+
+def _finalize(op):
+    bp = unreal.load_asset(op["asset"])
+    unreal.BlueprintEditorLibrary.compile_blueprint(bp)
+    _eal.save_loaded_asset(bp, only_if_is_dirty=False)
+    return _inspect(op)
 
 
 def _effect(op, create):
@@ -151,17 +173,14 @@ def _effect(op, create):
             _prop(cdo, ["execute_periodic_effect_on_application"], bool(op["execute_on_application"]), set_it=True)
     if op.get("modifiers") is not None:
         _modifiers(cdo, op["modifiers"])
-    if op.get("asset_tags"):
-        comp = _ge_component(cdo, "AssetTagsGameplayEffectComponent")
-        _prop(comp, ["inheritable_asset_tags"], _inherited(op["asset_tags"]), set_it=True)
-    if op.get("granted_tags"):
-        comp = _ge_component(cdo, "TargetTagsGameplayEffectComponent")
-        _prop(comp, ["inheritable_granted_tags_container"], _inherited(op["granted_tags"]), set_it=True)
+    pending = _pending_tags(cdo, op)
     if op.get("stack_limit") is not None:
         _prop(cdo, ["stacking_type"], unreal.GameplayEffectStackingType.AGGREGATE_BY_TARGET, set_it=True)
         _prop(cdo, ["stack_limit_count"], int(op["stack_limit"]), set_it=True)
     for k, v in (op.get("properties") or {}).items():
         set_props(cdo, {k: v})
+    if pending:
+        return {"created": created, "path": bp.get_path_name(), "pending": pending}
     unreal.BlueprintEditorLibrary.compile_blueprint(bp)
     _eal.save_loaded_asset(bp, only_if_is_dirty=False)
     return {"created": created, **_inspect_effect(bp)}
@@ -179,7 +198,7 @@ def _inspect_effect(bp):
         mods.append({"attribute": attr.split(".")[-1].replace(":", "."),
                      "op": text.split("ModifierOp=", 1)[1].split(",")[0].split(")")[0] if "ModifierOp=" in text else "",
                      "magnitude": mag})
-    dur_policy = str(_prop(cdo, ["duration_policy"])).split(".")[-1]
+    dur_policy = enum_name(_prop(cdo, ["duration_policy"]))
     out = {"path": bp.get_path_name(), "class": "GameplayEffect", "duration_policy": dur_policy, "modifiers": mods}
     if dur_policy == "HAS_DURATION":
         text = _prop(cdo, ["duration_magnitude"]).export_text()
@@ -188,16 +207,12 @@ def _inspect_effect(bp):
     period = _prop(cdo, ["period"]).export_text()
     if "Value=" in period:
         out["period"] = float(period.split("Value=", 1)[1].split(",")[0].split(")")[0])
-    tags = {}
+    comps = []
     for c in _prop(cdo, ["ge_components", "gecomponents", "g_e_components"]) or []:
-        if c is None:
-            continue
-        n = c.get_class().get_name()
-        if n == "AssetTagsGameplayEffectComponent":
-            tags["asset_tags"] = _tags_of(_prop(c, ["inheritable_asset_tags"]))
-        elif n == "TargetTagsGameplayEffectComponent":
-            tags["granted_tags"] = _tags_of(_prop(c, ["inheritable_granted_tags_container"]))
-    out.update(tags)
+        if c is not None and c.get_class().get_name() in _TAG_PROPS:
+            field, prop = _TAG_PROPS[c.get_class().get_name()]
+            comps.append({"field": field, "path": c.get_path_name(), "property": prop})
+    out["tag_components"] = comps  # the tool reads these with property_get
     return out
 
 
@@ -247,7 +262,7 @@ def _inspect_ability(bp):
     for key, names in (("cost_effect", ["cost_gameplay_effect_class"]), ("cooldown_effect", ["cooldown_gameplay_effect_class"])):
         c = _prop(cdo, names)
         out[key] = c.get_path_name() if c is not None else None
-    out["instancing"] = str(_prop(cdo, ["instancing_policy"])).split(".")[-1]
+    out["instancing"] = enum_name(_prop(cdo, ["instancing_policy"]))
     return out
 
 
@@ -265,7 +280,7 @@ def _inspect(op):
 
 _OPS = {"create_effect": lambda o: _effect(o, True), "set_effect": lambda o: _effect(o, False),
         "create_ability": lambda o: _ability(o, True), "set_ability": lambda o: _ability(o, False),
-        "inspect": _inspect}
+        "inspect": _inspect, "finalize": _finalize}
 
 _results = []
 for _i, _op in enumerate(ARGS.get("operations") or []):

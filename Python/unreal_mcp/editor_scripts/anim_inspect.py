@@ -45,7 +45,7 @@ def _sequence(seq):
            "curves": [str(c) for c in _lib.get_animation_curve_names(seq, unreal.RawCurveTrackTypes.RCT_FLOAT)]}
     if isinstance(seq, unreal.AnimSequence):
         out.update(frames=_lib.get_num_frames(seq), root_motion=_lib.is_root_motion_enabled(seq),
-                   root_lock=str(_lib.get_root_motion_lock_type(seq)).split(".")[-1],
+                   root_lock=enum_name(_lib.get_root_motion_lock_type(seq)),
                    force_root_lock=_lib.is_root_motion_lock_forced(seq))
     return out
 

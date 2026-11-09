@@ -1,6 +1,8 @@
 """Animation + GAS tools: editor scripts against the fake `unreal` module, request shapes and result
 normalization for the C++ commands (animbp_apply/export, anim_asset_apply/export, gameplay_tags)."""
 
+import re
+
 from test_editor_scripts import ue  # noqa: F401  (fixture)
 
 from unreal_mcp.tools.animation import montage_ops
@@ -200,6 +202,14 @@ def _tags_handler(ue):  # noqa: F811
 
 def test_heal_effect_create_and_inspect(ue, fake, tools):  # noqa: F811
     fake.on("gameplay_tags", _tags_handler(ue))
+    props = {}
+    fake.on("property_set", lambda p: props.__setitem__((p["path"], p["property"]), p["value"]) or {"new": p["value"]})
+    def property_get(p):
+        text = props.get((p["path"], p["property"]), "")
+        added = [{"TagName": t} for t in re.findall(r'TagName="([^"]+)"', text)]
+        return {"value": {"Added": {"GameplayTags": added}, "Removed": {"GameplayTags": [{"TagName": "Not.This"}]}}}
+
+    fake.on("property_get", property_get)
     r = tools["gas_edit"](
         [
             {

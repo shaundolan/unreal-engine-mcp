@@ -61,3 +61,18 @@ with the real engine: note the task and the `failures` line. Then `--agent none`
 
 ## 7. Report back
 Paste: the UBT result, the smoke output, the API index count, the bench scoreboard (`bench-results/*/scoreboard.md`), and anything surprising (timings, warnings in the log).
+
+## 7. Animation + GAS (branch feat/anim-gas)
+Verified live on Linux (`bench/results/2026-11-09-anim-gas-ue5.8.4-linux/`); on Windows check the MSVC build and rerun:
+```powershell
+python scripts\install_mannequin.py --engine "C:\Program Files\Epic Games\UE_5.8"   # editor closed
+# rebuild (step 1): new C++ in MCPAnimAuthoring.cpp / MCPGameplayTagCommands.cpp, new deps AnimGraph,
+# AnimGraphRuntime, AnimationBlueprintLibrary, GameplayTags; the sample .uproject now enables GameplayAbilities
+cd Python
+uv run python -m unreal_mcp.bench run --agent solution --filter "anim-*"
+uv run python -m unreal_mcp.bench run --agent solution --filter "gas-*"
+uv run python -m unreal_mcp.bench run --agent none --filter "anim-*"
+```
+Expect 4/4 passed, then 0/3 for the baseline. `unreal_status` should list `animbp_apply`, `animbp_export`,
+`anim_asset_apply`, `anim_asset_export`, `gameplay_tags`. Also open `/Game/UEBench/anim-locomotion-abp/ABP_Hero` in
+the editor and check the state machine looks sane (nodes laid out, no orphan pins).

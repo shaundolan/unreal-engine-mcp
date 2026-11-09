@@ -36,7 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"template Mannequin pack not found under {engines} (expected {PACK})", file=sys.stderr)
         return 1
     dst = Path(args.project) / "Content" / "Characters" / "Mannequins"
-    shutil.copytree(src, dst, dirs_exist_ok=True)
+    # copyfile, not copy2: engine template files are read-only and the editor must be able to re-save them
+    shutil.copytree(src, dst, dirs_exist_ok=True, copy_function=shutil.copyfile)
     count = sum(1 for _ in dst.rglob("*.uasset"))
     print(f"copied {src} -> {dst} ({count} assets)")
     return 0

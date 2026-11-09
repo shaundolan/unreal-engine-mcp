@@ -608,12 +608,13 @@ TSharedPtr<FJsonObject> HandleAnimBpApply(const TSharedPtr<FJsonObject>& Params)
 	{
 		return MCPError(FString::Printf(TEXT("%s has no AnimGraph (template/child AnimBlueprints are not supported)"), *ABP->GetName()));
 	}
+	const FString SkeletonPath = ABP->TargetSkeleton ? ABP->TargetSkeleton->GetPathName() : FString();
 	TSharedPtr<FJsonObject> Out = ApplyBlueprintOps(ABP, bCreated, Params, &AnimExtension, [](FGraphApplyContext& Ctx)
 	{
 		// "output" = the AnimGraph's Output Pose node, so {"op":"connect","from":"loco.Pose","to":"output.Result"} works.
 		if (UAnimGraphNode_Root* Root = FirstNodeOf<UAnimGraphNode_Root>(FindAnimGraph(Ctx.BP))) Ctx.Aliases.Add(TEXT("output"), Root);
 	});
-	Out->SetStringField(TEXT("skeleton"), ABP->TargetSkeleton ? ABP->TargetSkeleton->GetPathName() : FString());
+	Out->SetStringField(TEXT("skeleton"), SkeletonPath); // ABP may be deleted by a rolled-back create
 	return Out;
 }
 
@@ -797,9 +798,18 @@ TSharedPtr<FJsonObject> HandleAnimBpExport(const TSharedPtr<FJsonObject>& Params
 // anim_asset_apply: montages and notifies
 // ---------------------------------------------------------------------------------------------
 
+/** Montage tracks are named by slot ("DefaultSlot"); "DefaultGroup.DefaultSlot" (group.slot, as the editor shows it) is accepted. */
 FName SlotNameOf(const FString& In)
 {
-	return FName(*(In.IsEmpty() ? FString(TEXT("DefaultGroup.DefaultSlot")) : In));
+	FString Slot = In.IsEmpty() ? FString(TEXT("DefaultSlot")) : In;
+	FString Group, Name;
+	if (Slot.Split(TEXT("."), &Group, &Name, ESearchCase::IgnoreCase, ESearchDir::FromEnd)) Slot = Name;
+	return FName(*Slot);
+}
+
+void RegisterSlot(UAnimMontage* M, FName Slot)
+{
+	if (USkeleton* Skel = M->GetSkeleton()) Skel->RegisterSlotNode(Slot);
 }
 
 FSlotAnimationTrack* FindSlot(UAnimMontage* M, FName Slot)
@@ -829,6 +839,7 @@ bool AddSegment(UAnimMontage* M, const TSharedPtr<FJsonObject>& Op, FString& Err
 	if (!Track)
 	{
 		Track = &M->AddSlot(Slot);
+		RegisterSlot(M, Slot);
 	}
 	FAnimSegment Seg;
 	Seg.SetAnimReference(Seq, true);
@@ -895,6 +906,10 @@ bool AddNotify(UAnimSequenceBase* Seq, const TSharedPtr<FJsonObject>& Op, FStrin
 		}
 		FEpicUnrealMCPReflectionCommands::SetPropertiesByPath(N, Props, Errors);
 		Err = FString::Join(Errors, TEXT("; "));
+		for (FAnimNotifyEvent& E : Seq->Notifies)
+		{
+			if (E.Notify == N) E.NotifyName = FName(*N->GetNotifyName()); // the name was taken before NotifyName was set
+		}
 		Seq->RefreshCacheData();
 		return Err.IsEmpty();
 	}
@@ -1078,7 +1093,11 @@ TSharedPtr<FJsonObject> HandleAnimAssetApply(const TSharedPtr<FJsonObject>& Para
 			else if (Kind == TEXT("add_slot"))
 			{
 				const FName Slot = SlotNameOf(Str(Op, TEXT("slot")));
-				if (!FindSlot(Montage, Slot)) Montage->AddSlot(Slot);
+				if (!FindSlot(Montage, Slot))
+				{
+					Montage->AddSlot(Slot);
+					RegisterSlot(Montage, Slot);
+				}
 				bOk = true;
 			}
 			else if (Kind == TEXT("add_section"))
