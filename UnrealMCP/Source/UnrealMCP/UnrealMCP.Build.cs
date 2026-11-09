@@ -58,7 +58,9 @@ public class UnrealMCP : ModuleRules
 				"Kismet",
 				"Projects",
 				"AssetRegistry",
-				"RenderCore",          // FlushRenderingCommands for viewport_capture
+				"RenderCore",          // FlushRenderingCommands for viewport_capture; frame timings
+				"RHI",                 // frame_stats GPU time
+				"EnhancedInput",       // pie_input action injection
 				"PythonScriptPlugin",  // execute_python
 				"UMG",                 // widget_apply
 				"UMGEditor",           // UWidgetBlueprint

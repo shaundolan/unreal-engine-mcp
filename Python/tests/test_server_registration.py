@@ -23,7 +23,7 @@ NEW_TOOLS = {
     "unreal_api_search", "unreal_api_doc", "unreal_api_build_index",
     "scene_query", "scene_brief", "actor_inspect", "scene_compose", "level_inspect",
     "search_assets", "asset_references", "asset_manage", "asset_import",
-    "material_inspect", "material_edit", "material_instance", "pie_test",
+    "material_inspect", "material_edit", "material_instance", "pie_test", "pie_input", "frame_stats",
     "niagara_edit", "sequence_edit", "data_table",
     "enhanced_input", "game_setup", "cpp_source", "live_coding_compile", "performance_audit",
     "blender_status", "blender_run",

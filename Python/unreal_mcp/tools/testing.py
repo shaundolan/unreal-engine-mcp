@@ -48,28 +48,123 @@ def _common_source() -> str:
     return source("_common") + "\n"
 
 
-def _wait_for_navigation(get_conn, timeout_s: float, sleep) -> bool | None:
+def _wait_for_navigation(get_conn, timeout_s: float, sleep) -> tuple[bool | None, bool]:
     """A NavMesh missing or still building when PIE starts leaves the play world without one (AI
     MoveTo silently fails). Volumes placed from scripts may never have been built. Rebuild once if
     any volume has no NavMesh, then poll until every volume has NavMesh and nothing is building.
-    Returns None when the check is unavailable (no navigation API / no editor)."""
+    Returns (ready, rebuilt); ready is None when the check is unavailable (no navigation API / no editor)."""
     deadline = time.monotonic() + timeout_s
     rebuilt = False
     while True:
         code = _common_source() + _NAV_PROBE.replace("ARGS_REBUILD", "True" if not rebuilt else "False")
         r = run_python(get_conn, code, timeout_s=30)
         if not r.get("success"):
-            return None
+            return None, rebuilt
         state = r.get("result") or {}
         if not state.get("volumes"):
-            return True
+            return True, rebuilt
         if state.get("empty") and not rebuilt:
             rebuilt = True
         elif not state.get("empty") and not state.get("building"):
-            return True
+            return True, rebuilt
         if time.monotonic() >= deadline:
-            return False
+            return False, rebuilt
         sleep(0.5)
+
+
+# ---------------------------------------------------------------------------------------------
+# Input injection and frame timings (plugin commands pie_input / frame_stats)
+# ---------------------------------------------------------------------------------------------
+
+INPUT_STEPS = ("press", "hold", "axis", "look")
+
+
+def _input_target(name: str) -> dict[str, str]:
+    """An asset path ("/Game/Input/IA_Jump") is an Enhanced Input action; anything else is an FKey name."""
+    return {"action": name} if str(name).startswith("/") else {"key": str(name)}
+
+
+def input_calls(step: dict[str, Any]) -> tuple[list[dict[str, Any]], float]:
+    """pie_input command params for one press/hold/axis/look step, and how long it lasts."""
+    if "press" in step:
+        dur = float(step.get("duration_s", 0.1))
+        return [{**_input_target(step["press"]), "mode": "press", "duration_s": dur}], dur
+    if "hold" in step:
+        dur = float(step.get("duration_s", 1.0))
+        return [{**_input_target(step["hold"]), "mode": "hold", "duration_s": dur}], dur
+    if "axis" in step:
+        dur = float(step.get("duration_s", 1.0))
+        return [{**_input_target(step["axis"]), "mode": "axis", "value": step.get("value", 1.0),
+                 "duration_s": dur}], dur
+    # look: [yaw, pitch] per frame. Raw mouse deltas by default; "action" sends it to e.g. IA_Look instead.
+    look = step["look"]
+    xy = [float(look[0]), float(look[1]) if len(look) > 1 else 0.0] if isinstance(look, (list, tuple)) \
+        else [float(look), 0.0]
+    dur = float(step.get("duration_s", 0.5))
+    if step.get("action"):
+        return [{"action": step["action"], "mode": "axis", "value": xy, "duration_s": dur}], dur
+    calls = [{"key": k, "mode": "axis", "value": v, "duration_s": dur}
+             for k, v in (("MouseX", xy[0]), ("MouseY", xy[1])) if v]
+    return calls, dur
+
+
+def run_input_step(get_conn, step: dict[str, Any], sleep) -> dict[str, Any]:
+    calls, dur = input_calls(step)
+    sent = []
+    for params in calls:
+        if step.get("player") is not None:
+            params["player"] = int(step["player"])
+        r = call(get_conn, "pie_input", params)
+        if not r.get("success"):
+            return {"ok": False, "error": r.get("error"), "input": params}
+        sent.append({k: r.get(k) for k in ("key", "action", "mode", "value", "pawn") if r.get(k) is not None})
+    if not step.get("async"):
+        sleep(dur + 0.05)  # let the injection finish (release lands in the frame after it ends)
+    return {"ok": True, "input": sent, "duration_s": dur, "async": bool(step.get("async"))}
+
+
+_FRAME_LIMITS = {"max_avg_ms": ("frame_ms", "avg"), "max_p95_ms": ("frame_ms", "p95"),
+                 "max_gpu_ms": ("gpu_ms", "avg"), "max_game_ms": ("game_ms", "avg"),
+                 "max_render_ms": ("render_ms", "avg")}
+
+
+def capture_frame_stats(get_conn, frames: int = 120, timeout_s: float = 60.0, sleep=None) -> dict[str, Any]:
+    """Record `frames` frames on the editor and return average / p95 frame, game, render, RHI and GPU ms."""
+    sleep = sleep or time.sleep
+    started = call(get_conn, "frame_stats", {"action": "start", "frames": int(frames)})
+    if not started.get("success"):
+        return started
+    deadline = time.monotonic() + timeout_s
+    while True:
+        sleep(0.25)
+        r = call(get_conn, "frame_stats", {"action": "read"})
+        if not r.get("success") or r.get("done"):
+            return r
+        if time.monotonic() >= deadline:
+            call(get_conn, "frame_stats", {"action": "stop"})
+            return {**r, "success": False, "error": f"only {r.get('frames')} of {frames} frames in {timeout_s}s"}
+
+
+def run_frame_stats_step(get_conn, step: dict[str, Any], sleep) -> dict[str, Any]:
+    spec = step["frame_stats"]
+    opts = dict(spec) if isinstance(spec, dict) else {"frames": spec}
+    opts.update({k: v for k, v in step.items() if k != "frame_stats"})
+    r = capture_frame_stats(get_conn, int(opts.get("frames") or 120), float(opts.get("timeout_s", 60.0)), sleep)
+    if not r.get("success"):
+        return {"ok": False, "error": r.get("error"), "frame_stats": r}
+    stats = {k: v for k, v in r.items() if k not in ("success", "done", "wanted")}
+    over = []
+    for limit, (group, field) in _FRAME_LIMITS.items():
+        if opts.get(limit) is not None:
+            actual = (stats.get(group) or {}).get(field)
+            if actual is None or actual > float(opts[limit]):
+                over.append(f"{group}.{field} {actual} > {opts[limit]}")
+    if opts.get("min_fps") is not None and (stats.get("fps_avg") or 0) < float(opts["min_fps"]):
+        over.append(f"fps_avg {stats.get('fps_avg')} < {opts['min_fps']}")
+    rec: dict[str, Any] = {"ok": not over, "frame_stats": stats}
+    if over:
+        rec["error"] = "; ".join(over)
+    return rec
 
 
 def _log_assertion(a: dict[str, Any], index: int, entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -127,6 +222,18 @@ def _run_steps(get_conn, steps: list[dict[str, Any]], sleep) -> list[dict[str, A
                 if n + 1 < repeat:
                     sleep(float(step.get("interval_s", 0.05)))
             rec.update(ok=True, did=step["do"][:80], repeat=repeat)
+        elif any(k in step for k in INPUT_STEPS):
+            rec.update(run_input_step(get_conn, step, sleep))
+            if not rec["ok"]:
+                out.append(rec)
+                return out
+        elif "release_all" in step:
+            r = call(get_conn, "pie_input", {"mode": "release_all"})
+            rec.update(ok=bool(r.get("success")), released=r.get("released"))
+            if not r.get("success"):
+                rec["error"] = r.get("error")
+        elif "frame_stats" in step:
+            rec.update(run_frame_stats_step(get_conn, step, sleep))
         elif "check" in step:
             r = run_editor_script(get_conn, "pie_assert", {"assertions": step["check"]})
             if not r.get("success"):
@@ -135,7 +242,8 @@ def _run_steps(get_conn, steps: list[dict[str, Any]], sleep) -> list[dict[str, A
                 return out
             rec.update(ok=all(a.get("passed") for a in r["assertions"]), assertions=r["assertions"])
         else:
-            rec.update(ok=False, error="step needs one of wait_s, do, check")
+            rec.update(ok=False, error="step needs one of wait_s, do, until, check, press, hold, axis, look, "
+                       "release_all, frame_stats")
         out.append(rec)
     return out
 
@@ -152,7 +260,7 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
     if ctx.get("pie_running"):
         return {"success": False, "error": "PIE is already running; stop it first (editor_action pie_stop)"}
 
-    nav_ready = _wait_for_navigation(get_conn, 60.0, sleep)
+    nav_ready, nav_rebuilt = _wait_for_navigation(get_conn, 60.0, sleep)
     since = call(get_conn, "editor_log", {"lines": 1}).get("last_seq", 0)
     started = call(get_conn, "editor_action", {"action": "pie_start"})
     if not started.get("success"):
@@ -183,7 +291,7 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
     failed = [r for r in results if not r.get("passed")]
     failed_steps = [s for s in timeline if not s.get("ok")]
     out_steps = {"steps": timeline} if steps else {}
-    nav = {} if nav_ready is None else {"navigation_ready": nav_ready}
+    nav = {} if nav_ready is None else {"navigation_ready": nav_ready, "navmesh_repaired": nav_rebuilt}
     return {"success": True, "passed": not failed and not failed_steps, "total": len(results), **nav,
             "failed_count": len(failed) + len(failed_steps), **out_steps,
             "results": results,
@@ -215,7 +323,47 @@ def register(mcp, get_conn):
           {"check": [ ...assertions as above... ]}
           {"do": "player.add_movement_input(vec([1,0,0]), 1.0)", "until": "find('Coin') is None",
            "timeout_s": 8}                                  (repeat do until the expression holds)
+        Real input on the player controller (goes through Enhanced Input / the input stack like a
+        human's; a name starting with "/" is an InputAction asset, anything else an FKey name):
+          {"press": "SpaceBar"}  {"press": "/Game/Input/IA_Jump"}          (tap, duration_s 0.1)
+          {"hold": "W", "duration_s": 1.5}                                 (key down ... up)
+          {"axis": "/Game/Input/IA_Move", "value": [0, 1], "duration_s": 2}  (action value every frame)
+          {"axis": "Gamepad_LeftY", "value": 1.0, "duration_s": 1}
+          {"look": [5, 0], "duration_s": 0.5}           (mouse deltas per frame: yaw, pitch)
+          {"look": [1, 0], "action": "/Game/Input/IA_Look"}
+          add "async": true to keep going while it runs (hold W + press SpaceBar), "player": n for
+          another local player; {"release_all": true} lets go of everything.
+        Frame timings:
+          {"frame_stats": 120}  or  {"frame_stats": 300, "max_p95_ms": 33.3, "min_fps": 30}
+            -> frame/game/render/rhi/gpu ms (avg, p95, p99, min, max) and fps_avg; limits fail the step.
         The final `assertions` run after the timeline. Returns passed (bool), per-step results,
-        and per-assertion results with actual values.
+        per-assertion results with actual values, and navmesh_repaired=true when NavMesh had to be
+        rebuilt before play.
         """
         return run_pie_test(get_conn, assertions or [], duration_s=duration_s, stop=stop, steps=steps)
+
+    @mcp.tool()
+    def pie_input(key: str = "", action: str = "", mode: str = "press", value: Any = None,
+                  duration_s: float | None = None, player: int = 0) -> dict[str, Any]:
+        """Inject input into a RUNNING PIE session (start it with editor_action pie_start), outside
+        pie_test. key: FKey name (SpaceBar, W, LeftMouseButton, MouseX, Gamepad_LeftX, ...) or action:
+        InputAction asset path (Enhanced Input, injected every frame). mode: press (tap, default
+        0.1 s), hold (down for duration_s, default 1 s), axis (value every frame; number or [x, y]),
+        release_all. Returns immediately; the input runs on the editor for duration_s."""
+        params: dict[str, Any] = {"mode": mode, "player": player}
+        if key:
+            params["key"] = key
+        if action:
+            params["action"] = action
+        if value is not None:
+            params["value"] = value
+        if duration_s is not None:
+            params["duration_s"] = duration_s
+        return call(get_conn, "pie_input", params)
+
+    @mcp.tool()
+    def frame_stats(frames: int = 120, timeout_s: float = 60.0) -> dict[str, Any]:
+        """Measure the next `frames` editor frames (PIE or not): average / p95 / p99 frame time,
+        fps, and game-thread, render-thread, RHI-thread and GPU ms. For a gameplay benchmark run it
+        inside pie_test steps ({"frame_stats": 300}) so it measures the game, not the idle editor."""
+        return capture_frame_stats(get_conn, frames, timeout_s)
