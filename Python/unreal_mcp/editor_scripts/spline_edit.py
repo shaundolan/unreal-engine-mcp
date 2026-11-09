@@ -2,7 +2,7 @@
 # include: _world
 # ARGS: operations [...], dry_run, stop_on_error
 #   create: {op, label, points [[x,y,z],...] (world), closed, point_type curve|linear|curve_clamped|constant,
-#            snap_to_ground, ground_offset, mesh, mesh_scale [y,z] | number, forward_axis x|y|z,
+#            snap_to_ground, snap_to landscape|any, ground_offset, mesh, mesh_scale [y,z] | number, forward_axis x|y|z,
 #            segment_length (cm, default = mesh length), material, collision (bool), replace (bool)}
 #   modify: {op, target, points | append, closed, point_type, snap_to_ground, mesh, mesh_scale, ...}  rebuilds meshes
 #   carve:  {op, target, landscape, width, end_width, falloff, raise, lower, layer, subdivisions}
@@ -29,10 +29,17 @@ def _points(op, actor=None):
         raise ValueError("a spline needs at least 2 points")
     if op.get("snap_to_ground"):
         off = float(op.get("ground_offset", 0.0))
-        ignore = [actor] if actor is not None else []
+        only_land = op.get("snap_to", "landscape") == "landscape" and bool(landscapes())
         snapped = []
         for p in pts:
-            h = trace_down(p.x, p.y, p.z + 50000.0, p.z - 50000.0, ignore)
+            ignore = [actor] if actor is not None else []
+            h = None
+            for _ in range(8):  # skip props/markers in the way unless snap_to="any"
+                h = trace_down(p.x, p.y, p.z + 50000.0, p.z - 50000.0, ignore)
+                if h is None or not only_land or isinstance(h[2], unreal.LandscapeProxy):
+                    break
+                ignore.append(h[2])
+                h = None
             snapped.append(unreal.Vector(p.x, p.y, (h[0].z if h else p.z) + off))
         pts = snapped
     return pts

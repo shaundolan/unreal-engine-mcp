@@ -22,7 +22,7 @@ def register(mcp, get_conn):
         operations:
           {"op":"create","label":"Road","points":[[0,0,0],[2000,500,0],[4000,0,0]],   world cm
            "point_type":"curve" (linear, curve_clamped, constant),"closed":false,
-           "snap_to_ground":true,"ground_offset":5,                 trace each point onto the terrain
+           "snap_to_ground":true,"ground_offset":5,  points onto the landscape ("snap_to":"any" = any surface)
            "mesh":"/Engine/BasicShapes/Cube.Cube","mesh_scale":[6,0.1],   cross-section scale (Y, Z)
            "forward_axis":"x","segment_length":400,"material":"/Game/M_Asphalt","collision":true,
            "folder":"Roads","replace":false}

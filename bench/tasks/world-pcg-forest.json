@@ -44,7 +44,7 @@
           "graph": "{root}/PCG_Forest"
         },
         "name": "graph wires a SurfaceSampler into a StaticMeshSpawner",
-        "expect": "r['success'] and {'SurfaceSampler', 'StaticMeshSpawner'} <= {n['type'] for n in r['graph']['nodes']} and any(e['to'] == n['id'] + '.In' for n in r['graph']['nodes'] if n['type'] == 'StaticMeshSpawner' for e in r['graph']['edges'])"
+        "expect": "r['success'] and {'SurfaceSampler', 'StaticMeshSpawner'} <= {n['type'] for n in r['graph']['nodes']} and any(e['to'] == n['id'] + '.In' for e in r['graph']['edges'] for n in r['graph']['nodes'] if n['type'] == 'StaticMeshSpawner')"
       },
       {
         "tool": "pcg_inspect",

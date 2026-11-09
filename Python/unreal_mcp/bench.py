@@ -134,9 +134,11 @@ def _tool_checks(tools, checks: list[dict[str, Any]]) -> dict[str, Any]:
         rec: dict[str, Any] = {"index": i, "type": "tool", "name": c.get("name") or c["tool"]}
         r = call_tool(tools, c["tool"], c.get("args"))
         try:
-            rec["passed"] = bool(eval(c["expect"], {"__builtins__": {}}, {  # noqa: S307
-                "r": r, "walk": _walk, "any": any, "all": all, "len": len, "abs": abs, "round": round,
-                "sorted": sorted, "set": set, "str": str, "list": list, "min": min, "max": max}))
+            # names go in globals so nested generator expressions can see r and the helpers too
+            rec["passed"] = bool(eval(c["expect"], {  # noqa: S307
+                "__builtins__": {}, "r": r, "walk": _walk, "any": any, "all": all, "len": len, "abs": abs,
+                "round": round, "sorted": sorted, "set": set, "str": str, "list": list, "min": min, "max": max,
+                "next": next}))
         except Exception as e:
             rec.update(passed=False, error=f"{type(e).__name__}: {e}")
         if not rec["passed"]:
