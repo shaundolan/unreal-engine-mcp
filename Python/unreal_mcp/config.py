@@ -9,6 +9,8 @@ UNREAL_MCP_LOG_LEVEL   Python logging level name     (default INFO)
 UNREAL_MCP_API_INDEX   Path of the offline API index (default ~/.unreal_mcp/unreal_api.sqlite)
 UNREAL_MCP_BLENDER     Blender executable for blender_run (default: "blender" on PATH)
 UNREAL_MCP_WORK_DIR    Scratch dir for Blender scripts and exports (default ~/.unreal_mcp/work)
+UNREAL_MCP_GEN3D_URL   Local text/image->3D server for mesh_generate (default http://127.0.0.1:8765)
+UNREAL_MCP_GEN3D_TOKEN Bearer token of that server (its --token), if it has one
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ class Settings:
     api_index_path: Path = field(default_factory=lambda: _HOME / "unreal_api.sqlite")
     blender_path: str = "blender"
     work_dir: Path = field(default_factory=lambda: _HOME / "work")
+    gen3d_url: str = "http://127.0.0.1:8765"
+    gen3d_token: str | None = None
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Settings:
@@ -51,6 +55,8 @@ class Settings:
             else _HOME / "unreal_api.sqlite",
             blender_path=e.get("UNREAL_MCP_BLENDER", "blender"),
             work_dir=Path(e["UNREAL_MCP_WORK_DIR"]) if e.get("UNREAL_MCP_WORK_DIR") else _HOME / "work",
+            gen3d_url=e.get("UNREAL_MCP_GEN3D_URL") or "http://127.0.0.1:8765",
+            gen3d_token=e.get("UNREAL_MCP_GEN3D_TOKEN") or None,
         )
 
 
