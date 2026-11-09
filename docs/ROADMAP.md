@@ -12,7 +12,7 @@ plugin. The Windows/D3D12 run is pending: [WINDOWS_TEST.md](WINDOWS_TEST.md).
 | 1: Universal layer | ✅ live | `execute_python`, reflection (describe/get/set/call), editor log, viewport capture, project context, console, editor actions, offline API index |
 | 2: Domain tools | ✅ most done, see gaps | Scene, assets, materials, level, Niagara placement, sequencer, DataTables, Enhanced Input, game setup, C++ source + Live Coding, Blender modeling. **Blueprint v2** (`bp_export` / `bp_apply`, atomic and compiled, wildcard array pins resolved), **UMG** (`widget_export` / `widget_apply`), **AI/BT** (`bt_export` / `bt_build`), **animation** (`animbp_apply` state machines/transitions, montages, notifies, BlendSpaces, IK retarget), **GAS** (`gas_edit` effects/abilities/grants, `gameplay_tags`), **world building** (`landscape_edit`, `foliage_scatter`, `pcg_graph`, `spline_edit`; live 4/4) |
 | 3: Verification & autonomy | ✅ core done, see gaps | `pie_test` (assertions, `do`/`until`/`check` timeline, **real input**: `press`/`hold`/`axis`/`look` on keys or Enhanced Input actions, `frame_stats`, NavMesh repair reported as `navmesh_repaired`), `scene_assert`, static `performance_audit`, **packaging** (`package_project` / `package_status`, background UAT BuildCookRun; Linux build live, Win64 pending) |
-| 4: Agent experience | 🚧 | Per-domain skills, served as MCP resources (`skill://`) and prompts. Planned: level/selection resources, an in-editor chat panel, local text/image→3D import |
+| 4: Agent experience | 🚧 | Per-domain skills, served as MCP resources (`skill://`) and prompts. **Local text/image→3D** (`mesh_generate` through [`servers/gen3d`](../servers/gen3d/): TripoSR / SF3D / Hunyuan3D 2.1 / TRELLIS.2 + FLUX.1-schnell, with Blender cleanup, PBR bake, LODs, collision, and a licence on every result) and **auto-rigging** (`auto_rig`: armature with Mannequin bone names, automatic weights, IK Rig, retargeted Mannequin animations). Planned: level/selection resources, an in-editor chat panel |
 | 5: UE-Bench | 🚧 v0: 20 tasks | 20 tasks, reference 20/20 live and baseline 0/20 (`bench/results/`). Target: ~60 real-workflow tasks, pass rate per domain published each release, scored real-agent runs |
 
 ## Remaining gaps
@@ -29,11 +29,23 @@ plugin. The Windows/D3D12 run is pending: [WINDOWS_TEST.md](WINDOWS_TEST.md).
   operator nodes (typed math functions work).
 - **Packaging:** only Win64 and Linux hosts. No console/mobile targets, no signing or upload.
 - **Source control** (Perforce/git through the editor) is not integrated.
+- **3D generation:** the pipeline was verified live (UE 5.8.4 Linux) with the mock backend and real Blender:
+  - a 90 cm barrel imported with its baked texture, 4 LODs and convex collision, and re-imported safely;
+  - a T-pose figure rigged with the engine's auto-characterisation (11 chains);
+  - the Mannequin idle and walk retargeted onto it, with the walk verified in PIE by the moving foot bones.
 
-## Adding a tool group
-Most domain tools are thin Python modules in `Python/unreal_mcp/tools/` that send editor-side scripts from `editor_scripts/`. They
-need no C++ rebuild. C++ is only for things Python can't reach: graph pins, input injection, frame timings, landscape height/weight IO, Slate.
-PCG graph authoring turned out to be fully reachable from Python (`PCGGraph.add_node_of_type` / `add_edge`).
+  The real models (TripoSR, SF3D, Hunyuan3D, TRELLIS.2, FLUX) are wrapped but have only run on the 4090:
+  WINDOWS_TEST.md §9b.
 
-Create `Python/unreal_mcp/tools/<name>.py` with `register(mcp, get_conn)`. It's picked up automatically. Add tests against
-`tests/fake_unreal.py`, and a UE-Bench task with a checker when the feature is user-visible.
+  Live findings now handled in code:
+  - Blender FBX armatures import with a 100x scale and a 90° rotation on the root bone, so auto_rig defaults to GLB.
+  - A re-import onto an existing skeleton keeps its old bone positions, so auto_rig deletes the old mesh, skeleton
+    and physics asset first.
+  - Interchange enables Nanite and puts materials and textures in `<name>/Materials` and `<name>/Textures`.
+  - Exporting a Nanite mesh writes its coarse fallback, so mesh_export hands back the import source file, or turns
+    Nanite off for the export.
+
+  Remaining gaps:
+  - auto_rig has no finger, face or twist bones, and its fit expects a T or A pose.
+  - The engine's own skinning (GeometryScript `compute_smooth_bone_weights` + `SkeletonModifier`) is reachable from
+    Python but unused. Blender's bone heat gives better weights.

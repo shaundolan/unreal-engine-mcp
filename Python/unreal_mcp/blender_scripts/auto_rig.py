@@ -2,7 +2,9 @@
 # Humanoid bones use the UE5 Mannequin names (root, pelvis, spine_01..05, neck_01/02, head, clavicle/upperarm/
 # lowerarm/hand, thigh/calf/foot/ball _l/_r), so IK Rig auto-characterisation and the retargeter map them.
 # The mesh must face -Y (Blender front view; image-to-3D output does after glTF import), left side at +X.
-# ARGS: input, name, type humanoid|quadruped|prop, height_cm, rotate [x,y,z deg], format fbx|glb, preview
+# ARGS: input, name, type humanoid|quadruped|prop, height_cm, rotate [x,y,z deg], format glb|fbx, preview,
+#       fbx_options (overrides for bpy.ops.export_scene.fbx). GLB is the default: UE 5.8 imports Blender's FBX
+#       armature with a 100x scale and a 90 degree rotation on the root bone (every apply_scale/bake variant).
 # ruff: noqa: F821
 _A = ARGS
 _name = _A.get("name") or "SKM_Rigged"
@@ -215,7 +217,7 @@ if _A.get("preview", True):
     preview(objs=[body], color_type="TEXTURE" if any(n.type == "TEX_IMAGE" for m in body.data.materials if m
                                                       for n in m.node_tree.nodes) else "MATERIAL")
 
-fmt = (_A.get("format") or "fbx").lower()
+fmt = (_A.get("format") or "glb").lower()
 path = OUT_DIR / f"{_name}.{fmt}"
 bpy.ops.object.select_all(action="DESELECT")
 body.select_set(True)
@@ -241,10 +243,12 @@ if fmt == "fbx":
                 n.image.filepath_raw = str(OUT_DIR / f"{bpy.path.clean_name(n.image.name)}.png")
                 n.image.file_format = "PNG"
                 n.image.save()
-    bpy.ops.export_scene.fbx(filepath=str(path), use_selection=True, object_types={"ARMATURE", "MESH"},
-                             add_leaf_bones=False, bake_anim=False, mesh_smooth_type="FACE",
-                             apply_scale_options="FBX_SCALE_ALL", primary_bone_axis="Y", secondary_bone_axis="X",
-                             path_mode="COPY", embed_textures=True, use_tspace=True)
+    fbx_kw = dict(filepath=str(path), use_selection=True, object_types={"ARMATURE", "MESH"},
+                  add_leaf_bones=False, bake_anim=False, mesh_smooth_type="FACE",
+                  apply_scale_options="FBX_SCALE_ALL", primary_bone_axis="Y", secondary_bone_axis="X",
+                  path_mode="COPY", embed_textures=True, use_tspace=True)
+    fbx_kw.update(_A.get("fbx_options") or {})
+    bpy.ops.export_scene.fbx(**fbx_kw)
 elif fmt == "glb":
     bpy.ops.export_scene.gltf(filepath=str(path), use_selection=True, export_format="GLB", export_animations=False,
                               export_skins=True)

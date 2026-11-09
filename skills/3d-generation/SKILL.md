@@ -60,6 +60,10 @@ Defaults that matter:
   `none` for characters.
 - `lods=3`: three extra LODs at 50%, 25% and 12.5%.
 - `uv=auto`: the model's UVs are kept when it has them, otherwise a smart unwrap with colours baked to a texture.
+- Nanite: UE 5.8's importer turns it on. LODs then don't render, and the result shows `nanite: true` and
+  `fallback_triangles`. Pass `nanite=False` to use the classic LODs, for example for mobile.
+- Layout: the mesh ends up at `<destination>/<out_name>`. Its materials and textures go in
+  `<destination>/<out_name>/Materials` and `/Textures`.
 
 ## Characters: auto_rig
 1. `mesh_generate(image_path=..., subject="character", height_cm=180, target_tris=20000, collision="none",
@@ -84,6 +88,9 @@ Defaults that matter:
    animate it with your own clips. `type="prop"` makes a single bone, for physics or simple swaying.
 6. To give the character gameplay, use the animation skill (`animbp_apply`, a locomotion BlendSpace) with the
    retargeted animations.
+
+The rig goes to Unreal as GLB. Blender's FBX export puts a 100x scale on the root bone, which breaks retargeting.
+Re-running replaces the skeletal mesh and its skeleton.
 
 Limits: no fingers, no face, no twist bones. Loose clothing and capes get stiff or stretchy weights, and long hair
 follows the head. For a hero character, take the FBX into Blender and fix the weights by hand.

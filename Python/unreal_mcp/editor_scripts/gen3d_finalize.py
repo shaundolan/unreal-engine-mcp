@@ -57,12 +57,14 @@ def _finalize():
             out["lod_count"] = int(sub.set_lods(mesh, opts))
         else:
             out["lod_count"] = int(sub.get_lod_count(mesh))
-        out["triangles_lod0"] = int(mesh.get_num_triangles(0))
         if ARGS.get("nanite") is not None:
             ns = mesh.get_editor_property("nanite_settings")
             ns.set_editor_property("enabled", bool(ARGS["nanite"]))
             sub.set_nanite_settings(mesh, ns, apply_changes=True)
-            out["nanite"] = bool(ARGS["nanite"])
+        ns = mesh.get_editor_property("nanite_settings")
+        out["nanite"] = bool(ns.get_editor_property("enabled"))
+        # with Nanite on, LOD0 render data is the Nanite fallback mesh (coarser than the source)
+        out["fallback_triangles" if out["nanite"] else "triangles_lod0"] = int(mesh.get_num_triangles(0))
         out["materials"] = [str(m.get_editor_property("material_interface").get_path_name())
                             if m.get_editor_property("material_interface") else None
                             for m in mesh.get_editor_property("static_materials")]

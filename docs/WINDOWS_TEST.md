@@ -158,7 +158,12 @@ Licences:
      - Needs the Mannequin first: `python scripts\install_mannequin.py`.
      - Expect the IK Rig chains to include Spine, LeftArm and RightLeg.
      - Expect `MF_Unarmed_Walk_Fwd_Hero` in `/Game/Characters/Generated/Anims`.
-   - [ ] PIE: Hero walks in place with the Mannequin walk. Take a `viewport_capture` of it.
+     - Linux reference (mock backend, live 5.8.4): the IK Rig had 11 chains (Spine, Neck, Head, Left/Right
+       Leg, Foot, Clavicle, Arm). The skeleton root was clean (scale 1) because the rig ships as GLB.
+     - On D3D12, check that the root bone's local scale is 1. It shows on the skeleton's reference pose:
+       `skeleton.get_reference_pose().get_ref_bone_pose('root')`.
+   - [ ] PIE: Hero walks in place with the Mannequin walk. Take a `viewport_capture` of it, and add a light first:
+     a new level is black.
      - Note whether it walks forwards, backwards or sideways.
      - If not forwards, re-run `auto_rig` with `rotate=[0,0,180]` or `[0,0,90]` and report which worked.
    - [ ] Bench: `uv run python -m unreal_mcp.bench run --agent solution --filter "gen3d-*"` passes 2/2.

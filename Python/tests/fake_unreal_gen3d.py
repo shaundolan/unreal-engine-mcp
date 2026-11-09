@@ -53,6 +53,16 @@ def add_gen3d(u) -> None:  # noqa: C901 - one flat namespace, like the module it
     _sm_init = u.StaticMesh.__init__
     u.StaticMesh.__init__ = _mesh_init
     u.StaticMesh.get_bounds = lambda self: self._bounds
+
+    class AssetImportData(Object):
+        def __init__(self, mesh):
+            super().__init__()
+            self._mesh = mesh
+
+        def get_first_filename(self):
+            return getattr(self._mesh, "source_file", "") or ""
+
+    u.StaticMesh.asset_import_data = property(lambda self: AssetImportData(self))
     u.StaticMesh.get_num_triangles = lambda self, lod: max(1, int(self._tris * 0.5 ** lod))
     u.StaticMesh.get_num_lods = lambda self: self._lods
 
@@ -109,7 +119,11 @@ def add_gen3d(u) -> None:  # noqa: C901 - one flat namespace, like the module it
                 sk = register(Skeleton(f"{stem}_Skeleton", f"{dest}/{stem}_Skeleton.{stem}_Skeleton"))
                 pa = register(PhysicsAsset(f"{stem}_PhysicsAsset", f"{dest}/{stem}_PhysicsAsset.{stem}_PhysicsAsset"))
                 mesh.skeleton, mesh.physics_asset = sk, pa
-                mesh.bones = [b.decode() for b in _fbx_bones(data)] if path.suffix.lower() == ".fbx" else []
+                if is_glb:
+                    doc = _glb(data)
+                    mesh.bones = [doc["nodes"][j]["name"] for sk_ in doc["skins"] for j in sk_["joints"]]
+                else:
+                    mesh.bones = [b.decode() for b in _fbx_bones(data)]
                 made += [register(mesh), sk, pa]
             else:
                 if t.replace_existing is False and u.EditorAssetLibrary.does_asset_exist(f"{dest}/{stem}"):

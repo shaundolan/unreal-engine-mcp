@@ -35,7 +35,7 @@ name = A["name"]
 if "def humanoid_joints" in code:
     bones = [b"root", b"pelvis", b"spine_01", b"neck_01", b"head", b"clavicle_l", b"upperarm_l", b"clavicle_r",
              b"upperarm_r", b"thigh_l", b"thigh_r"]
-    p = out / (name + "." + A.get("format", "fbx"))
+    p = out / (name + ".fbx")  # this fake always writes a minimal skinned FBX
     p.write_bytes(b"Kaydara FBX Binary\\x00" + b"".join(b + b"\\x00\\x01Model" for b in bones) + b"Deformer")
     r = {{"type": A["type"], "bones": [b.decode() for b in bones], "warnings": [],
           "export": {{"name": name, "format": "fbx", "path": str(p)}}}}

@@ -66,14 +66,15 @@ def _images(r: dict[str, Any], extra: list[Path], show: bool) -> list[Any]:
     return out
 
 
-def fetch_editor_file(get_conn, editor_path: str, dest: Path, chunk: int = 8 * 1024 * 1024) -> Path:
+def fetch_editor_file(get_conn, editor_path: str, dest: Path, chunk: int = 8 * 1024 * 1024,
+                      delete: bool = True) -> Path:
     """Copy a file from the editor machine to this one (download_chunk, the reverse of asset_import's upload)."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     offset = 0
     with dest.open("wb") as fh:
         while True:
             r = run_editor_script(get_conn, "download_chunk", {"path": editor_path, "offset": offset, "size": chunk,
-                                                               "delete": True}, timeout_s=300)
+                                                               "delete": delete}, timeout_s=300)
             if not r.get("success"):
                 raise Gen3DError(f"download of {editor_path} failed: {r.get('error') or r.get('traceback')}")
             data = base64.b64decode(r["data_b64"])
@@ -186,10 +187,13 @@ def rig_pipeline(get_conn, mesh: str, rig_type: str, out_name: str, destination:
         ex = run_editor_script(get_conn, "mesh_export", {"asset": mesh, "format": "fbx"}, timeout_s=600)
         if not ex.get("success"):
             return {"success": False, "error": f"could not export {mesh}: {ex.get('error') or ex.get('traceback')}"}
-        if editor_is_local(get_conn):
+        if ex.get("source_file") and Path(ex["path"]).is_file():  # the file it was imported from, on this machine
+            src = ex["path"]
+        elif editor_is_local(get_conn):
             src = ex["path"]
         else:
-            src = str(fetch_editor_file(get_conn, ex["path"], work / Path(ex["path"]).name))
+            src = str(fetch_editor_file(get_conn, ex["path"], work / Path(ex["path"]).name,
+                                        delete=not ex.get("source_file")))
     else:
         return {"success": False, "error": f"{mesh} is neither an existing file on the MCP server machine nor "
                 "an Unreal asset path (/Game/...)"}
@@ -205,6 +209,20 @@ def rig_pipeline(get_conn, mesh: str, rig_type: str, out_name: str, destination:
     r["warnings"] = list(rig["result"].get("warnings") or [])
     if not import_to_unreal:
         return r
+    if replace_existing:  # a skeleton re-import keeps the old reference pose: start clean
+        wipe = run_python(get_conn, f"m = unreal.load_asset({destination + '/' + out_name!r})\n"
+                          "paths = []\n"
+                          "if isinstance(m, unreal.SkeletalMesh):\n"
+                          "    for o in (m.get_editor_property('skeleton'),\n"
+                          "              m.get_editor_property('physics_asset'), m):\n"
+                          "        if o is not None:\n"
+                          "            paths.append(o.get_path_name().split('.')[0])\n"
+                          "del m\n"
+                          "result = [p for p in paths if unreal.EditorAssetLibrary.delete_asset(p)]",
+                          timeout_s=120, collect=True)
+        if not wipe.get("success"):
+            r.update(success=False, error=f"could not remove the previous skeletal mesh: {wipe.get('traceback')}")
+            return r
     imp = import_and_finalize(get_conn, r["file"], destination, out_name, "skeletal", replace_existing, [])
     r["unreal"] = imp
     if not imp.get("success"):
@@ -249,6 +267,10 @@ def rig_pipeline(get_conn, mesh: str, rig_type: str, out_name: str, destination:
     r["chains"] = results[0].get("chains")
     created = results[-1].get("created", []) if anims else []
     r["animations"] = created
+    if anims and not created:
+        r.update(success=False, error="the retargeter produced no animations: check `chains` (the IK Rig found no "
+                 "Mannequin-like chains?) and rig.warnings")
+        return r
     if place_actor:
         want = (play_animation or "walk").lower()
         anim = next((a for a in created if want in a.lower()), created[0] if created else "")
@@ -304,7 +326,10 @@ def register(mcp, get_conn):
         height_cm: real-world height (Z); 0 keeps the model's arbitrary scale (about 1 m).
         out_name: Unreal asset name (SM_Barrel). destination: content folder.
         collision: convex (default; decomposition) | box | sphere | capsule | kdopNN | complex_as_simple | none.
-        lods: extra LODs, each half the triangles of the previous one (engine reduction). nanite: true/false.
+        lods: extra LODs, each half the triangles of the previous one (engine reduction); they only render
+          when Nanite is off. nanite: true/false; default keeps the importer's choice (UE 5.8's Interchange
+          turns Nanite on). The result reports `nanite`. Interchange puts the materials and textures in
+          <destination>/<out_name>/Materials and /Textures; the mesh is moved to <destination>/<out_name>.
         uv: auto (keep the model's UVs if it has them) | keep | smart (re-unwrap; textures are re-baked).
         bake: auto (bake vertex colours / replaced UVs to PBR textures) | always | never. texture_size: px.
         rotate: [x, y, z] degrees applied first, if the model comes in lying down or facing the wrong way.
@@ -379,7 +404,7 @@ def register(mcp, get_conn):
     def auto_rig(mesh: str, type: str = "humanoid", out_name: str = "", destination: str = "/Game/Characters/Generated",
                  height_cm: float = 0.0, rotate: list[float] | None = None, retarget: bool = True,
                  mannequin_mesh: str = MANNEQUIN_MESH, animations: list[str] | None = None, place_actor: str = "",
-                 play_animation: str = "walk", location: list[float] | None = None, format: str = "fbx",
+                 play_animation: str = "walk", location: list[float] | None = None, format: str = "glb",
                  import_to_unreal: bool = True, replace_existing: bool = True, show_preview: bool = True) -> list[Any]:
         """Rig a mesh automatically and make the UE5 Mannequin animations play on it.
 
@@ -397,7 +422,10 @@ def register(mcp, get_conn):
         Mannequin: scripts/install_mannequin.py) in <destination>/Anims.
         place_actor: label of a SkeletalMeshActor to place at `location` looping the retargeted animation whose
           name contains play_animation (default "walk"), so it walks in the viewport and in PIE.
-        out_name: default SKM_<file stem>. format: fbx (default) | glb.
+        out_name: default SKM_<file stem>. format: glb (default; clean root bone) | fbx (Blender's FBX export
+          bakes a 100x scale and a 90 degree rotation into the root bone in UE 5.8, verified live).
+        Re-running replaces the skeletal mesh, its skeleton and physics asset (a re-import onto an existing
+        skeleton would keep the old bone positions).
         Returns skeletal_mesh, skeleton, ik_rig, retargeter, animations, per-bone vertex counts, warnings."""
         if type not in ("humanoid", "quadruped", "prop"):
             return [{"success": False, "error": "type must be humanoid, quadruped or prop"}]

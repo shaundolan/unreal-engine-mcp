@@ -1,5 +1,7 @@
 # Export a mesh asset to a temp file on the editor machine (auto_rig works on files; the MCP server fetches it with
-# download_chunk when the editor is remote). ARGS: asset (StaticMesh / SkeletalMesh path), format fbx|glb
+# download_chunk when the editor is remote). ARGS: asset (StaticMesh / SkeletalMesh path), format fbx|glb,
+# prefer_source (default true: hand back the file the asset was imported from when it still exists; it has full
+# detail, while exporting a Nanite mesh writes its coarse fallback mesh)
 # ruff: noqa: F821
 import os as _os
 import tempfile as _tmp
@@ -30,11 +32,30 @@ def _export():
     obj = unreal.load_asset(ARGS["asset"])
     if obj is None:
         raise LookupError(f"asset {ARGS['asset']!r} not found")
+    if ARGS.get("prefer_source", True):
+        aid = obj.get_editor_property("asset_import_data") if hasattr(obj, "get_editor_property") else None
+        src = aid.get_first_filename() if aid is not None else ""
+        if src and _os.path.isfile(src):
+            return {"path": src, "size": _os.path.getsize(src), "format": _os.path.splitext(src)[1][1:].lower(),
+                    "source_file": True}
     first = (ARGS.get("format") or "fbx").lower()
-    for fmt in (first, "glb" if first == "fbx" else "fbx"):
-        path = _try(obj, fmt)
-        if path:
-            return {"path": path, "size": _os.path.getsize(path), "format": fmt}
+    nanite = None
+    if isinstance(obj, unreal.StaticMesh):
+        ns = obj.get_editor_property("nanite_settings")
+        if ns.get_editor_property("enabled"):  # export the full mesh, not the Nanite fallback
+            nanite = ns
+            off = obj.get_editor_property("nanite_settings")
+            off.set_editor_property("enabled", False)
+            unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem).set_nanite_settings(obj, off, True)
+    try:
+        for fmt in (first, "glb" if first == "fbx" else "fbx"):
+            path = _try(obj, fmt)
+            if path:
+                return {"path": path, "size": _os.path.getsize(path), "format": fmt}
+    finally:
+        if nanite is not None:
+            nanite.set_editor_property("enabled", True)
+            unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem).set_nanite_settings(obj, nanite, True)
     raise RuntimeError(f"export of {ARGS['asset']} failed (FBX exporter, and glTF exporter plugin)")
 
 
