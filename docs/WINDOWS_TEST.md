@@ -95,7 +95,22 @@ uv run python ..\scripts\package.py --platform Win64      # or call package_proj
 - [ ] If it fails, the job log is `FlopperamUnrealMCP\Saved\MCPPackage\<job>.log`. The command line is in `<job>.json`. It
       runs `cmd.exe /d /s /c "...RunUAT.bat BuildCookRun ..."`, so it copes with spaces in the engine path.
 
-## 8. Remote mode (optional: agents on Linux, editor on Windows)
+## 8. Animation + GAS (branch feat/anim-gas)
+Verified live on Linux (`bench/results/2026-11-09-anim-gas-ue5.8.4-linux/`); on Windows check the MSVC build and rerun:
+```powershell
+python scripts\install_mannequin.py --engine "C:\Program Files\Epic Games\UE_5.8"   # editor closed
+# rebuild (step 1): new C++ in MCPAnimAuthoring.cpp / MCPGameplayTagCommands.cpp, new deps AnimGraph,
+# AnimGraphRuntime, AnimationBlueprintLibrary, GameplayTags; the sample .uproject now enables GameplayAbilities
+cd Python
+uv run python -m unreal_mcp.bench run --agent solution --filter "anim-*"
+uv run python -m unreal_mcp.bench run --agent solution --filter "gas-*"
+uv run python -m unreal_mcp.bench run --agent none --filter "anim-*"
+```
+Expect 4/4 passed, then 0/3 for the baseline. `unreal_status` should list `animbp_apply`, `animbp_export`,
+`anim_asset_apply`, `anim_asset_export`, `gameplay_tags`. Also open `/Game/UEBench/anim-locomotion-abp/ABP_Hero` in
+the editor and check the state machine looks sane (nodes laid out, no orphan pins).
+
+## 9. Remote mode (optional: agents on Linux, editor on Windows)
 ```powershell
 $env:UNREAL_MCP_BIND = "0.0.0.0"; $env:UNREAL_MCP_TOKEN = "<random-secret>"; scripts\ue_windows.ps1 launch
 ```
@@ -103,7 +118,7 @@ $env:UNREAL_MCP_BIND = "0.0.0.0"; $env:UNREAL_MCP_TOKEN = "<random-secret>"; scr
 - [ ] A wrong token gets `unauthorized`.
 - [ ] `0.0.0.0` without a token falls back to `127.0.0.1` (Output Log error). Allow port 55557 in Windows Firewall.
 
-## 9. Finish and report
+## 10. Finish and report
 ```powershell
 cd ..; scripts\ue_windows.ps1 quit
 ```

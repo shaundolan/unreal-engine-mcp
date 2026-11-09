@@ -608,14 +608,7 @@ static TSharedPtr<FJsonObject> HandleBpExport(const TSharedPtr<FJsonObject>& Par
 // Apply
 // ---------------------------------------------------------------------------------------------
 
-struct FApplyContext
-{
-	UBlueprint* BP = nullptr;
-	TMap<FString, UEdGraphNode*> Aliases;
-	TMap<UEdGraph*, FIntPoint> Layout; // X = nodes placed so far, Y = first row
-	TArray<TSharedPtr<FJsonObject>> DeferredDefaults;
-	bool bStructural = false;
-};
+using FApplyContext = MCPAuthoring::FGraphApplyContext;
 
 template <typename T>
 static T* NewNode(UEdGraph* G, TFunctionRef<void(T*)> Configure)
@@ -880,7 +873,7 @@ static bool ApplyPins(UEdGraphNode* N, const TSharedPtr<FJsonObject>& Op, FStrin
 	return true;
 }
 
-static UEdGraphNode* ResolveNodeRef(FApplyContext& Ctx, const FString& Ref)
+static UEdGraphNode* ResolveRef(FApplyContext& Ctx, const FString& Ref)
 {
 	if (UEdGraphNode** A = Ctx.Aliases.Find(Ref)) return *A;
 	return FindNodeById(Ctx.BP, Ref);
@@ -1362,8 +1355,8 @@ static bool OpConnect(FApplyContext& Ctx, const TSharedPtr<FJsonObject>& Op, FSt
 		Err = TEXT("connect needs from/to as \"node.pin\" (node = alias from this call or an id from bp_export)");
 		return false;
 	}
-	UEdGraphNode* A = ResolveNodeRef(Ctx, FN);
-	UEdGraphNode* B = ResolveNodeRef(Ctx, TN);
+	UEdGraphNode* A = ResolveRef(Ctx, FN);
+	UEdGraphNode* B = ResolveRef(Ctx, TN);
 	if (!A || !B)
 	{
 		Err = FString::Printf(TEXT("unknown node '%s'"), *(A ? TN : FN));
@@ -1381,8 +1374,9 @@ static bool OpConnect(FApplyContext& Ctx, const TSharedPtr<FJsonObject>& Op, FSt
 		Err = FString::Printf(TEXT("'%s' has no input pin '%s' (pins: %s)"), *TN, *TP, *PinListing(B));
 		return false;
 	}
-	const UEdGraphSchema_K2* K2 = GetDefault<UEdGraphSchema_K2>();
-	const FPinConnectionResponse Resp = K2->CanCreateConnection(PA, PB);
+	// The graph's own schema: K2 for event/function graphs, the animation schemas for pose links.
+	const UEdGraphSchema* Schema = A->GetGraph() ? A->GetGraph()->GetSchema() : GetDefault<UEdGraphSchema_K2>();
+	const FPinConnectionResponse Resp = Schema->CanCreateConnection(PA, PB);
 	if (Resp.Response == CONNECT_RESPONSE_DISALLOW)
 	{
 		Err = FString::Printf(TEXT("cannot connect %s -> %s: %s"), *From, *To, *Resp.Message.ToString());
@@ -1390,7 +1384,7 @@ static bool OpConnect(FApplyContext& Ctx, const TSharedPtr<FJsonObject>& Op, FSt
 	}
 	A->Modify();
 	B->Modify();
-	if (!K2->TryCreateConnection(PA, PB))
+	if (!Schema->TryCreateConnection(PA, PB))
 	{
 		Err = FString::Printf(TEXT("connection %s -> %s failed: %s"), *From, *To, *Resp.Message.ToString());
 		return false;
@@ -1410,7 +1404,7 @@ static bool OpDisconnect(FApplyContext& Ctx, const TSharedPtr<FJsonObject>& Op, 
 		Err = TEXT("disconnect needs from \"node.pin\" (and optionally to)");
 		return false;
 	}
-	UEdGraphNode* A = ResolveNodeRef(Ctx, FN);
+	UEdGraphNode* A = ResolveRef(Ctx, FN);
 	UEdGraphPin* PA = A ? FindPin(A, FP, EGPD_MAX) : nullptr;
 	if (!PA)
 	{
@@ -1420,7 +1414,7 @@ static bool OpDisconnect(FApplyContext& Ctx, const TSharedPtr<FJsonObject>& Op, 
 	A->Modify();
 	if (SplitPinRef(To, TN, TP))
 	{
-		UEdGraphNode* B = ResolveNodeRef(Ctx, TN);
+		UEdGraphNode* B = ResolveRef(Ctx, TN);
 		UEdGraphPin* PB = B ? FindPin(B, TP, EGPD_MAX) : nullptr;
 		if (!PB)
 		{
@@ -1462,11 +1456,6 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 	FString Path, ParentName;
 	Params->TryGetStringField(TEXT("blueprint"), Path);
 	Params->TryGetStringField(TEXT("create_parent"), ParentName);
-	bool bCompile = true, bDryRun = false, bAtomic = true, bSave = true;
-	Params->TryGetBoolField(TEXT("compile"), bCompile);
-	Params->TryGetBoolField(TEXT("dry_run"), bDryRun);
-	Params->TryGetBoolField(TEXT("atomic"), bAtomic);
-	Params->TryGetBoolField(TEXT("save"), bSave);
 
 	UBlueprint* BP = LoadBlueprint(Path);
 	bool bCreated = false;
@@ -1502,15 +1491,28 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 		bCreated = true;
 	}
 
+	return MCPAuthoring::ApplyBlueprintOps(BP, bCreated, Params);
+}
+
+TSharedPtr<FJsonObject> MCPAuthoring::ApplyBlueprintOps(UBlueprint* BP, bool bCreated, const TSharedPtr<FJsonObject>& Params,
+	const FOpExtension& Extension, TFunction<void(FGraphApplyContext&)> Setup)
+{
+	bool bCompile = true, bDryRun = false, bAtomic = true, bSave = true;
+	Params->TryGetBoolField(TEXT("compile"), bCompile);
+	Params->TryGetBoolField(TEXT("dry_run"), bDryRun);
+	Params->TryGetBoolField(TEXT("atomic"), bAtomic);
+	Params->TryGetBoolField(TEXT("save"), bSave);
+
 	FApplyContext Ctx;
 	Ctx.BP = BP;
 	TArray<TSharedPtr<FJsonValue>> Failed;
 	int32 Applied = 0;
 	const int32 QueueBefore = (GEditor && GEditor->Trans) ? GEditor->Trans->GetQueueLength() : 0;
 	{
-		FScopedTransaction Transaction(FText::FromString(FString::Printf(TEXT("MCP: bp_apply %s"), *BP->GetName())));
+		FScopedTransaction Transaction(FText::FromString(FString::Printf(TEXT("MCP: apply %s"), *BP->GetName())));
 		BP->Modify();
 		if (BP->SimpleConstructionScript) BP->SimpleConstructionScript->Modify();
+		if (Setup) Setup(Ctx);
 		const TArray<TSharedPtr<FJsonValue>>* Ops = nullptr;
 		if (Params->TryGetArrayField(TEXT("operations"), Ops))
 		{
@@ -1520,7 +1522,11 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 				FString Err, Kind;
 				Op->TryGetStringField(TEXT("op"), Kind);
 				bool bOk = false;
-				if (Kind == TEXT("add_variable")) bOk = OpAddVariable(Ctx, Op, Err);
+				if (Extension && Extension(Ctx, Kind, Op, bOk, Err))
+				{
+					// handled by the domain extension (animbp_apply)
+				}
+				else if (Kind == TEXT("add_variable")) bOk = OpAddVariable(Ctx, Op, Err);
 				else if (Kind == TEXT("remove_variable"))
 				{
 					FBlueprintEditorUtils::RemoveMemberVariable(BP, FName(*Op->GetStringField(TEXT("name"))));
@@ -1538,10 +1544,11 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 				{
 					FString GraphName;
 					Op->TryGetStringField(TEXT("graph"), GraphName);
-					UEdGraph* G = FindGraph(BP, GraphName);
+					UEdGraph* G = MCPAuthoring::ResolveGraph(Ctx, GraphName);
 					if (!G)
 					{
-						Err = FString::Printf(TEXT("graph '%s' not found (EventGraph or a function added with add_function)"), *GraphName);
+						Err = FString::Printf(TEXT("graph '%s' not found (EventGraph, a function added with add_function, or the id of a "
+							"node that owns a graph, e.g. an AnimBP state or transition)"), *GraphName);
 					}
 					else
 					{
@@ -1560,14 +1567,14 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 				{
 					FString Ref;
 					Op->TryGetStringField(TEXT("node"), Ref);
-					if (UEdGraphNode* N = ResolveNodeRef(Ctx, Ref)) { N->Modify(); bOk = ApplyPins(N, Op, Err); }
+					if (UEdGraphNode* N = ResolveRef(Ctx, Ref)) { N->Modify(); bOk = ApplyPins(N, Op, Err); }
 					else Err = FString::Printf(TEXT("unknown node '%s'"), *Ref);
 				}
 				else if (Kind == TEXT("remove_node"))
 				{
 					FString Ref;
 					Op->TryGetStringField(TEXT("node"), Ref);
-					if (UEdGraphNode* N = ResolveNodeRef(Ctx, Ref))
+					if (UEdGraphNode* N = ResolveRef(Ctx, Ref))
 					{
 						if (UEdGraph* NG = N->GetGraph()) NG->Modify(); // graph node list must be in the undo record
 						FBlueprintEditorUtils::RemoveNode(BP, N, true);
@@ -1687,6 +1694,93 @@ static TSharedPtr<FJsonObject> HandleBpApply(const TSharedPtr<FJsonObject>& Para
 	Out->SetBoolField(TEXT("rolled_back"), bRolledBack);
 	Out->SetBoolField(TEXT("saved"), bSaved);
 	return Out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Shared graph machinery (animbp_apply builds on it)
+// ---------------------------------------------------------------------------------------------
+
+UEdGraph* MCPAuthoring::ResolveGraph(FGraphApplyContext& Ctx, const FString& Name)
+{
+	auto SubGraphOf = [](UEdGraphNode* N) -> UEdGraph*
+	{
+		if (!N) return nullptr;
+		for (UEdGraph* G : N->GetSubGraphs())
+		{
+			if (G) return G;
+		}
+		return nullptr;
+	};
+	if (!Name.IsEmpty())
+	{
+		if (UEdGraphNode** A = Ctx.Aliases.Find(Name))
+		{
+			if (UEdGraph* G = SubGraphOf(*A)) return G;
+		}
+	}
+	if (UEdGraph* G = FindGraph(Ctx.BP, Name))
+	{
+		return G;
+	}
+	TArray<UEdGraph*> All;
+	AllGraphs(Ctx.BP, All);
+	for (UEdGraph* G : All)
+	{
+		if (G && G->GetName().Equals(Name, ESearchCase::IgnoreCase)) return G;
+	}
+	return Name.Len() >= 8 ? SubGraphOf(FindNodeById(Ctx.BP, Name)) : nullptr;
+}
+
+UEdGraphNode* MCPAuthoring::ResolveNodeRef(FGraphApplyContext& Ctx, const FString& Ref)
+{
+	return ResolveRef(Ctx, Ref);
+}
+
+UEdGraphNode* MCPAuthoring::CreateGraphNode(FGraphApplyContext& Ctx, UEdGraph* Graph, const TSharedPtr<FJsonObject>& Spec, FString& Err)
+{
+	Graph->Modify();
+	return CreateNodeFromOp(Ctx, Graph, Spec, Err);
+}
+
+void MCPAuthoring::PlaceGraphNode(FGraphApplyContext& Ctx, UEdGraph* Graph, UEdGraphNode* Node, const TSharedPtr<FJsonObject>& Spec)
+{
+	PlaceNode(Ctx, Graph, Node, Spec);
+}
+
+bool MCPAuthoring::ApplyPinDefaults(UEdGraphNode* Node, const TSharedPtr<FJsonObject>& Spec, FString& Err)
+{
+	return ApplyPins(Node, Spec, Err);
+}
+
+UEdGraphPin* MCPAuthoring::FindNodePin(UEdGraphNode* Node, const FString& Name, EEdGraphPinDirection Dir)
+{
+	return FindPin(Node, Name, Dir);
+}
+
+bool MCPAuthoring::LinkPins(UEdGraphNode* From, const FString& FromPin, UEdGraphNode* To, const FString& ToPin, FString& Err)
+{
+	FApplyContext Tmp;
+	Tmp.Aliases.Add(TEXT("from"), From);
+	Tmp.Aliases.Add(TEXT("to"), To);
+	TSharedPtr<FJsonObject> Op = MakeShared<FJsonObject>();
+	Op->SetStringField(TEXT("from"), TEXT("from.") + FromPin);
+	Op->SetStringField(TEXT("to"), TEXT("to.") + ToPin);
+	return OpConnect(Tmp, Op, Err);
+}
+
+FString MCPAuthoring::GraphNodeId(const UEdGraphNode* Node)
+{
+	return NodeId(Node);
+}
+
+TSharedPtr<FJsonObject> MCPAuthoring::ExportGraphNode(UEdGraphNode* Node, bool bPins)
+{
+	return ExportNode(Node, bPins);
+}
+
+TSharedPtr<FJsonObject> MCPAuthoring::ExportBlueprintSpec(UBlueprint* Blueprint, const TArray<FString>& OnlyGraphs, bool bPins)
+{
+	return ExportBlueprint(Blueprint, OnlyGraphs, bPins);
 }
 
 void FMCPBlueprintAuthoring::Register(IMCPCommandRegistry& Registry)

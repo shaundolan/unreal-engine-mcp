@@ -49,8 +49,11 @@ coin collected by walking into it), blueprints ×1 (BeginPlay logic seen in the 
 Tree guard walks to its goal on a NavMesh), plus `demo-arena-playable`: the demo-1 golden path (Blender coin, HUD, game mode
 score, a chasing enemy, coins collected in play, score and HUD verified), and world ×4 (rolling-hills landscape with a
 grass layer, forest scattered on slopes under 25°, a road spline between two towns carved into the terrain, a PCG forest
-volume).
+volume), animation ×3 (1D locomotion BlendSpace, attack montage with sections and a Hit notify, locomotion AnimBP with idle/move/jump states) and gas ×1 (instant heal effect + tagged ability).
 
+
+`requires` also takes `asset:<path>` (content the task builds on, e.g. the template Mannequin from
+`scripts/install_mannequin.py`) and `class:<Name>` (an engine plugin's class, e.g. `class:GameplayEffect`).
 Tasks marked `requires: ["command:<name>"]` need a plugin build with that command; the fake-editor CI skips them, so they are
 validated against a live editor (see `bench/results/`). `check.tools` entries call a tool and evaluate `expect` over its JSON
 result (`walk(tree)` yields every node of a widget or BT export).

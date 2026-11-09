@@ -67,7 +67,11 @@ public class UnrealMCP : ModuleRules
 				"AIModule",            // bt_build
 				"GameplayTasks",
 				"Landscape",          // landscape_create / landscape_inspect / landscape_write
-				"Foliage"             // LandscapeEdit.h includes InstancedFoliageActor.h
+				"Foliage",            // LandscapeEdit.h includes InstancedFoliageActor.h
+				"AnimGraph",           // animbp_apply: state machines, states, transitions, asset players
+				"AnimGraphRuntime",
+				"AnimationBlueprintLibrary", // anim_asset_apply: notifies
+				"GameplayTags"         // gameplay_tags
 			}
 		);
 		

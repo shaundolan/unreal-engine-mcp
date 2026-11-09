@@ -18,6 +18,14 @@ def editor(fake, ue, tools, monkeypatch):  # noqa: F811
     state = ue._state
     for shape in ("Cube", "Cylinder", "Plane", "Sphere"):
         ue.register_asset(ue.StaticMesh(shape, f"/Engine/BasicShapes/{shape}.{shape}"))
+    ue.add_mannequin()  # template content the anim-* tasks need (scripts/install_mannequin.py live)
+
+    def gameplay_tags(p):
+        added = [t for t in p.get("tags", []) if t not in state["tags"]]
+        state["tags"].update(added)
+        return {"ok": True, "tags": sorted(state["tags"]), "added": added, "already_existed": [], "errors": []}
+
+    fake.on("gameplay_tags", gameplay_tags)
     log = []
 
     def editor_action(p):
@@ -115,6 +123,8 @@ MUTATIONS = {  # near-miss solutions the checkers must reject
     "material-emissive": lambda t: t.solution[0]["args"]["operations"].pop(5),  # emissive unwired
     "scene-pillar-grid": lambda t: t.solution[0]["args"]["operations"][0].update(folder="Columns"),
     "perf-shadow-budget": lambda t: t.solution[0]["args"]["operations"].pop(),
+    "anim-blendspace-locomotion": lambda t: t.solution[0]["args"]["operations"][0]["samples"][2].update(x=400),
+    "gas-heal-effect": lambda t: t.solution[0]["args"]["operations"][0]["modifiers"][0].update(magnitude=20),
 }
 
 

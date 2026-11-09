@@ -1,6 +1,7 @@
 # Shared helpers prepended to every editor script. Runs inside Unreal (`unreal` is imported).
 # ruff: noqa: F821
 import math as _math
+import re
 
 import unreal
 
@@ -203,3 +204,9 @@ def _ensure_navmesh():
     for a in [a for a in acts if a.get_class().get_name() == "RecastNavMesh"]:
         sub.destroy_actor(a)
     unreal.SystemLibrary.execute_console_command(w, "RebuildNavigation")
+
+
+def enum_name(v):
+    """unreal enum value -> 'INSTANT' (str() gives '<GameplayEffectDurationType.INSTANT: 0>' in the editor)."""
+    m = re.search(r"\.([A-Z0-9_]+)", str(v))
+    return m.group(1) if m else str(v)

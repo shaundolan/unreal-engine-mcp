@@ -1,0 +1,58 @@
+{
+  "id": "gas-heal-effect",
+  "domain": "gas",
+  "title": "Instant heal GameplayEffect + heal ability",
+  "prompt": "Using the Gameplay Ability System, create an instant GameplayEffect {root}/GE_Heal that adds 25 to AbilitySystemTestAttributeSet.Health, and a GameplayAbility {root}/GA_Heal whose ability tags include Ability.Heal.",
+  "requires": [
+    "class:GameplayEffect"
+  ],
+  "setup": [],
+  "check": {
+    "tools": [
+      {
+        "tool": "gas_inspect",
+        "args": {
+          "asset": "{root}/GE_Heal"
+        },
+        "name": "instant +25 Health",
+        "expect": "r['success'] and r['duration_policy'] == 'INSTANT' and len(r['modifiers']) == 1 and r['modifiers'][0]['attribute'] == 'AbilitySystemTestAttributeSet.Health' and r['modifiers'][0]['op'] in ('AddBase', 'Additive') and r['modifiers'][0]['magnitude'] == 25"
+      },
+      {
+        "tool": "gas_inspect",
+        "args": {
+          "asset": "{root}/GA_Heal"
+        },
+        "name": "ability tagged Ability.Heal",
+        "expect": "r['success'] and r['class'] == 'GameplayAbility' and 'Ability.Heal' in r['ability_tags']"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "gas_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create_effect",
+            "asset": "{root}/GE_Heal",
+            "duration": "instant",
+            "modifiers": [
+              {
+                "attribute": "AbilitySystemTestAttributeSet.Health",
+                "op": "add",
+                "magnitude": 25
+              }
+            ]
+          },
+          {
+            "op": "create_ability",
+            "asset": "{root}/GA_Heal",
+            "ability_tags": [
+              "Ability.Heal"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

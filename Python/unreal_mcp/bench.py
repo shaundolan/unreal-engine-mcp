@@ -200,6 +200,18 @@ def requirement_missing(task: Task, tools: dict[str, Any] | None = None) -> str 
             if req.split(":", 1)[1] not in commands:
                 return f"editor plugin lacks {req.split(':', 1)[1]} (needs a plugin build with it)"
             continue
+        if req.startswith(("asset:", "class:")):
+            # Content or engine plugins the task builds on (e.g. the template Mannequin, GameplayAbilities).
+            kind, what = req.split(":", 1)
+            code = (f"result = unreal.EditorAssetLibrary.does_asset_exist({what!r})" if kind == "asset"
+                    else f"result = getattr(unreal, {what!r}, None) is not None")
+            r = call_tool(tools or {}, "execute_python", {"code": code})
+            if not r.get("success"):
+                return f"editor not reachable: {r.get('error') or r.get('traceback')}"
+            if not r.get("result"):
+                return (f"missing asset {what} (python scripts/install_mannequin.py copies the template Mannequin)"
+                        if kind == "asset" else f"unreal.{what} not available (enable its plugin)")
+            continue
         if req == "blender":
             from .config import Settings
             from .tools.blender import resolve_blender

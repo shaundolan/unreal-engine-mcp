@@ -31,6 +31,7 @@ NEW_TOOLS = {
     "scene_assert", "bp_export", "bp_apply", "widget_export", "widget_apply", "bt_export", "bt_build",
     "landscape_edit", "landscape_inspect", "foliage_scatter", "foliage_inspect", "pcg_graph", "pcg_inspect",
     "spline_edit", "spline_inspect",
+    "anim_inspect", "anim_edit", "animbp_export", "animbp_apply", "gameplay_tags", "gas_edit", "gas_inspect",
 }
 
 

@@ -874,4 +874,6 @@ def make_module() -> types.ModuleType:
                                                     "tools", "subsystems", "enum", "types", "anchor"):
             setattr(u, name, obj)
     u.register_asset = _register
+    from fake_unreal_anim import add_anim_gas
+    add_anim_gas(u)
     return u
