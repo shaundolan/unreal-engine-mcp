@@ -42,14 +42,19 @@ uv run python -m unreal_mcp.bench run --agent cmd --label "claude-code opus" \
 
 The agent command gets the prompt as `{prompt}` (one argument), as `{prompt_file}` (a path), or on stdin, so any MCP-capable agent works: Claude Code, Cursor CLI, or a local model behind an agent loop.
 
-## Tasks (24)
+## Tasks (30)
 scene ×6 (grid, light ring, cleanup, tagging, transforms, greybox arena), assets ×1, materials ×3 (graph, instance,
 apply), cinematics ×1, input ×1, performance ×1, modeling ×1 (Blender → import → place), gameplay ×2 (PIE: spawn on ground;
 coin collected by walking into it), blueprints ×1 (BeginPlay logic seen in the PIE log), ui ×1 (HUD built and on screen), ai ×1 (Behavior
 Tree guard walks to its goal on a NavMesh), plus `demo-arena-playable`: the demo-1 golden path (Blender coin, HUD, game mode
 score, a chasing enemy, coins collected in play, score and HUD verified), and world ×4 (rolling-hills landscape with a
 grass layer, forest scattered on slopes under 25°, a road spline between two towns carved into the terrain, a PCG forest
-volume), animation ×3 (1D locomotion BlendSpace, attack montage with sections and a Hit notify, locomotion AnimBP with idle/move/jump states) and gas ×1 (instant heal effect + tagged ability).
+volume), animation ×3 (1D locomotion BlendSpace, attack montage with sections and a Hit notify, locomotion AnimBP with idle/move/jump states), gas ×1 (instant heal effect + tagged ability) and generation ×2 (a 90 cm
+barrel generated with collision and placed on the ground; a character generated from `bench/assets/character_tpose.png`,
+auto-rigged and looping the retargeted Mannequin walk).
+
+`requires: ["gen3d"]` skips a task unless the local generation server answers (`servers/gen3d`, `UNREAL_MCP_GEN3D_URL`).
+CI runs the gen3d tasks against the server's mock backend. `{bench}` in a task is the `bench/` folder on the MCP machine.
 
 
 `requires` also takes `asset:<path>` (content the task builds on, e.g. the template Mannequin from
