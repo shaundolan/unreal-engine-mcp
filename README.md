@@ -38,6 +38,7 @@
 | **Blueprint graphs** | `add_node` (23+ node types), `connect_nodes`, `delete_node`, `set_node_property`, `add_event_node`, `create_variable`, `set_blueprint_variable_properties`, `create_function`, `add_function_input/output`, `rename_function`, `delete_function` |
 | **Blueprint assets** | `create_blueprint`, `add_component_to_blueprint`, `set_static_mesh_properties`, `set_physics_properties`, `compile_blueprint`, `read_blueprint_content`, `analyze_blueprint_graph`, `get_blueprint_variable_details`, `get_blueprint_function_details` |
 | **Actors & materials** | `get_actors_in_level`, `find_actors_by_name`, `set_actor_transform`, `delete_actor`, `spawn_physics_blueprint_actor`, `get_available_materials`, `apply_material_to_actor/blueprint`, `set_mesh_material_color`, `get_actor_material_info` |
+| **Landscape, foliage, PCG, splines** | `landscape_edit` (create, procedural sculpt: noise/hills/ramps/flatten/erode/terrace, PNG/RAW heightmap import, material + paint layers, slope/height auto-paint; one call, one undo) / `landscape_inspect`, `foliage_scatter` (foliage or HISM by density, slope, height, seed, scale, align-to-normal; remove/clear) / `foliage_inspect`, `pcg_graph` (declarative node/edge spec, PCG volume, generate) / `pcg_inspect`, `spline_edit` (roads, rivers, pipes as spline meshes; carve into the landscape) / `spline_inspect` |
 | **World building** | `create_town`, `create_castle_fortress`, `construct_house`, `construct_mansion`, `create_tower`, `create_maze`, `create_wall`, `create_staircase`, `create_arch`, `create_pyramid`, `create_suspension_bridge`, `create_aqueduct` |
 
 Because `execute_python` and the reflection tools reach the whole editor API, an agent isn't limited to the dedicated
@@ -94,5 +95,5 @@ Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 MIT. See [LICENSE](LICENSE). Original work © Flopperam and contributors; fork modifications © Shaun Dolan.
 
 ## UE-Bench
-20 scripted editor tasks with automatic checkers. They cover scene, assets, materials, cinematics, input, performance,
-Blender modeling, Blueprints, UI, AI and PIE gameplay (a coin collected by walking into it, a guard walking its Behavior Tree route, and a full "prompt to playable" coin arena with score, HUD and a chasing enemy). Each checker is proven against a reference solution and against near-miss solutions. See [bench/README.md](bench/README.md).
+24 scripted editor tasks with automatic checkers. They cover scene, assets, materials, cinematics, input, performance,
+Blender modeling, Blueprints, UI, AI, world building and PIE gameplay (a coin collected by walking into it, a guard walking its Behavior Tree route, and a full "prompt to playable" coin arena with score, HUD and a chasing enemy). Each checker is proven against a reference solution and against near-miss solutions. See [bench/README.md](bench/README.md).

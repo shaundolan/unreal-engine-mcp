@@ -18,6 +18,7 @@
 #include "Commands/EpicUnrealMCPBlueprintGraphCommands.h"
 #include "Commands/EpicUnrealMCPPythonCommands.h"
 #include "Commands/EpicUnrealMCPReflectionCommands.h"
+#include "Commands/MCPWorldCommands.h"
 #include "Commands/EpicUnrealMCPObservationCommands.h"
 #include "Commands/MCPAuthoringCommands.h"
 
@@ -146,6 +147,7 @@ void UEpicUnrealMCPBridge::RegisterAllCommands()
 	FMCPBlueprintAuthoring::Register(R);
 	FMCPWidgetAuthoring::Register(R);
 	FMCPBehaviorTreeAuthoring::Register(R);
+	FMCPWorldCommands::Register(R);
 
 	UE_LOG(LogUnrealMCP, Display, TEXT("UnrealMCP: %d commands registered"), R.Commands.Num());
 }

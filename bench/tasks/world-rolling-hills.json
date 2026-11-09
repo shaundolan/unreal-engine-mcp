@@ -1,0 +1,98 @@
+{
+  "id": "world-rolling-hills",
+  "domain": "world",
+  "title": "Rolling hills landscape with a grass layer",
+  "prompt": "Create a landscape labelled 'Hills' of at least 4x4 components, sculpted into gentle rolling hills: at least 800 cm between its lowest and highest point, but no slope steeper than 35 degrees. Give it a landscape material {root}/M_Hills with a paint layer named 'Grass', and paint Grass so it dominates at least 90% of the landscape.",
+  "requires": [
+    "command:landscape_create"
+  ],
+  "setup": [],
+  "check": {
+    "tools": [
+      {
+        "tool": "landscape_inspect",
+        "args": {
+          "target": "Hills"
+        },
+        "name": "4x4+ components, relief >= 800 cm",
+        "expect": "r['success'] and min(r['component_count']) >= 4 and r['height_world_cm']['max'] - r['height_world_cm']['min'] >= 800"
+      },
+      {
+        "tool": "landscape_inspect",
+        "args": {
+          "target": "Hills"
+        },
+        "name": "no slope over 35 degrees",
+        "expect": "r['success'] and r['slope_deg']['max'] <= 35"
+      },
+      {
+        "tool": "landscape_inspect",
+        "args": {
+          "target": "Hills"
+        },
+        "name": "material {root}/M_Hills, Grass dominates 90%",
+        "expect": "r['success'] and r['material'].startswith('{root}/M_Hills') and any(l['name'] == 'Grass' and l.get('dominant_fraction', 0) >= 0.9 for l in r['layers'])"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "landscape_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create",
+            "label": "Hills",
+            "component_count": [
+              4,
+              4
+            ],
+            "section_size": 31,
+            "location": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "op": "noise",
+            "amplitude": 1600,
+            "wavelength": 6000,
+            "octaves": 3,
+            "seed": 3
+          },
+          {
+            "op": "smooth",
+            "iterations": 2
+          },
+          {
+            "op": "material",
+            "path": "{root}/M_Hills",
+            "layers": [
+              {
+                "name": "Grass",
+                "color": [
+                  0.1,
+                  0.35,
+                  0.05
+                ]
+              },
+              {
+                "name": "Dirt",
+                "color": [
+                  0.3,
+                  0.22,
+                  0.12
+                ]
+              }
+            ]
+          },
+          {
+            "op": "paint",
+            "layer": "Grass"
+          }
+        ]
+      }
+    }
+  ]
+}
