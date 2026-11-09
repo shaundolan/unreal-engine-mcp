@@ -31,6 +31,25 @@ Check `enabled_plugins` for EnhancedInput (default in 5.x) before relying on it.
 `enhanced_input` creates `IA_Move` (Axis2D), `IA_Look` (Axis2D), `IA_Jump` (Boolean) and `IMC_Default` with
 WASD (SwizzleAxis/Negate), Mouse2D and gamepad mappings in one call.
 
+Simple key bindings without an Input Action: a `key_event` node in `bp_apply`
+(`{"op":"add_node","id":"use","kind":"key_event","key":"E"}`, exec outputs `pressed` / `released`). Don't poll
+`WasInputKeyJustPressed` on Tick. The actor needs input: a possessed pawn, its PlayerController, or `EnableInput`.
+
+**Input mode survives level changes.** `SetInputMode_UIOnlyEx` (or `GameAndUIEx`) set by a title menu stays on the
+viewport across `OpenLevel`. A gameplay level that doesn't reset it gets no movement or look input: the player
+can't move. So the gameplay pawn or PlayerController must call `SetInputMode_GameOnly` on BeginPlay and hide the
+cursor (`set_defaults {"bShowMouseCursor": false}` on the PlayerController, or set `ShowMouseCursor` false at
+BeginPlay):
+```json
+{"op":"add_node","id":"pc","kind":"call_function","function":"GetPlayerController","class":"GameplayStatics"},
+{"op":"add_node","id":"gm","kind":"call_function","function":"SetInputMode_GameOnly"},
+{"op":"connect","from":"begin.then","to":"gm.exec"},
+{"op":"connect","from":"pc.ReturnValue","to":"gm.PlayerController"}
+```
+This broke both games built on the platform so far. A `pie_test` that starts in the gameplay map doesn't catch
+it, because the menu never ran. Test the real flow: start on the menu map, press Play, then `hold` W and check that the
+player moved.
+
 ## 4. Game framework
 One `bp_apply` per Blueprint (see the `blueprint-authoring` skill):
 - `BP_ArenaGameMode` (`create_parent="GameModeBase"`) with

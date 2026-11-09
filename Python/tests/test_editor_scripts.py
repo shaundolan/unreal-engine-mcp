@@ -171,9 +171,12 @@ def test_material_edit_inspect_instance(ue, tools):
         {"op": "output", "from": "tint", "property": "base color"},
         {"op": "add", "class": "NotARealNode"},
     ])
-    assert r["success"] and r["expression_count"] == 3 and r["succeeded"] == 7
+    # any failed op makes the call fail; the rest of the graph is still built
+    assert r["success"] is False and r["expression_count"] == 3 and r["succeeded"] == 7
     errors = {f["index"]: f["error"] for f in r["failed"]}
-    assert "pin names" in errors[5] and "unknown expression id" in errors[6] and "LookupError" in errors[9]
+    assert "no input pin 'Bogus'" in errors[5] and "['A', 'B']" in errors[5]
+    assert "unknown expression id" in errors[6] and "LookupError" in errors[9]
+    assert "op 5:" in r["error"] and "op 9:" in r["error"]
     mat = ue._state["assets"]["/Game/Materials/M_Glow"]
     assert mat.blend_mode is ue.BlendMode.BLEND_TRANSLUCENT and mat.two_sided is True
     assert mat.expressions[0].default_value.to_tuple() == (1, 0.5, 0, 1)
@@ -185,7 +188,8 @@ def test_material_edit_inspect_instance(ue, tools):
 
     mi = tools["material_instance"]("/Game/Materials/MI_Glow_Red", parent="/Game/Materials/M_Glow",
                                     parameters={"Power": 8, "Tint": [1, 0, 0, 1], "Missing": 1.0})
-    assert mi["created"] and sorted(mi["set"]) == ["Power", "Tint"] and "Missing" in mi["errors"]
+    assert mi["success"] is False and "Missing" in mi["error"]
+    assert mi["created"] and sorted(mi["set"]) == ["Power", "Tint"] and "not found on parent" in mi["errors"]["Missing"]
     info = tools["material_inspect"]("/Game/Materials/MI_Glow_Red")
     assert info["parent"] == "/Game/Materials/M_Glow.M_Glow"
     assert info["parameters"]["Power"]["value"] == 8.0

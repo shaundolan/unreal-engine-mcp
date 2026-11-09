@@ -32,6 +32,7 @@ NEW_TOOLS = {
     "landscape_edit", "landscape_inspect", "foliage_scatter", "foliage_inspect", "pcg_graph", "pcg_inspect",
     "spline_edit", "spline_inspect",
     "anim_inspect", "anim_edit", "animbp_export", "animbp_apply", "gameplay_tags", "gas_edit", "gas_inspect",
+    "level_open", "wait_for_shaders", "instanced_mesh_place", "mesh_collision",
 }
 
 

@@ -63,7 +63,10 @@ def register(mcp, get_conn):
           {"op":"add_node","id":"print","kind":"call_function","function":"PrintString",
            "pins":{"InString":"Hello"}}           (class optional: KismetSystemLibrary, GameplayStatics,
                                                     Actor, self, ...; K2_ prefixes are tried automatically)
-          {"op":"add_node","id":"get","kind":"get_var","variable":"Score"}   (set_var likewise)
+          {"op":"add_node","id":"get","kind":"get_var","variable":"Score"}   (set_var likewise; inherited
+                                                    variables too, "class" may name the Blueprint's parent)
+          {"op":"add_node","id":"use","kind":"key_event","key":"E"}   ("pressed"/"released" exec outputs,
+                                                    "Key" output; optional ctrl/shift/alt, consume_input)
           {"op":"add_node","id":"br","kind":"branch"}     ("then"/"else" outputs, "Condition" input)
           {"op":"add_node","id":"seq","kind":"sequence","outputs":3}
           {"op":"add_node","id":"cast","kind":"cast","class":"Character"}

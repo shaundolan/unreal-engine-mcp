@@ -27,6 +27,23 @@ Use the `execute_python` recipes below only for things those tools don't cover. 
 Then `material_instance(path="/Game/Materials/MI_Glow_Red", parent="/Game/Materials/M_Glow", parameters={"Tint":[1,0.1,0.05,1]})`.
 Imported textures/meshes: `asset_import(local_files=[...], destination="/Game/Props")`.
 
+Details that bite:
+- `clear=true` really empties the graph (UE's own delete_all_material_expressions leaves every other node).
+- Pins match loosely: Noise's position input is named "World Position", so `"to_input":"Position"` works. A bad
+  pin name lists the available ones.
+- More outputs: `SubsurfaceColor` (with `shading_model` MSM_SUBSURFACE / MSM_PREINTEGRATED_SKIN), `Refraction`,
+  `PixelDepthOffset`, `Anisotropy`, `Tangent`.
+- Custom (HLSL) nodes: `"properties":{"code":"...","output_type":"CMOT_FLOAT3","inputs":["UV0",{"input_name":"Night"}],
+  "additional_outputs":[{"output_name":"Win","output_type":"float1"}]}`, then connect to `to_input:"UV0"` and from
+  `from_output:"Win"`.
+- A texture parameter with no texture gets an engine default that matches its `sampler_type` (Normal, LinearColor,
+  Masks, Grayscale). Otherwise it compiles against the sRGB DefaultTexture and fails.
+- Any failed op makes `success` false. `material_instance` checks names against the parent and reads every value
+  back: an unknown parameter or a missing parent is an error, not a silent no-op.
+- Recreating a parent at the same path (delete + create) strands its instances. `material_edit(create/clear)`
+  reparents the instances it finds (`reparented_instances`), and `material_instance` re-resolves its parent by
+  path every time.
+
 ## Python equivalents (for reference)
 
 ## Quick color on an actor
@@ -76,4 +93,5 @@ result = actor.get_actor_label()
 Python can't author Niagara emitter/module graphs well. Duplicate a template system (`EditorAssetLibrary.duplicate_asset`) and change exposed **user parameters** instead.
 
 ## Verify
-`viewport_capture` after `editor_action(action="focus_actor", ...)`. Shader compiles are asynchronous, so if the capture still shows the default checker, capture again after a few seconds.
+`viewport_capture` after `editor_action(action="focus_actor", ...)`. Shader compiles are asynchronous: call
+`wait_for_shaders` before capturing, or the capture shows the old shaders or the default checker.

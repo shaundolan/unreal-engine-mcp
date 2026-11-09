@@ -3,32 +3,100 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
+import socket
 from pathlib import Path
 from typing import Any
 
-from .python_exec import run_editor_script
+from .python_exec import run_editor_script, run_python
 
-MAX_UPLOAD_BYTES = 150 * 1024 * 1024  # stays well under the 256 MB frame limit after base64
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
+CHUNK_BYTES = 8 * 1024 * 1024  # raw bytes per upload call (about 11 MB of base64 per request)
+
+
+def editor_is_local(get_conn) -> bool:
+    """True when the editor runs on this machine, so the importer can read our files directly."""
+    try:
+        host = get_conn().settings.host
+    except Exception:
+        return False
+    if host.lower() in ("localhost", socket.gethostname().lower()):
+        return True
+    try:
+        return ipaddress.ip_address(socket.gethostbyname(host)).is_loopback
+    except (OSError, ValueError):
+        return False
+
+
+def upload_file(get_conn, path: Path) -> dict[str, Any]:
+    """Copy a local file to a temp file on the editor machine in CHUNK_BYTES pieces, one small script per piece
+    (never the whole file as one base64 literal). Returns {success, path (on the editor machine), size}."""
+    size = path.stat().st_size
+    dest, written = "", 0
+    with path.open("rb") as fh:
+        while True:
+            chunk = fh.read(CHUNK_BYTES)
+            r = run_editor_script(get_conn, "upload_chunk", {
+                "name": path.name, "dest": dest, "append": bool(dest),
+                "data_b64": base64.b64encode(chunk).decode()}, timeout_s=300)
+            if not r.get("success"):
+                return r
+            dest, written = r["path"], r["size"]
+            if len(chunk) < CHUNK_BYTES:
+                break
+    if written != size:
+        return {"success": False, "error": f"upload of {path} wrote {written} of {size} bytes"}
+    return {"success": True, "path": dest, "size": size}
+
+
+def collect_all_garbage(get_conn) -> dict[str, Any]:
+    """CPython's cyclic GC, then the engine's, in a call of its own so no script reference is alive."""
+    return run_python(get_conn, "import gc\ngc.collect()\nunreal.SystemLibrary.collect_garbage()\nresult = True",
+                      timeout_s=300, collect=True)
 
 
 def import_assets(get_conn, files: list[str] | None = None, local_files: list[str] | None = None,
                   destination: str = "/Game/Imported", replace_existing: bool = False, save: bool = True,
-                  destination_name: str = "") -> dict[str, Any]:
-    """Import editor-machine files and/or upload files from this machine (shared with blender_run)."""
-    blobs = []
-    for f in local_files or []:
-        p = Path(f).expanduser()
+                  destination_name: str = "", transfer: str = "auto") -> dict[str, Any]:
+    """Import editor-machine files and/or files from this machine (shared with blender_run).
+
+    transfer (for local_files): "auto" hands the paths straight to the importer when the editor is on this
+    machine and uploads them in chunks otherwise; "path" / "upload" force one or the other."""
+    if transfer not in ("auto", "path", "upload"):
+        return {"success": False, "error": "transfer must be auto, path or upload"}
+    editor_files = list(files or [])
+    local = [Path(f).expanduser().resolve() for f in local_files or []]
+    for p in local:
         if not p.is_file():
             return {"success": False, "error": f"{p} not found on the MCP server machine"}
         if p.stat().st_size > MAX_UPLOAD_BYTES:
             return {"success": False, "error": f"{p} is larger than {MAX_UPLOAD_BYTES} bytes"}
-        blobs.append({"name": p.name, "data_b64": base64.b64encode(p.read_bytes()).decode()})
-    if not (files or blobs):
+    if not (editor_files or local):
         return {"success": False, "error": "pass files (editor machine) or local_files (this machine)"}
-    return run_editor_script(get_conn, "asset_import", {
-        "files": files or [], "blobs": blobs, "destination": destination,
-        "replace_existing": replace_existing, "save": save, "destination_name": destination_name},
-        timeout_s=600)
+    direct = transfer == "path" or (transfer == "auto" and editor_is_local(get_conn))
+    cleanup: list[str] = []
+    for p in local:
+        if direct:
+            editor_files.append(str(p))
+            continue
+        up = upload_file(get_conn, p)
+        if not up.get("success"):
+            return up
+        editor_files.append(up["path"])
+        cleanup.append(up["path"])
+    if replace_existing:
+        # Re-importing over live meshes/materials frees UObjects. A Python wrapper still pointing at one (kept in a
+        # reference cycle by an earlier script) crashed the editor later in CPython's GC (_PyWeakref_ClearRef).
+        # Collect both heaps while those objects are still valid, and again after the import.
+        collect_all_garbage(get_conn)
+    r = run_editor_script(get_conn, "asset_import", {
+        "files": editor_files, "destination": destination, "replace_existing": replace_existing, "save": save,
+        "destination_name": destination_name, "cleanup": cleanup}, timeout_s=900, collect=True)
+    if replace_existing:
+        collect_all_garbage(get_conn)
+    if r.get("success") and local:
+        r["transfer"] = "path" if direct else "upload"
+    return r
 
 
 def register(mcp, get_conn):
@@ -65,14 +133,18 @@ def register(mcp, get_conn):
     @mcp.tool()
     def asset_import(files: list[str] | None = None, local_files: list[str] | None = None,
                      destination: str = "/Game/Imported", replace_existing: bool = False,
-                     save: bool = True, destination_name: str = "") -> dict[str, Any]:
+                     save: bool = True, destination_name: str = "", transfer: str = "auto") -> dict[str, Any]:
         """Import FBX, glTF/GLB, OBJ, textures (PNG/TGA/EXR/JPG), audio (WAV) and more.
 
         files: paths on the EDITOR machine.
-        local_files: paths on the machine running this MCP server; uploaded through the
-                     connection, so this works when the editor is remote (e.g. a mesh just
-                     exported from Blender on another box).
-        Imports are automated (no dialogs). Returns the created asset paths per file.
+        local_files: paths on the machine running this MCP server. When the editor runs on the
+                     same machine they go straight to the importer; otherwise they are copied
+                     over in 8 MB chunks (transfer="auto"; force "path" or "upload").
+        replace_existing: re-import over existing assets. Python and engine garbage are
+                     collected before and after, so no stale Python wrapper can crash the editor.
+        Imports are automated (no dialogs). Returns the created asset paths per file; a file
+        that imported nothing is listed in failed and makes success false.
         """
         return import_assets(get_conn, files=files, local_files=local_files, destination=destination,
-                             replace_existing=replace_existing, save=save, destination_name=destination_name)
+                             replace_existing=replace_existing, save=save, destination_name=destination_name,
+                             transfer=transfer)

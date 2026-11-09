@@ -42,11 +42,12 @@ description: >
 Spawn `unreal.DirectionalLight`, `unreal.SkyLight`, `unreal.SkyAtmosphere`, `unreal.ExponentialHeightFog`, `unreal.PointLight` with `spawn_actor_from_class`. Tune them with `property_set`, e.g. `LightComponent.Intensity`, `LightComponent.LightColor` = `{"R":255,"G":200,"B":150,"A":255}`.
 
 ## Levels & play
-- `project_context` → `maps`, `current_level`. Load a map with `editor_action(action="load_level", level_path="/Game/Maps/Arena")`.
-- Save with `editor_action(action="save_all")`. Nothing is saved to disk until you do.
+- `project_context` → `maps`, `current_level`. Switch maps with `level_open(path="/Game/Maps/Arena")` (`create=true` makes and saves a new one). Don't call `LevelEditorSubsystem.load_level` / `new_level` or load a `duplicate_asset` copy of a map from `execute_python`: a map whose world is already in memory crashes the editor ("World Memory Leaks"), and `level_open` unloads it first.
+- Save with `editor_action(action="save_all")`. Nothing is saved to disk until you do. It never prompts, saves maps too, and lists `failed` packages (for example read-only files); any failure makes `success` false.
+- Many copies of one mesh (trees, lamps, cars): `instanced_mesh_place` (one HISM component, bulk transforms, cull distance), not one actor each. Meshes without collision: `mesh_collision` (box / convex / complex_as_simple, collision profile).
 - PIE: `editor_action(action="pie_start")`, then poll `project_context().pie_running`, read `editor_log`, then `pie_stop`.
 
 ## Verify
-- `viewport_capture` after visual changes. To frame the subject first, use `editor_action(action="focus_actor", actor_name=...)`.
+- `viewport_capture` after visual changes. To frame the subject first, use `editor_action(action="focus_actor", actor_name=...)`. After new materials or imports, call `wait_for_shaders` first; until the queue is empty the capture shows old shaders or placeholders.
 - Run `editor_log(since_seq=..., min_verbosity="Warning")` after any batch.
 - Count check: re-query and compare with what you intended to create.
