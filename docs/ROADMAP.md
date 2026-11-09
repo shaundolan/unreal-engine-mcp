@@ -10,7 +10,7 @@ plugin. The Windows/D3D12 run is pending: [WINDOWS_TEST.md](WINDOWS_TEST.md).
 |---|---|---|
 | 0: Foundations | ✅ live (Linux) · ⏳ Win64 compile | Framed protocol, multi-client, command registry, safe-point command queue, timeouts, token, tests against the fake plugin, per-port dev scripts (`ue_linux.sh`, `ue_windows.ps1`) |
 | 1: Universal layer | ✅ live | `execute_python`, reflection (describe/get/set/call), editor log, viewport capture, project context, console, editor actions, offline API index |
-| 2: Domain tools | ✅ most done, see gaps | Scene, assets, materials, level, Niagara placement, sequencer, DataTables, Enhanced Input, game setup, C++ source + Live Coding, Blender modeling. **Blueprint v2** (`bp_export` / `bp_apply`, atomic and compiled, wildcard array pins resolved), **UMG** (`widget_export` / `widget_apply`), **AI/BT** (`bt_export` / `bt_build`), **animation** (`animbp_apply` state machines/transitions, montages, notifies, BlendSpaces, IK retarget), **GAS** (`gas_edit` effects/abilities/grants, `gameplay_tags`), **world building** (`landscape_edit`, `foliage_scatter`, `pcg_graph`, `spline_edit`; live 4/4) |
+| 2: Domain tools | ✅ most done, see gaps | Scene, assets, materials, level, Niagara placement, sequencer, DataTables, **data types** (`data_types`: structs, enums, DataTables from JSON/CSV, DataAssets, curves, curve tables), **audio** (`metasound_apply` / `metasound_export`, `sound_cue_apply`), **Blueprint analysis** (`bp_explain` / `bp_review`), Enhanced Input, game setup, C++ source + Live Coding, Blender modeling. **Blueprint v2** (`bp_export` / `bp_apply`, atomic and compiled, wildcard array pins resolved), **UMG** (`widget_export` / `widget_apply`), **AI/BT** (`bt_export` / `bt_build`), **animation** (`animbp_apply` state machines/transitions, montages, notifies, BlendSpaces, IK retarget), **GAS** (`gas_edit` effects/abilities/grants, `gameplay_tags`), **world building** (`landscape_edit`, `foliage_scatter`, `pcg_graph`, `spline_edit`; live 4/4) |
 | 3: Verification & autonomy | ✅ core done, see gaps | `pie_test` (assertions, `do`/`until`/`check` timeline, **real input**: `press`/`hold`/`axis`/`look` on keys or Enhanced Input actions, `frame_stats`, NavMesh repair reported as `navmesh_repaired`), `scene_assert`, static `performance_audit`, **packaging** (`package_project` / `package_status`, background UAT BuildCookRun; Linux build live, Win64 pending) |
 | 4: Agent experience | 🚧 | Per-domain skills, served as MCP resources (`skill://`) and prompts. Planned: level/selection resources, an in-editor chat panel, local text/image→3D import |
 | 5: UE-Bench | 🚧 v0: 20 tasks | 20 tasks, reference 20/20 live and baseline 0/20 (`bench/results/`). Target: ~60 real-workflow tasks, pass rate per domain published each release, scored real-agent runs |
@@ -22,11 +22,16 @@ plugin. The Windows/D3D12 run is pending: [WINDOWS_TEST.md](WINDOWS_TEST.md).
 - **Frame timings:** render- and RHI-thread times read 0 offscreen on Linux and are reported as `unavailable`. There is no Unreal Insights
   / `stat` capture yet.
 - **Animation:** linked anim layers, Control Rig nodes, `AnimNotify_<Name>` events in AnimBPs; generic AnimGraph nodes untested.
-- **VFX / audio:** Niagara module graphs (only placement and User parameters today), MetaSounds.
+- **VFX / audio:** Niagara module graphs (only placement and User parameters today). MetaSound authoring
+  (`metasound_apply` / `metasound_export` / `metasound_nodes`) and `sound_cue_apply` compile, but have not been run live yet
+  (WINDOWS_TEST.md). There's no MetaSound Patch authoring, no Quartz, and no submix or attenuation assets.
 - **World:** World Partition / data layers; landscape streaming proxies and edit layers beyond the first.
 - **Gameplay:** GAS ability tasks, Gameplay Cues and custom calculations (AttributeSets are generated C++), multiplayer/replication testing (multi-client PIE).
-- **Blueprints:** interfaces, event dispatchers bound across Blueprints, timelines, struct/enum asset authoring, promotable
-  operator nodes (typed math functions work).
+- **Blueprints:** interfaces, event dispatchers bound across Blueprints, timelines, local variables, macros, promotable operators,
+  select/switch, make/break struct, format text, async actions, Get Data Table Row, struct/enum/DataTable/curve authoring
+  (`data_types`) and `bp_explain` / `bp_review` are built (`feat/bp-complete`). The C++ ops are not run live yet; the analysis and
+  routing are unit-tested. Still missing: renaming or deleting dispatchers and timelines, editing interface signatures in place,
+  Blueprint function libraries, and replicated variables or RPC flags.
 - **Packaging:** only Win64 and Linux hosts. No console/mobile targets, no signing or upload.
 - **Source control** (Perforce/git through the editor) is not integrated.
 
