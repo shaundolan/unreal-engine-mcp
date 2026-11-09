@@ -102,6 +102,17 @@ steps=[
   {"look":[5,0],"duration_s":0.5},                   {"hold":"W","duration_s":3,"async":true},
   {"frame_stats":300,"max_p95_ms":33.3}]
 ```
+Spawn things into the running game (properties are set before BeginPlay, as with "Expose on Spawn"), switch pawns, and take
+screenshots of what the player sees:
+```json
+steps=[
+  {"spawn":"/Game/BP_Car","location":[0,0,100],"label":"Car","properties":{"MaxSpeed":900},"possess":true},
+  {"hold":"W","duration_s":2}, {"capture":"driving"},
+  {"possess":"Walker"}]
+```
+PIE renders at `width` x `height` (pie_test default 1280x720, exact even offscreen). Captures go to `capture_dir` (default
+`<tmp>/unreal_mcp/captures`), and the step result has the path. Outside pie_test: `spawn_in_pie`, `pie_possess`,
+`viewport_capture(source="pie", width=..., height=...)`.
 `frame_stats` reports avg/p95 frame, game, render, RHI and GPU ms. `navmesh_repaired: true` in the result means pie_test had to
 rebuild the NavMesh first, so add or rebuild a `NavMeshBoundsVolume` properly before shipping.
 If something fails, read `results[].actual`, `steps[].assertions` and `errors_in_log`, fix just that, and re-run.
