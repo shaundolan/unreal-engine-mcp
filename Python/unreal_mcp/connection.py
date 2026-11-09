@@ -66,10 +66,52 @@ class UnrealConnection:
                     raw = self._roundtrip_legacy(command, params, timeout)
                 else:
                     raw = self._roundtrip_framed(command, params, timeout)
+        except TimeoutError as e:  # socket.timeout: no reply at all within the timeout
+            logger.warning("command %s timed out: %s", command, e)
+            return self._timeout_reply(command, timeout)
         except Exception as e:  # transport failure: report, never crash the tool
             logger.warning("command %s failed: %s", command, e)
             return {"status": "error", "error": f"{type(e).__name__}: {e}"}
         return normalize_response(raw)
+
+    def probe_health(self, timeout: float = 5.0) -> dict[str, Any] | None:
+        """editor_health on a separate short-lived connection. The plugin answers it on its socket thread, so it
+        works while the game thread is stuck. None when the editor does not answer (or predates editor_health)."""
+        message: dict[str, Any] = {"id": 0, "type": "editor_health", "params": {}}
+        if self.settings.token:
+            message["token"] = self.settings.token
+        try:
+            with socket.create_connection((self.settings.host, self.settings.port), timeout=timeout) as s:
+                s.settimeout(timeout)
+                s.sendall(encode_frame(message))
+                reply = read_frame(s)
+        except (OSError, ProtocolError, ConnectionError, ValueError):
+            return None
+        if reply.get("status") == "success" and isinstance(reply.get("result"), dict):
+            return reply["result"]
+        if "unknown command" in str(reply.get("error", "")).lower():
+            # A plugin older than editor_health queues it like any command: an answer means it is being serviced.
+            return {"responsive": True, "legacy_plugin": True}
+        return None
+
+    def _timeout_reply(self, command: str, timeout: float) -> dict[str, Any]:
+        """The editor sent nothing back: ask it (out of band) whether it is still servicing commands."""
+        health = self.probe_health()
+        if health is not None and health.get("responsive", True):
+            return {"status": "error", "error": f"{command} timed out after {timeout:g}s with no reply (the editor is "
+                    "responsive: raise timeout_s for long operations)", "health": health}
+        pid = (health or {}).get("pid")
+        port = self.settings.port
+        reason = (health or {}).get("reason") or "the editor did not answer a health probe either"
+        kill = f"UNREAL_MCP_PORT={port} scripts/ue_linux.sh kill"
+        return {"status": "error", "editor_unresponsive": True,
+                "error": f"editor_unresponsive: {command} timed out after {timeout:g}s with no reply; {reason}",
+                "hint": (f"The editor on port {port}{f' (pid {pid})' if pid else ''} is not servicing MCP commands. "
+                         "Call editor_health to see whether it recovers. If it stays stuck (e.g. a Vulkan RHI-thread "
+                         f"hang: 100% CPU, frozen game thread), kill it with {kill} (only the editor that script "
+                         f"started on that port){f' or kill -9 {pid}' if pid else ''}, then relaunch; unsaved changes "
+                         "are lost."),
+                **({"health": health} if health else {})}
 
     def disconnect(self) -> None:
         with self._lock:
@@ -135,7 +177,7 @@ class UnrealConnection:
                 if reply.get("id") in (None, req_id):
                     return reply
                 logger.info("discarding stale reply id=%s (want %s)", reply.get("id"), req_id)
-        except (OSError, ProtocolError, ConnectionError):
+        except (OSError, ProtocolError, ConnectionError):  # TimeoutError is an OSError
             # Request reached the wire: do not retry; drop the socket so the next call reconnects.
             self._close()
             raise
