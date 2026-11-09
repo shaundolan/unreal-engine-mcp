@@ -42,14 +42,14 @@ uv run python -m unreal_mcp.bench run --agent cmd --label "claude-code opus" \
 
 The agent command gets the prompt as `{prompt}` (one argument), as `{prompt_file}` (a path), or on stdin, so any MCP-capable agent works: Claude Code, Cursor CLI, or a local model behind an agent loop.
 
-## Tasks (24)
+## Tasks (34)
 scene ×6 (grid, light ring, cleanup, tagging, transforms, greybox arena), assets ×1, materials ×3 (graph, instance,
 apply), cinematics ×1, input ×1, performance ×1, modeling ×1 (Blender → import → place), gameplay ×2 (PIE: spawn on ground;
 coin collected by walking into it), blueprints ×1 (BeginPlay logic seen in the PIE log), ui ×1 (HUD built and on screen), ai ×1 (Behavior
 Tree guard walks to its goal on a NavMesh), plus `demo-arena-playable`: the demo-1 golden path (Blender coin, HUD, game mode
 score, a chasing enemy, coins collected in play, score and HUD verified), and world ×4 (rolling-hills landscape with a
 grass layer, forest scattered on slopes under 25°, a road spline between two towns carved into the terrain, a PCG forest
-volume), animation ×3 (1D locomotion BlendSpace, attack montage with sections and a Hit notify, locomotion AnimBP with idle/move/jump states) and gas ×1 (instant heal effect + tagged ability).
+volume), animation ×3 (1D locomotion BlendSpace, attack montage with sections and a Hit notify, locomotion AnimBP with idle/move/jump states), gas ×1 (instant heal effect + tagged ability) and vfx ×6 (campfire with embers and smoke, sparks bursting on a timer, rain colliding with the ground, a steam vent on a manhole, fireworks via death events, and editing an existing fire to be twice as tall and blue). The vfx checkers read `niagara_export` (with `nia_input` / `nia_value` / `nia_has` / `nia_lifetime` helpers) and sample live particle counts and particle bounds in PIE (`{"type":"niagara"}` assertions).
 
 
 `requires` also takes `asset:<path>` (content the task builds on, e.g. the template Mannequin from

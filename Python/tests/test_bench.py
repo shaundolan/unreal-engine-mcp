@@ -5,6 +5,7 @@ import json
 import sys
 
 import pytest
+from fake_unreal_niagara import FakeNiagara
 from test_editor_scripts import ue  # noqa: F401  (fixture)
 
 from unreal_mcp import bench
@@ -26,6 +27,9 @@ def editor(fake, ue, tools, monkeypatch):  # noqa: F811
         return {"ok": True, "tags": sorted(state["tags"]), "added": added, "already_existed": [], "errors": []}
 
     fake.on("gameplay_tags", gameplay_tags)
+    FakeNiagara(ue).install(fake)  # niagara_* commands, so the vfx-* tasks run here too
+    fake.on("list_commands", lambda p: {"plugin_version": "fake",
+                                        "commands": ["niagara_apply", "niagara_export", "niagara_particles"]})
     log = []
 
     def editor_action(p):
@@ -125,6 +129,14 @@ MUTATIONS = {  # near-miss solutions the checkers must reject
     "perf-shadow-budget": lambda t: t.solution[0]["args"]["operations"].pop(),
     "anim-blendspace-locomotion": lambda t: t.solution[0]["args"]["operations"][0]["samples"][2].update(x=400),
     "gas-heal-effect": lambda t: t.solution[0]["args"]["operations"][0]["modifiers"][0].update(magnitude=20),
+    # vfx: smoke too short-lived; one burst every 2 s; rain without collision; steam that doesn't grow;
+    # rockets without death events; fire made taller but left orange
+    "vfx-campfire": lambda t: t.solution[0]["args"]["operations"][15]["inputs"].update({"Lifetime Min": 1.0}),
+    "vfx-sparks-timer": lambda t: t.solution[0]["args"]["operations"][1]["inputs"].update({"Loop Duration": 2.0}),
+    "vfx-rain-collision": lambda t: t.solution[0]["args"]["operations"].pop(7),
+    "vfx-steam-vent": lambda t: t.solution[0]["args"]["operations"].pop(),
+    "vfx-fireworks": lambda t: t.solution[0]["args"]["operations"].pop(4),
+    "vfx-edit-fire": lambda t: t.solution[0]["args"]["operations"].pop(),
 }
 
 

@@ -244,6 +244,7 @@ def make_module() -> types.ModuleType:
         def spawn_actor_from_object(self, obj, loc, rot):
             if isinstance(obj, NiagaraSystem):
                 a = NiagaraActor(loc, rot)
+                a.niagara_component.asset = obj
                 state["actors"].append(a)
                 return a
             a = StaticMeshActor(loc, rot)
@@ -565,6 +566,10 @@ def make_module() -> types.ModuleType:
             super().__init__(*a, **k)
             self.params = {}
             self.auto_activate = True
+            self.asset = None
+
+        def get_asset(self):
+            return self.asset
 
         def set_auto_activate(self, v):
             self.auto_activate = v

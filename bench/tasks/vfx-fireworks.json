@@ -1,0 +1,272 @@
+{
+  "id": "vfx-fireworks",
+  "domain": "vfx",
+  "title": "Fireworks: rockets that burst on death",
+  "prompt": "Create the Niagara system {root}/NS_Fireworks with two CPU emitters. Rocket launches a few particles per second straight up fast; each rocket dies after about a second and fires a death event. Burst listens to Rocket's death events and spawns at least 50 colorful particles at each rocket's position that spread out and fall. Place it at the origin as an actor labelled Fireworks.",
+  "requires": [
+    "command:niagara_apply",
+    "command:niagara_export",
+    "command:niagara_particles"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -900,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Fireworks"
+        },
+        "name": "Rocket generates death events",
+        "expect": "r['success'] and nia_has(r, 'Rocket', 'particle_update', 'GenerateDeathEvent') and (nia_value(nia_input(r, 'Rocket', 'emitter_update', 'SpawnRate', 'SpawnRate')) or 0) > 0"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Fireworks"
+        },
+        "name": "Burst handles Rocket's death events with >= 50 per event",
+        "expect": "r['success'] and any(s['stage'].startswith('event:') and s.get('source_emitter') == 'Rocket' and s.get('spawn_number', 0) >= 50 and any('ReceiveDeathEvent' in m['script'] and m['enabled'] for m in s['modules']) for s in nia_emitter(r, 'Burst')['stages'])"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Fireworks"
+        },
+        "name": "both CPU (events need CPU)",
+        "expect": "r['success'] and all(e['sim_target'] == 'cpu' for e in r['emitters']) and len(r['emitters']) == 2"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "niagara",
+          "name": "rockets fly",
+          "actor": "Fireworks",
+          "samples": 20,
+          "interval_s": 0.2,
+          "emitter": "Rocket",
+          "op": ">=",
+          "value": 1
+        },
+        {
+          "type": "niagara",
+          "name": "bursts of >= 50",
+          "actor": "Fireworks",
+          "samples": 20,
+          "interval_s": 0.2,
+          "emitter": "Burst",
+          "op": ">=",
+          "value": 50
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "niagara_apply",
+      "args": {
+        "system": "{root}/NS_Fireworks",
+        "create_from": "empty",
+        "operations": [
+          {
+            "op": "add_emitter",
+            "name": "Rocket",
+            "from": "Fountain"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Rocket",
+            "stage": "emitter_update",
+            "module": "SpawnRate",
+            "inputs": {
+              "SpawnRate": 2
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Rocket",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 1.0,
+              "Lifetime Max": 1.2,
+              "Color": [
+                3,
+                2,
+                1,
+                1
+              ],
+              "Uniform Sprite Size Min": 6,
+              "Uniform Sprite Size Max": 8
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Rocket",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  1000,
+                  1300
+                ]
+              },
+              "Cone Angle": 6
+            }
+          },
+          {
+            "op": "add_module",
+            "emitter": "Rocket",
+            "stage": "particle_update",
+            "script": "GenerateDeathEvent"
+          },
+          {
+            "op": "add_emitter",
+            "name": "Burst",
+            "from": "Fountain"
+          },
+          {
+            "op": "remove_module",
+            "emitter": "Burst",
+            "stage": "emitter_update",
+            "module": "SpawnRate"
+          },
+          {
+            "op": "add_event_handler",
+            "emitter": "Burst",
+            "source_emitter": "Rocket",
+            "event": "DeathEvent",
+            "mode": "spawned_particles",
+            "spawn_number": 80
+          },
+          {
+            "op": "add_module",
+            "emitter": "Burst",
+            "stage": "event:0",
+            "script": "ReceiveDeathEvent"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Burst",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 1.2,
+              "Lifetime Max": 1.6,
+              "Color": {
+                "random": [
+                  [
+                    0.5,
+                    0.1,
+                    0.1,
+                    1
+                  ],
+                  [
+                    6,
+                    4,
+                    6,
+                    1
+                  ]
+                ]
+              }
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Burst",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  200,
+                  450
+                ]
+              },
+              "Cone Angle": 180
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Burst",
+            "stage": "particle_update",
+            "module": "Drag",
+            "inputs": {
+              "Drag": 1.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "niagara_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "system": "{root}/NS_Fireworks",
+            "label": "Fireworks",
+            "location": [
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

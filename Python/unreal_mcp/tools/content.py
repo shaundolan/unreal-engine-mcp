@@ -14,8 +14,8 @@ def register(mcp, get_conn):
           {"op":"spawn","system":"/Game/FX/NS_Fire","label":"Campfire","location":[0,0,0],
            "parameters":{"SpawnRate":80,"Tint":[1,0.4,0.1,1],"Wind":[50,0,0],"int:Count":3,"Enabled":true}}
           {"op":"set","target":"Campfire","parameters":{"SpawnRate":10}}
-        Find systems with search_assets(class_name="NiagaraSystem"). Authoring emitter/module
-        graphs is not supported here; duplicate a template system and expose User parameters."""
+        Find systems with search_assets(class_name="NiagaraSystem"). To author the system itself
+        (emitters, modules, inputs, renderers, User parameters) use niagara_export / niagara_apply."""
         return run_editor_script(get_conn, "niagara", {"operations": operations})
 
     @mcp.tool()
