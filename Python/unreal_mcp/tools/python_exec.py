@@ -54,14 +54,25 @@ except Exception as _mcp_e:
     _mcp_line = _mcp_json.dumps({"ok": False, "traceback": "result not serializable: %r" % (_mcp_e,),
                                  "stdout": _mcp_r.get("stdout", "")})
 print(__MCP_MARK__ + _mcp_line)
+# Drop every reference the script made. Functions defined by the script hold its globals dict in a reference cycle,
+# so without this, wrappers of editor objects linger until CPython's cyclic GC runs at some random later point,
+# possibly after the engine has destroyed those objects (re-imports, level switches): a crash in _PyWeakref_ClearRef.
+_mcp_g.clear()
+del _mcp_g, _mcp_r, _mcp_line, _mcp_default
+if __MCP_GC__:
+    import gc as _mcp_gc
+    _mcp_gc.collect()
+    del _mcp_gc
 '''
 
 
-def build_script(code: str, marker: str) -> str:
-    """Wrap user code so its result/stdout/traceback come back as one marked JSON line."""
+def build_script(code: str, marker: str, collect: bool = False) -> str:
+    """Wrap user code so its result/stdout/traceback come back as one marked JSON line.
+    collect=True also runs CPython's cyclic GC afterwards, while the objects the script touched are still alive."""
     return (_WRAPPER
             .replace("__MCP_SRC__", json.dumps(code))
-            .replace("__MCP_MARK__", json.dumps(marker)))
+            .replace("__MCP_MARK__", json.dumps(marker))
+            .replace("__MCP_GC__", "True" if collect else "False"))
 
 
 def parse_output(log: list[dict[str, Any]], marker: str) -> dict[str, Any] | None:
@@ -76,11 +87,11 @@ def parse_output(log: list[dict[str, Any]], marker: str) -> dict[str, Any] | Non
     return None
 
 
-def run_python(get_conn, code: str, timeout_s: float = 60.0) -> dict[str, Any]:
+def run_python(get_conn, code: str, timeout_s: float = 60.0, collect: bool = False) -> dict[str, Any]:
     """Run code in the editor; returns {success, result, stdout, traceback?, log_errors?}."""
     marker = f"<<MCP:{uuid.uuid4().hex}>>"
     reply = call(get_conn, "execute_python",
-                 {"code": build_script(code, marker), "mode": "file", "timeout_s": timeout_s})
+                 {"code": build_script(code, marker, collect), "mode": "file", "timeout_s": timeout_s})
     if not reply.get("success"):
         return reply
     log = reply.get("log", [])
@@ -100,10 +111,12 @@ def run_python(get_conn, code: str, timeout_s: float = 60.0) -> dict[str, Any]:
     return out
 
 
-def run_editor_script(get_conn, name: str, args: dict[str, Any], timeout_s: float = 120.0) -> dict[str, Any]:
-    """Run one of unreal_mcp/editor_scripts/<name>.py with ARGS=args; flatten its `result` dict."""
+def run_editor_script(get_conn, name: str, args: dict[str, Any], timeout_s: float = 120.0,
+                      collect: bool = False) -> dict[str, Any]:
+    """Run one of unreal_mcp/editor_scripts/<name>.py with ARGS=args; flatten its `result` dict.
+    A script reports a failure it detected itself with result["success"] = False and result["error"]."""
     from ..editor_scripts import render
-    out = run_python(get_conn, render(name, args), timeout_s)
+    out = run_python(get_conn, render(name, args), timeout_s, collect)
     if not out.get("success"):
         return out
     res = out.get("result")

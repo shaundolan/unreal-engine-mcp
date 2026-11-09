@@ -876,4 +876,6 @@ def make_module() -> types.ModuleType:
     u.register_asset = _register
     from fake_unreal_anim import add_anim_gas
     add_anim_gas(u)
+    from fake_unreal_platform import add_platform
+    add_platform(u)
     return u
