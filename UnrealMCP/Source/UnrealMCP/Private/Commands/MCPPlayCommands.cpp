@@ -445,7 +445,7 @@ namespace
 		GPendingPieSize = FIntPoint(0, 0);
 	}
 
-	bool ReadVector(const TSharedPtr<FJsonObject>& P, const TCHAR* Field, FVector& Out)
+	bool ReadPieVector(const TSharedPtr<FJsonObject>& P, const TCHAR* Field, FVector& Out)
 	{
 		const TArray<TSharedPtr<FJsonValue>>* A = nullptr;
 		if (P->TryGetArrayField(Field, A) && A && A->Num() >= 3)
@@ -585,9 +585,9 @@ namespace
 			return MCPError(Err);
 		}
 		FVector Loc = FVector::ZeroVector, Rot = FVector::ZeroVector, Scale = FVector::OneVector;
-		ReadVector(P, TEXT("location"), Loc);
-		ReadVector(P, TEXT("rotation"), Rot);
-		ReadVector(P, TEXT("scale"), Scale);
+		ReadPieVector(P, TEXT("location"), Loc);
+		ReadPieVector(P, TEXT("rotation"), Rot);
+		ReadPieVector(P, TEXT("scale"), Scale);
 		const FTransform Xf(FRotator(Rot.X, Rot.Y, Rot.Z), Loc, Scale);
 
 		FActorSpawnParameters SP;
