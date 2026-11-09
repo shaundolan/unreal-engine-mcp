@@ -16,4 +16,12 @@ public:
 	static void Register(IMCPCommandRegistry& Registry);
 	/** Stop all injections and recordings (editor shutdown / PIE end). */
 	static void Shutdown();
+
+	/**
+	 * editor_action pie_start. params: width, height (render PIE at exactly this size), mode ("new_window" default, or
+	 * "viewport" = the active level viewport). Repairs a degenerate saved PIE window size first.
+	 */
+	static TSharedPtr<FJsonObject> StartPie(const TSharedPtr<FJsonObject>& Params);
+	/** Fix the running PIE viewport's render size (0x0 lets it follow its window again). */
+	static bool SetPieViewportSize(int32 Width, int32 Height, FString& OutError);
 };

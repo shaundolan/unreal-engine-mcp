@@ -2,6 +2,7 @@
 #include "Commands/EpicUnrealMCPReflectionCommands.h"
 #include "Commands/EpicUnrealMCPPythonCommands.h"
 #include "Commands/MCPLevelCommands.h"
+#include "Commands/MCPPlayCommands.h"
 #include "Editor.h"
 #include "Engine/GameViewportClient.h"
 #include "EditorViewportClient.h"
@@ -149,15 +150,40 @@ static TSharedPtr<FJsonObject> HandleViewportCapture(const TSharedPtr<FJsonObjec
 
 	FString Source = TEXT("auto");
 	Params->TryGetStringField(TEXT("source"), Source);
+	if (Source == TEXT("pie"))
+	{
+		Source = TEXT("game");
+	}
+	if (Source != TEXT("auto") && Source != TEXT("game") && Source != TEXT("editor"))
+	{
+		return MCPError(FString::Printf(TEXT("unknown source '%s' (auto, pie/game, editor)"), *Source));
+	}
+	double ReqW = 0, ReqH = 0;
+	Params->TryGetNumberField(TEXT("width"), ReqW);
+	Params->TryGetNumberField(TEXT("height"), ReqH);
 	FViewport* Viewport = nullptr;
 	// While playing, "auto" captures what the player sees (the PIE game viewport), not the editor view.
 	if (Source != TEXT("editor") && GEditor && GEditor->PlayWorld && GEditor->PlayWorld->GetGameViewport())
 	{
 		Viewport = GEditor->PlayWorld->GetGameViewport()->Viewport;
+		// A requested size fixes the PIE render size (it stays for the session): the offscreen PIE window's own
+		// size is not to be trusted. The frame below is then drawn at exactly width x height.
+		if (ReqW > 0 && ReqH > 0 && Viewport && Viewport->GetSizeXY() != FIntPoint(int32(ReqW), int32(ReqH)))
+		{
+			FString Err;
+			if (!FMCPPlayCommands::SetPieViewportSize(int32(ReqW), int32(ReqH), Err))
+			{
+				return MCPError(Err);
+			}
+		}
 	}
 	if (!Viewport && Source == TEXT("game"))
 	{
-		return MCPError(TEXT("source=game needs a running PIE session"));
+		return MCPError(TEXT("source=pie needs a running PIE session"));
+	}
+	if (!Viewport && (ReqW > 0 || ReqH > 0))
+	{
+		return MCPError(TEXT("width/height apply to the PIE viewport only (the level viewport keeps its size); use max_width to downsize"));
 	}
 	if (Viewport)
 	{
@@ -429,14 +455,10 @@ static TSharedPtr<FJsonObject> HandleEditorAction(const TSharedPtr<FJsonObject>&
 	}
 	if (Action == TEXT("pie_start"))
 	{
-		if (GEditor->PlayWorld)
-		{
-			return MCPError(TEXT("PIE already running"));
-		}
-		FRequestPlaySessionParams Session;
-		GEditor->RequestPlaySession(Session);
-		Out->SetStringField(TEXT("note"), TEXT("PIE starts on the next editor tick; poll project_context.pie_running"));
-		return Out;
+		// width / height render PIE at exactly that size (also in an offscreen editor); mode new_window | viewport.
+		TSharedPtr<FJsonObject> R = FMCPPlayCommands::StartPie(Params);
+		R->SetStringField(TEXT("action"), Action);
+		return R;
 	}
 	if (Action == TEXT("pie_stop"))
 	{

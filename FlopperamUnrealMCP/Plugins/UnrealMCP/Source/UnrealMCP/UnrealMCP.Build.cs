@@ -72,7 +72,8 @@ public class UnrealMCP : ModuleRules
 				"AnimGraphRuntime",
 				"AnimationBlueprintLibrary", // anim_asset_apply: notifies
 				"GameplayTags",        // gameplay_tags
-				"LevelEditor"          // level_open: ULevelEditorSubsystem::NewLevel
+				"LevelEditor",         // level_open: ULevelEditorSubsystem::NewLevel; pie_start mode=viewport
+				"MaterialEditor"       // UMCPScriptLibrary: material outputs Python cannot reach (ClearCoat, PixelDepthOffset, ...)
 			}
 		);
 		
