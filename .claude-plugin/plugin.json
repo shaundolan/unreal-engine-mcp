@@ -1,0 +1,30 @@
+{
+  "name": "unrealmcp",
+  "displayName": "UnrealMCP (local)",
+  "version": "0.4.0",
+  "description": "Drive a live Unreal Editor from Claude Code: the UnrealMCP server (80+ tools), specialist subagents (Blueprint, Python batch, level design, VFX, verification, tech art, animation/GAS), workflow skills and /unreal-* commands. Local, no account or hosted service.",
+  "author": {
+    "name": "Shaun Dolan",
+    "url": "https://github.com/shaundolan"
+  },
+  "homepage": "https://github.com/shaundolan/unreal-engine-mcp",
+  "repository": "https://github.com/shaundolan/unreal-engine-mcp",
+  "license": "MIT",
+  "keywords": ["unreal-engine", "mcp", "game-development", "blueprints", "level-design", "niagara", "local"],
+  "mcpServers": {
+    "unreal": {
+      "command": "uv",
+      "args": ["--directory", "${CLAUDE_PLUGIN_ROOT}/Python", "run", "--quiet", "unreal_mcp_server_advanced.py"],
+      "env": {
+        "UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv",
+        "UNREAL_MCP_HOST": "${UNREAL_MCP_HOST:-127.0.0.1}",
+        "UNREAL_MCP_PORT": "${UNREAL_MCP_PORT:-55557}",
+        "UNREAL_MCP_TOKEN": "${UNREAL_MCP_TOKEN:-}"
+      }
+    },
+    "unreal-native": {
+      "type": "http",
+      "url": "${UNREAL_NATIVE_MCP_URL:-http://127.0.0.1:8000/mcp}"
+    }
+  }
+}
