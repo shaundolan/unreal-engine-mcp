@@ -14,6 +14,7 @@
  *   animbp_export / animbp_apply  Animation Blueprints: state machines, states, transitions + bp_apply ops
  *   anim_asset_apply              Montages (segments, slots, sections) and named notifies
  *   gameplay_tags                 Gameplay tag table (DefaultGameplayTags.ini)
+ *   niagara_export / niagara_apply  Niagara systems: emitters, stage module stacks, inputs, renderers, user params
  */
 class UNREALMCP_API FMCPBlueprintAuthoring
 {
@@ -34,6 +35,12 @@ public:
 };
 
 class UNREALMCP_API FMCPAnimAuthoring
+{
+public:
+	static void Register(IMCPCommandRegistry& Registry);
+};
+
+class UNREALMCP_API FMCPNiagaraAuthoring
 {
 public:
 	static void Register(IMCPCommandRegistry& Registry);
