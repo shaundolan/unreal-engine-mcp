@@ -146,6 +146,8 @@ void UEpicUnrealMCPBridge::RegisterAllCommands()
 	FMCPBlueprintAuthoring::Register(R);
 	FMCPWidgetAuthoring::Register(R);
 	FMCPBehaviorTreeAuthoring::Register(R);
+	FMCPAnimAuthoring::Register(R);
+	FMCPGameplayTagCommands::Register(R);
 
 	UE_LOG(LogUnrealMCP, Display, TEXT("UnrealMCP: %d commands registered"), R.Commands.Num());
 }

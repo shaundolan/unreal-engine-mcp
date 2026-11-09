@@ -29,6 +29,7 @@ NEW_TOOLS = {
     "blender_status", "blender_run",
     "package_project", "package_status",
     "scene_assert", "bp_export", "bp_apply", "widget_export", "widget_apply", "bt_export", "bt_build",
+    "anim_inspect", "anim_edit", "animbp_export", "animbp_apply", "gameplay_tags", "gas_edit", "gas_inspect",
 }
 
 

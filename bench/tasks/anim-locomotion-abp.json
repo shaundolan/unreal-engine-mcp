@@ -1,0 +1,330 @@
+{
+  "id": "anim-locomotion-abp",
+  "domain": "animation",
+  "title": "Locomotion AnimBP: idle/move blendspace + jump",
+  "prompt": "Create an Animation Blueprint {root}/ABP_Hero for the skeleton /Game/Characters/Mannequins/Meshes/SK_Mannequin. It has float Speed and bool IsInAir variables, set every update from the owning pawn (Speed = velocity length, IsInAir = the character movement is falling). Its AnimGraph runs a state machine named Locomotion with states Idle (plays /Game/Characters/Mannequins/Anims/Unarmed/MM_Idle), Move (plays a 1D blendspace {root}/BS_Locomotion driven by Speed: idle at 0, /Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd at 200, /Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd at 500) and Jump (plays /Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Fall_Loop). Idle goes to Move when Speed > 10 and back when it drops, Idle and Move go to Jump while IsInAir, Jump returns to Idle when not IsInAir. Idle is the entry state. Route the state machine through a DefaultSlot slot node into the Output Pose so montages play.",
+  "requires": [
+    "command:animbp_apply",
+    "asset:/Game/Characters/Mannequins/Meshes/SK_Mannequin"
+  ],
+  "setup": [],
+  "check": {
+    "tools": [
+      {
+        "tool": "animbp_export",
+        "args": {
+          "blueprint": "{root}/ABP_Hero"
+        },
+        "name": "compiles, Speed float + IsInAir bool",
+        "expect": "r['success'] and r['status'] in ('ok', 'ok_with_warnings') and r['skeleton'].endswith('SK_Mannequin') and any(v['name'] == 'Speed' and v['type'] == 'float' for v in r['variables']) and any(v['name'] == 'IsInAir' and v['type'] == 'bool' for v in r['variables'])"
+      },
+      {
+        "tool": "animbp_export",
+        "args": {
+          "blueprint": "{root}/ABP_Hero"
+        },
+        "name": "slot -> Locomotion -> Output Pose",
+        "expect": "r['success'] and r['output_chain'][:2] == ['slot', 'state_machine:Locomotion'] and any(n['kind'] == 'slot' and n.get('slot') == 'DefaultSlot' for n in r['anim_graph'])"
+      },
+      {
+        "tool": "animbp_export",
+        "args": {
+          "blueprint": "{root}/ABP_Hero"
+        },
+        "name": "Idle (entry) / Move blendspace / Jump states",
+        "expect": "r['success'] and len([m for m in r['state_machines'] if m['name'] == 'Locomotion']) == 1 and [m for m in r['state_machines'] if m['name'] == 'Locomotion'][0].get('entry') == 'Idle' and sorted(s['name'] for s in [m for m in r['state_machines'] if m['name'] == 'Locomotion'][0]['states']) == ['Idle', 'Jump', 'Move'] and all(s['pose_wired'] for s in [m for m in r['state_machines'] if m['name'] == 'Locomotion'][0]['states']) and any(s['name'] == 'Move' and any(a.endswith('BS_Locomotion') for a in s['assets']) for s in [m for m in r['state_machines'] if m['name'] == 'Locomotion'][0]['states']) and any(s['name'] == 'Idle' and any(a.endswith('MM_Idle') for a in s['assets']) for s in [m for m in r['state_machines'] if m['name'] == 'Locomotion'][0]['states'])"
+      },
+      {
+        "tool": "animbp_export",
+        "args": {
+          "blueprint": "{root}/ABP_Hero"
+        },
+        "name": "transitions read Speed / IsInAir",
+        "expect": "r['success'] and all(any(t['from'] == a and t['to'] == b and t['rule_wired'] and v in t['reads'] for t in [m for m in r['state_machines'] if m['name'] == 'Locomotion'][0]['transitions']) for a, b, v in [('Idle', 'Move', 'Speed'), ('Move', 'Idle', 'Speed'), ('Idle', 'Jump', 'IsInAir'), ('Move', 'Jump', 'IsInAir'), ('Jump', 'Idle', 'IsInAir')])"
+      },
+      {
+        "tool": "animbp_export",
+        "args": {
+          "blueprint": "{root}/ABP_Hero"
+        },
+        "name": "event graph sets Speed and IsInAir",
+        "expect": "r['success'] and set(n.get('variable') for g in r['graphs'] for n in g['nodes'] if n['kind'] == 'set_var') >= {'Speed', 'IsInAir'} and any(n['kind'] == 'event' and n['event'] == 'BlueprintUpdateAnimation' for g in r['graphs'] for n in g['nodes'])"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "anim_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create_blendspace",
+            "asset": "{root}/BS_Locomotion",
+            "skeleton": "/Game/Characters/Mannequins/Meshes/SK_Mannequin",
+            "dimensions": 1,
+            "axes": [
+              {
+                "name": "Speed",
+                "min": 0,
+                "max": 600,
+                "grid": 4
+              }
+            ],
+            "samples": [
+              {
+                "animation": "/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle",
+                "x": 0
+              },
+              {
+                "animation": "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd",
+                "x": 200
+              },
+              {
+                "animation": "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd",
+                "x": 500
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tool": "animbp_apply",
+      "args": {
+        "blueprint": "{root}/ABP_Hero",
+        "skeleton": "/Game/Characters/Mannequins/Meshes/SK_Mannequin",
+        "operations": [
+          {
+            "op": "add_variable",
+            "name": "Speed",
+            "type": "float"
+          },
+          {
+            "op": "add_variable",
+            "name": "IsInAir",
+            "type": "bool"
+          },
+          {
+            "op": "add_node",
+            "id": "upd",
+            "kind": "event",
+            "event": "BlueprintUpdateAnimation"
+          },
+          {
+            "op": "add_node",
+            "id": "pawn",
+            "kind": "call_function",
+            "function": "TryGetPawnOwner"
+          },
+          {
+            "op": "add_node",
+            "id": "valid",
+            "kind": "macro",
+            "macro": "IsValid"
+          },
+          {
+            "op": "add_node",
+            "id": "vel",
+            "kind": "call_function",
+            "function": "GetVelocity",
+            "class": "Actor"
+          },
+          {
+            "op": "add_node",
+            "id": "len",
+            "kind": "call_function",
+            "function": "VSize",
+            "class": "KismetMathLibrary"
+          },
+          {
+            "op": "add_node",
+            "id": "setspeed",
+            "kind": "set_var",
+            "variable": "Speed"
+          },
+          {
+            "op": "add_node",
+            "id": "cast",
+            "kind": "cast",
+            "class": "Character",
+            "pure": true
+          },
+          {
+            "op": "add_node",
+            "id": "move",
+            "kind": "call_function",
+            "function": "GetCharacterMovement",
+            "class": "Character"
+          },
+          {
+            "op": "add_node",
+            "id": "falling",
+            "kind": "call_function",
+            "function": "IsFalling",
+            "class": "CharacterMovementComponent"
+          },
+          {
+            "op": "add_node",
+            "id": "setair",
+            "kind": "set_var",
+            "variable": "IsInAir"
+          },
+          {
+            "op": "connect",
+            "from": "upd.then",
+            "to": "valid.exec"
+          },
+          {
+            "op": "connect",
+            "from": "pawn.ReturnValue",
+            "to": "valid.InputObject"
+          },
+          {
+            "op": "connect",
+            "from": "valid.Is Valid",
+            "to": "setspeed.exec"
+          },
+          {
+            "op": "connect",
+            "from": "pawn.ReturnValue",
+            "to": "vel.self"
+          },
+          {
+            "op": "connect",
+            "from": "vel.ReturnValue",
+            "to": "len.A"
+          },
+          {
+            "op": "connect",
+            "from": "len.ReturnValue",
+            "to": "setspeed.Speed"
+          },
+          {
+            "op": "connect",
+            "from": "setspeed.then",
+            "to": "setair.exec"
+          },
+          {
+            "op": "connect",
+            "from": "pawn.ReturnValue",
+            "to": "cast.Object"
+          },
+          {
+            "op": "connect",
+            "from": "cast.as",
+            "to": "move.self"
+          },
+          {
+            "op": "connect",
+            "from": "move.ReturnValue",
+            "to": "falling.self"
+          },
+          {
+            "op": "connect",
+            "from": "falling.ReturnValue",
+            "to": "setair.IsInAir"
+          },
+          {
+            "op": "add_state_machine",
+            "id": "loco",
+            "name": "Locomotion"
+          },
+          {
+            "op": "add_state",
+            "id": "idle",
+            "machine": "loco",
+            "name": "Idle",
+            "sequence": "/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle",
+            "loop": true
+          },
+          {
+            "op": "add_state",
+            "id": "move",
+            "machine": "loco",
+            "name": "Move",
+            "blendspace": "{root}/BS_Locomotion",
+            "inputs": {
+              "X": "Speed"
+            }
+          },
+          {
+            "op": "add_state",
+            "id": "jump",
+            "machine": "loco",
+            "name": "Jump",
+            "sequence": "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Fall_Loop",
+            "loop": true
+          },
+          {
+            "op": "add_transition",
+            "id": "idle_move",
+            "from": "idle",
+            "to": "move",
+            "blend": 0.2,
+            "rule": {
+              "var": "Speed",
+              "cmp": ">",
+              "value": 10
+            }
+          },
+          {
+            "op": "add_transition",
+            "id": "move_idle",
+            "from": "move",
+            "to": "idle",
+            "blend": 0.2,
+            "rule": {
+              "var": "Speed",
+              "cmp": "<=",
+              "value": 10
+            }
+          },
+          {
+            "op": "add_transition",
+            "id": "idle_jump",
+            "from": "idle",
+            "to": "jump",
+            "rule": {
+              "var": "IsInAir"
+            }
+          },
+          {
+            "op": "add_transition",
+            "id": "move_jump",
+            "from": "move",
+            "to": "jump",
+            "rule": {
+              "var": "IsInAir"
+            }
+          },
+          {
+            "op": "add_transition",
+            "id": "jump_idle",
+            "from": "jump",
+            "to": "idle",
+            "rule": {
+              "var": "IsInAir",
+              "not": true
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "slot",
+            "kind": "slot",
+            "slot": "DefaultSlot"
+          },
+          {
+            "op": "connect",
+            "from": "loco.Pose",
+            "to": "slot.Source"
+          },
+          {
+            "op": "connect",
+            "from": "slot.Pose",
+            "to": "output.Result"
+          }
+        ]
+      }
+    }
+  ]
+}

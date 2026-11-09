@@ -1,0 +1,67 @@
+{
+  "id": "anim-blendspace-locomotion",
+  "domain": "animation",
+  "title": "1D locomotion BlendSpace on Speed",
+  "prompt": "Create a 1D BlendSpace {root}/BS_Locomotion for the Mannequin skeleton /Game/Characters/Mannequins/Meshes/SK_Mannequin with one axis named Speed from 0 to 600. Samples: /Game/Characters/Mannequins/Anims/Unarmed/MM_Idle at Speed 0, /Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd at Speed 200 and /Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd at Speed 500.",
+  "requires": [
+    "asset:/Game/Characters/Mannequins/Meshes/SK_Mannequin"
+  ],
+  "setup": [],
+  "check": {
+    "tools": [
+      {
+        "tool": "anim_inspect",
+        "args": {
+          "asset": "{root}/BS_Locomotion"
+        },
+        "name": "1D, Speed axis 0..600",
+        "expect": "r['success'] and r['dimensions'] == 1 and r['axes'][0]['name'] == 'Speed' and r['axes'][0]['min'] == 0 and r['axes'][0]['max'] == 600"
+      },
+      {
+        "tool": "anim_inspect",
+        "args": {
+          "asset": "{root}/BS_Locomotion"
+        },
+        "name": "idle 0, walk 200, jog 500",
+        "expect": "r['success'] and sorted((s['animation'].split('.')[-1], round(s['x'])) for s in r['samples']) == [('MF_Unarmed_Jog_Fwd', 500), ('MF_Unarmed_Walk_Fwd', 200), ('MM_Idle', 0)]"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "anim_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create_blendspace",
+            "asset": "{root}/BS_Locomotion",
+            "skeleton": "/Game/Characters/Mannequins/Meshes/SK_Mannequin",
+            "dimensions": 1,
+            "axes": [
+              {
+                "name": "Speed",
+                "min": 0,
+                "max": 600,
+                "grid": 4
+              }
+            ],
+            "samples": [
+              {
+                "animation": "/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle",
+                "x": 0
+              },
+              {
+                "animation": "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd",
+                "x": 200
+              },
+              {
+                "animation": "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd",
+                "x": 500
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

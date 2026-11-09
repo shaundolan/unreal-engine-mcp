@@ -63,7 +63,11 @@ public class UnrealMCP : ModuleRules
 				"UMG",                 // widget_apply
 				"UMGEditor",           // UWidgetBlueprint
 				"AIModule",            // bt_build
-				"GameplayTasks"
+				"GameplayTasks",
+				"AnimGraph",           // animbp_apply: state machines, states, transitions, asset players
+				"AnimGraphRuntime",
+				"AnimationBlueprintLibrary", // anim_asset_apply: notifies
+				"GameplayTags"         // gameplay_tags
 			}
 		);
 		

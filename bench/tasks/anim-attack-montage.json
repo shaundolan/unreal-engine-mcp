@@ -1,0 +1,75 @@
+{
+  "id": "anim-attack-montage",
+  "domain": "animation",
+  "title": "Attack montage with sections and a Hit notify",
+  "prompt": "Make an attack montage {root}/AM_Attack from /Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_01 in the DefaultGroup.DefaultSlot slot, with three sections: Windup at 0 s, Strike at 0.4 s and Recover at 0.9 s (played in that order), and a named notify Hit at 0.45 s that the Animation Blueprint can react to (AnimNotify_Hit).",
+  "requires": [
+    "command:anim_asset_apply",
+    "asset:/Game/Characters/Mannequins/Meshes/SK_Mannequin"
+  ],
+  "setup": [],
+  "check": {
+    "tools": [
+      {
+        "tool": "anim_inspect",
+        "args": {
+          "asset": "{root}/AM_Attack"
+        },
+        "name": "montage of MM_Attack_01 in DefaultSlot",
+        "expect": "r['success'] and r['class'] == 'AnimMontage' and any(t['slot'] == 'DefaultGroup.DefaultSlot' and any(s['sequence'].endswith('MM_Attack_01') for s in t['segments']) for t in r['slots'])"
+      },
+      {
+        "tool": "anim_inspect",
+        "args": {
+          "asset": "{root}/AM_Attack"
+        },
+        "name": "sections Windup 0 -> Strike 0.4 -> Recover 0.9",
+        "expect": "r['success'] and [(s['name'], round(s['time'], 2)) for s in r['sections']] == [('Windup', 0), ('Strike', 0.4), ('Recover', 0.9)] and r['sections'][0]['next'] == 'Strike' and r['sections'][1]['next'] == 'Recover'"
+      },
+      {
+        "tool": "anim_inspect",
+        "args": {
+          "asset": "{root}/AM_Attack"
+        },
+        "name": "Hit notify near 0.45 s",
+        "expect": "r['success'] and any(n['name'] == 'Hit' and abs(n['time'] - 0.45) < 0.05 for n in r['notifies'])"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "anim_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create_montage",
+            "asset": "{root}/AM_Attack",
+            "sequences": [
+              "/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_01"
+            ],
+            "sections": [
+              {
+                "name": "Windup",
+                "time": 0
+              },
+              {
+                "name": "Strike",
+                "time": 0.4
+              },
+              {
+                "name": "Recover",
+                "time": 0.9
+              }
+            ],
+            "notifies": [
+              {
+                "name": "Hit",
+                "time": 0.45
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
