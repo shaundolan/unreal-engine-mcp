@@ -19,6 +19,7 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_CommutativeAssociativeBinaryOperator.h"
 #include "K2Node_ComponentBoundEvent.h"
+#include "Components/Widget.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Event.h"
@@ -737,7 +738,8 @@ static FObjectProperty* FindComponentProperty(FApplyContext& Ctx, const FString&
 		if (!C) return nullptr;
 		for (TFieldIterator<FObjectProperty> It(C, EFieldIteratorFlags::IncludeSuper); It; ++It)
 		{
-			if (It->GetName().Equals(Name, ESearchCase::IgnoreCase) && It->PropertyClass && It->PropertyClass->IsChildOf(UActorComponent::StaticClass()))
+			if (It->GetName().Equals(Name, ESearchCase::IgnoreCase) && It->PropertyClass &&
+				(It->PropertyClass->IsChildOf(UActorComponent::StaticClass()) || It->PropertyClass->IsChildOf(UWidget::StaticClass())))  // widget vars: OnClicked, ...
 			{
 				return *It;
 			}
