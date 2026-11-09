@@ -22,7 +22,7 @@ plugin. The Windows/D3D12 run is pending: [WINDOWS_TEST.md](WINDOWS_TEST.md).
 - **Frame timings:** render- and RHI-thread times read 0 offscreen on Linux and are reported as `unavailable`. There is no Unreal Insights
   / `stat` capture yet.
 - **Animation:** linked anim layers, Control Rig nodes, `AnimNotify_<Name>` events in AnimBPs; generic AnimGraph nodes untested.
-- **VFX / audio:** Niagara module graphs (only placement and User parameters today), MetaSounds.
+- **VFX / audio:** Niagara authoring is done (`niagara_export` / `niagara_apply`, `skill://vfx`). Not yet: creating simulation stages, scratch-pad modules, Niagara Data Channels, lightweight (stateless) emitters, editing a parent emitter asset in place; MetaSounds.
 - **World:** World Partition / data layers; landscape streaming proxies and edit layers beyond the first.
 - **Gameplay:** GAS ability tasks, Gameplay Cues and custom calculations (AttributeSets are generated C++), multiplayer/replication testing (multi-client PIE).
 - **Blueprints:** interfaces, event dispatchers bound across Blueprints, timelines, struct/enum asset authoring, promotable
