@@ -1,7 +1,7 @@
 [project]
 name = "unreal-engine-mcp"
-version = "0.1.0"
-description = "Unreal MCP Advanced Server: A streamlined server for advanced Unreal Engine composition and building tools via MCP."
+version = "0.3.0"
+description = "Local, open MCP server for driving a live Unreal Editor: Python execution, reflection, observation, Blueprint graphs and world building."
 readme = "README_advanced.md"
 requires-python = ">=3.10,<3.14"
 dependencies = [
@@ -13,10 +13,34 @@ dependencies = [
   "requests"
 ]
 
+[project.scripts]
+unreal-mcp = "unreal_mcp_server_advanced:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
 [build-system]
 requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-# The advanced server script is a single-file module
-py-modules = ["unreal_mcp_server_advanced"] 
+py-modules = ["unreal_mcp_server_advanced"]
+
+[tool.setuptools.packages.find]
+include = ["unreal_mcp*", "helpers*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+# Legacy modules (the original monolith and world-building helpers) are linted later.
+extend-exclude = ["unreal_mcp_server_advanced.py", "helpers", "tests/fixtures"]
+
+[tool.ruff.lint.per-file-ignores]
+# Editor-side scripts run inside Unreal with ARGS and _common helpers injected.
+"unreal_mcp/editor_scripts/*.py" = ["F821", "E501", "B023"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

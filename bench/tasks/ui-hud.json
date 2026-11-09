@@ -1,0 +1,218 @@
+{
+  "id": "ui-hud",
+  "domain": "ui",
+  "title": "HUD widget shown in play",
+  "prompt": "Create the widget {root}/WBP_HUD with a CanvasPanel root, a ProgressBar variable named HealthBar anchored top-left, and a TextBlock variable named ScoreText anchored top-right that reads 'Score: 0'. Show it on screen when play starts (for example from an Actor Blueprint you place in the level).",
+  "requires": [
+    "command:widget_apply",
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "widget_export",
+        "args": {
+          "widget": "{root}/WBP_HUD"
+        },
+        "name": "HealthBar progress bar, top-left",
+        "expect": "r['success'] and any(w['name'] == 'HealthBar' and w['class'] == 'ProgressBar' and w.get('is_variable') and w['slot'].get('anchors', [9])[:2] == [0, 0] for w in walk(r['root']))"
+      },
+      {
+        "tool": "widget_export",
+        "args": {
+          "widget": "{root}/WBP_HUD"
+        },
+        "name": "ScoreText 'Score: 0', top-right",
+        "expect": "r['success'] and any(w['name'] == 'ScoreText' and w['class'] == 'TextBlock' and w.get('is_variable') and w.get('text') == 'Score: 0' and w['slot'].get('anchors', [9])[:2] == [1, 0] for w in walk(r['root']))"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "python",
+          "expr": "len(unreal.WidgetLibrary.get_all_widgets_of_class(world, unreal.load_class(None, '{root}/WBP_HUD.WBP_HUD_C'), True)) == 1",
+          "name": "HUD on screen"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "widget_apply",
+      "args": {
+        "widget": "{root}/WBP_HUD",
+        "create": true,
+        "operations": [
+          {
+            "op": "add",
+            "name": "Root",
+            "class": "CanvasPanel"
+          },
+          {
+            "op": "add",
+            "name": "HealthBar",
+            "class": "ProgressBar",
+            "is_variable": true,
+            "percent": 1.0,
+            "slot": {
+              "anchors": "top_left",
+              "position": [
+                40,
+                40
+              ],
+              "size": [
+                400,
+                28
+              ]
+            }
+          },
+          {
+            "op": "add",
+            "name": "ScoreText",
+            "class": "TextBlock",
+            "is_variable": true,
+            "text": "Score: 0",
+            "font_size": 32,
+            "slot": {
+              "anchors": "top_right",
+              "position": [
+                -40,
+                40
+              ],
+              "alignment": [
+                1,
+                0
+              ],
+              "auto_size": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_HUDSpawner",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "pc",
+            "kind": "call_function",
+            "function": "GetPlayerController",
+            "pins": {
+              "PlayerIndex": 0
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "create",
+            "kind": "node",
+            "class": "K2Node_CreateWidget",
+            "pins": {
+              "Class": "{root}/WBP_HUD.WBP_HUD_C"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "show",
+            "kind": "call_function",
+            "function": "AddToViewport",
+            "class": "UserWidget"
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "create.exec"
+          },
+          {
+            "op": "connect",
+            "from": "pc.ReturnValue",
+            "to": "create.OwningPlayer"
+          },
+          {
+            "op": "connect",
+            "from": "create.then",
+            "to": "show.exec"
+          },
+          {
+            "op": "connect",
+            "from": "create.ReturnValue",
+            "to": "show.self"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_HUDSpawner.BP_HUDSpawner",
+            "label": "HUDSpawner"
+          }
+        ]
+      }
+    }
+  ]
+}

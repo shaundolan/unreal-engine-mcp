@@ -1,0 +1,78 @@
+{
+  "id": "scene-light-ring",
+  "domain": "scene",
+  "title": "Ring of point lights",
+  "prompt": "Place 8 point lights evenly in a ring of radius 600 around the actor 'Stage', 300 units above it. Every light's intensity must be 8000.",
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Stage",
+            "location": [
+              1000,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "actor_exists",
+        "class": "PointLight",
+        "min": 8,
+        "max": 8,
+        "name": "8 point lights"
+      },
+      {
+        "type": "python",
+        "expr": "all(abs(dist(a, find('Stage').get_actor_location() + vec([0, 0, 300])) - 600) < 5 for a in [a for a in actors if isinstance(a, unreal.PointLight)])",
+        "name": "radius 600 at +300"
+      },
+      {
+        "type": "python",
+        "expr": "min(dist(a, b) for a in [a for a in actors if isinstance(a, unreal.PointLight)] for b in [a for a in actors if isinstance(a, unreal.PointLight)] if a is not b) > 440",
+        "name": "evenly spaced"
+      },
+      {
+        "type": "python",
+        "expr": "all(abs(a.get_editor_property('light_component').get_editor_property('intensity') - 8000) < 1 for a in [a for a in actors if isinstance(a, unreal.PointLight)])",
+        "name": "intensity 8000"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "class": "PointLight",
+            "label": "RingLight",
+            "location": [
+              1000,
+              0,
+              300
+            ],
+            "properties": {
+              "light_component.intensity": 8000
+            },
+            "pattern": {
+              "type": "circle",
+              "count": 8,
+              "radius": 600
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

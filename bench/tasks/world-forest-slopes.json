@@ -1,0 +1,84 @@
+{
+  "id": "world-forest-slopes",
+  "domain": "world",
+  "title": "Forest scattered only on gentle slopes",
+  "prompt": "The level has a hilly landscape 'Terrain'. Scatter at least 150 trees on it as foliage instances (use /Engine/BasicShapes/Cone.Cone as the tree mesh), only where the ground slope is under 25 degrees, each with a random uniform scale between 0.8 and 1.5. Create any foliage type assets under {root}.",
+  "requires": [
+    "command:landscape_create"
+  ],
+  "setup": [
+    {
+      "tool": "landscape_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create",
+            "label": "Terrain",
+            "component_count": [
+              4,
+              4
+            ],
+            "section_size": 31,
+            "location": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "op": "noise",
+            "amplitude": 1200,
+            "wavelength": 4000,
+            "octaves": 4,
+            "seed": 11
+          },
+          {
+            "op": "hill",
+            "center_uv": [
+              0.7,
+              0.3
+            ],
+            "radius": 2500,
+            "height": 1800
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "foliage_inspect",
+        "args": {
+          "mesh": "/Engine/BasicShapes/Cone",
+          "sample_slopes": true
+        },
+        "name": ">= 150 cone foliage instances, slopes < 25, scale 0.8-1.5",
+        "expect": "r['success'] and any(g['mode'] == 'foliage' and g['count'] >= 150 and g['slope_deg']['max'] < 25.5 and g['scale']['min'] >= 0.79 and g['scale']['max'] <= 1.51 for g in r['groups'])"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "foliage_scatter",
+      "args": {
+        "foliage_type_dir": "{root}/Foliage",
+        "operations": [
+          {
+            "op": "scatter",
+            "mesh": "/Engine/BasicShapes/Cone.Cone",
+            "surface": "Terrain",
+            "count": 200,
+            "slope_max": 24,
+            "scale": [
+              0.8,
+              1.5
+            ],
+            "seed": 5,
+            "min_distance": 150
+          }
+        ]
+      }
+    }
+  ]
+}

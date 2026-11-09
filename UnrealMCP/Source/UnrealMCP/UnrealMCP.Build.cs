@@ -57,7 +57,23 @@ public class UnrealMCP : ModuleRules
 				"SlateCore",
 				"Kismet",
 				"Projects",
-				"AssetRegistry"
+				"AssetRegistry",
+				"RenderCore",          // FlushRenderingCommands for viewport_capture; frame timings
+				"RHI",                 // frame_stats GPU time
+				"EnhancedInput",       // pie_input action injection
+				"PythonScriptPlugin",  // execute_python
+				"UMG",                 // widget_apply
+				"UMGEditor",           // UWidgetBlueprint
+				"AIModule",            // bt_build
+				"GameplayTasks",
+				"Landscape",          // landscape_create / landscape_inspect / landscape_write
+				"Foliage",            // LandscapeEdit.h includes InstancedFoliageActor.h
+				"AnimGraph",           // animbp_apply: state machines, states, transitions, asset players
+				"AnimGraphRuntime",
+				"AnimationBlueprintLibrary", // anim_asset_apply: notifies
+				"GameplayTags",        // gameplay_tags
+				"LevelEditor",         // level_open: ULevelEditorSubsystem::NewLevel; pie_start mode=viewport
+				"MaterialEditor"       // UMCPScriptLibrary: material outputs Python cannot reach (ClearCoat, PixelDepthOffset, ...)
 			}
 		);
 		

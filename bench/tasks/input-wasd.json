@@ -1,0 +1,96 @@
+{
+  "id": "input-wasd",
+  "domain": "input",
+  "title": "Enhanced Input WASD + jump",
+  "prompt": "Set up Enhanced Input in {root}/Input: IA_Move (Axis2D), IA_Jump (Boolean), and IMC_Default mapping W/A/S/D to IA_Move (with the right swizzle/negate modifiers) and SpaceBar to IA_Jump.",
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "asset_exists",
+        "path": "{root}/Input/IA_Move",
+        "class": "InputAction"
+      },
+      {
+        "type": "asset_exists",
+        "path": "{root}/Input/IA_Jump",
+        "class": "InputAction"
+      },
+      {
+        "type": "asset_exists",
+        "path": "{root}/Input/IMC_Default",
+        "class": "InputMappingContext"
+      },
+      {
+        "type": "python",
+        "expr": "'AXIS2D' in str(asset('{root}/Input/IA_Move').get_editor_property('value_type')).upper()",
+        "name": "IA_Move is Axis2D"
+      },
+      {
+        "type": "python",
+        "expr": "sorted(str(m.get_editor_property('key').get_editor_property('key_name')) for m in (lambda imc: imc.get_editor_property('default_key_mappings').get_editor_property('mappings') if hasattr(imc, 'default_key_mappings') else imc.get_editor_property('mappings'))(asset('{root}/Input/IMC_Default'))) == ['A', 'D', 'S', 'SpaceBar', 'W']",
+        "name": "5 key mappings"
+      },
+      {
+        "type": "python",
+        "expr": "sorted(len(m.get_editor_property('modifiers')) for m in (lambda imc: imc.get_editor_property('default_key_mappings').get_editor_property('mappings') if hasattr(imc, 'default_key_mappings') else imc.get_editor_property('mappings'))(asset('{root}/Input/IMC_Default'))) == [0, 0, 1, 1, 2]",
+        "name": "modifier counts"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "enhanced_input",
+      "args": {
+        "folder": "{root}/Input",
+        "actions": [
+          {
+            "name": "IA_Move",
+            "value_type": "Axis2D"
+          },
+          {
+            "name": "IA_Jump",
+            "value_type": "Boolean"
+          }
+        ],
+        "contexts": [
+          {
+            "name": "IMC_Default",
+            "mappings": [
+              {
+                "action": "IA_Move",
+                "key": "W",
+                "modifiers": [
+                  "SwizzleAxis"
+                ]
+              },
+              {
+                "action": "IA_Move",
+                "key": "S",
+                "modifiers": [
+                  "SwizzleAxis",
+                  "Negate"
+                ]
+              },
+              {
+                "action": "IA_Move",
+                "key": "D"
+              },
+              {
+                "action": "IA_Move",
+                "key": "A",
+                "modifiers": [
+                  "Negate"
+                ]
+              },
+              {
+                "action": "IA_Jump",
+                "key": "SpaceBar"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

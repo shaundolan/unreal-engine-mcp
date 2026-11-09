@@ -1,0 +1,96 @@
+{
+  "id": "material-emissive",
+  "domain": "materials",
+  "title": "Parameterised emissive material",
+  "prompt": "Create the material {root}/M_Glow: a vector parameter 'Tint' multiplied by a scalar parameter 'Power' drives Emissive Color, and Tint also drives Base Color.",
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "asset_exists",
+        "path": "{root}/M_Glow",
+        "class": "Material"
+      },
+      {
+        "type": "python",
+        "expr": "sorted(str(n) for n in unreal.MaterialEditingLibrary.get_vector_parameter_names(asset('{root}/M_Glow'))) == ['Tint']",
+        "name": "Tint param"
+      },
+      {
+        "type": "python",
+        "expr": "sorted(str(n) for n in unreal.MaterialEditingLibrary.get_scalar_parameter_names(asset('{root}/M_Glow'))) == ['Power']",
+        "name": "Power param"
+      },
+      {
+        "type": "python",
+        "expr": "type(unreal.MaterialEditingLibrary.get_material_property_input_node(asset('{root}/M_Glow'), unreal.MaterialProperty.MP_EMISSIVE_COLOR)).__name__ == 'MaterialExpressionMultiply'",
+        "name": "emissive = multiply"
+      },
+      {
+        "type": "python",
+        "expr": "type(unreal.MaterialEditingLibrary.get_material_property_input_node(asset('{root}/M_Glow'), unreal.MaterialProperty.MP_BASE_COLOR)).__name__ == 'MaterialExpressionVectorParameter'",
+        "name": "base color = Tint"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "material_edit",
+      "args": {
+        "path": "{root}/M_Glow",
+        "create": true,
+        "operations": [
+          {
+            "op": "add",
+            "id": "tint",
+            "class": "VectorParameter",
+            "properties": {
+              "parameter_name": "Tint",
+              "default_value": [
+                1,
+                0.5,
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "op": "add",
+            "id": "power",
+            "class": "ScalarParameter",
+            "properties": {
+              "parameter_name": "Power"
+            }
+          },
+          {
+            "op": "add",
+            "id": "mul",
+            "class": "Multiply"
+          },
+          {
+            "op": "connect",
+            "from": "tint",
+            "to": "mul",
+            "to_input": "A"
+          },
+          {
+            "op": "connect",
+            "from": "power",
+            "to": "mul",
+            "to_input": "B"
+          },
+          {
+            "op": "output",
+            "from": "mul",
+            "property": "EmissiveColor"
+          },
+          {
+            "op": "output",
+            "from": "tint",
+            "property": "BaseColor"
+          }
+        ]
+      }
+    }
+  ]
+}

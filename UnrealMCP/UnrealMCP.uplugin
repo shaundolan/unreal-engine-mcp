@@ -1,9 +1,10 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
-	"VersionName": "1.0",
+	"Version": 2,
+	"VersionName": "0.3.0",
+	"EngineVersion": "5.8.0",
 	"FriendlyName": "UnrealMCP",
-	"Description": "Model Context Protocol implementation for Unreal Engine",
+	"Description": "Local MCP bridge for agents: Python execution, reflection, observation, Blueprint graphs, world building.",
 	"Category": "Editor",
 	"CreatedBy": "Flopperam",
 	"CreatedByURL": "",
@@ -19,7 +20,7 @@
 			"Name": "UnrealMCP",
 			"Type": "Editor",
 			"LoadingPhase": "Default",
-			"WhitelistPlatforms": [
+			"PlatformAllowList": [
 				"Win64",
 				"Mac",
 				"Linux"
@@ -30,6 +31,14 @@
 		{
 			"Name": "EditorScriptingUtilities",
 			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
 		}
 	]
-} 
+}

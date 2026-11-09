@@ -1,17 +1,20 @@
 ---
 description: >
-  Unreal Engine MCP tool conventions -- asset path formats, batching rules, 
-  read-before-write guards, and verification patterns. Applies when using 
-  any Flopperam Unreal Engine MCP tool.
+  Conventions for the local UnrealMCP tools: asset paths vs actor labels,
+  batching, read-before-write, undo, and verification.
 alwaysApply: true
 ---
 
-Asset paths use `PackageName.AssetName` format (e.g. `/Game/Blueprints/BP_Enemy.BP_Enemy`). Always use the FULL path as returned by `search_assets` — never construct or guess paths. Guessed `/Game/...` paths silently resolve to nullptr.
+Asset paths use `/Package/Path.AssetName` (e.g. `/Game/Blueprints/BP_Enemy.BP_Enemy`, class: `/Game/Blueprints/BP_Enemy.BP_Enemy_C`). Get real paths from the asset registry (via `execute_python`) or tool output. Never guess them.
 
-`scene_query` returns actor labels from the Outliner — these are NOT asset paths. `search_assets` returns Content Browser asset paths — never confuse the two.
+Actor labels (`get_actors_in_level`, `find_actors_by_name`) are NOT asset paths. Reflection tools accept either an object path (starting with `/`) or an actor label.
 
-Read before write: at least one read-class tool (`bp_brief`, `bp_inspect`, `bp_export`, `search_assets`, any `*_inspect`) must fire before any write tool. Narrow bp_* writes all defer compile — batch many, then call `bp_commit` once per target Blueprint.
+Read before write: inspect the target (`object_describe`, `read_blueprint_content`, `get_actors_in_level`) before modifying it.
 
-Batch everything: every tool that accepts arrays (`queries`, `variables`, `components`, `nodes`, `edges`, `operations`) is designed for one call with many items. Loop-calling is a regression path.
+Batch: for many similar edits, write one `execute_python` loop. Don't make one call per item.
 
-After every modification, verify the result actually took effect — re-read with inspect tools, do NOT claim work is complete based on "no errors."
+Undo: every mutating command is one editor transaction, so `editor_action(action="undo")` reverts it. In `execute_python`, wrap edits in `with unreal.ScopedEditorTransaction("...")`.
+
+Look up before you code: run `unreal_api_search` before `execute_python` whenever you aren't certain of an API name.
+
+Verify after every modification: re-read the state, check `editor_log(since_seq=..., min_verbosity="Warning")`, and use `viewport_capture` for visual work. "No error" is not proof that the change worked.

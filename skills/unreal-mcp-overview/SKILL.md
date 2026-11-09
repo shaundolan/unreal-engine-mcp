@@ -1,136 +1,52 @@
 ---
 name: unreal-mcp-overview
 description: >
-  Overview of the Flopperam Unreal Engine MCP server -- tool categories, 
-  workflows, and cross-tool relationships. Use when first connecting to 
-  a running Unreal Editor, when unsure which tool handles a task, or when 
-  the user asks about available capabilities.
+  Overview of the local UnrealMCP server: tool layers, when to use which tool,
+  and the observe -> act -> verify loop. Use when first connecting to a running
+  Unreal Editor, when unsure which tool handles a task, or when the user asks
+  what the tools can do.
 ---
 
-# Flopperam Unreal Engine MCP — Overview
+# UnrealMCP: Overview
 
-This MCP server controls a **live Unreal Editor** instance over WebSocket. Every tool operates on the running editor — if a tool returns a connection error, the editor may not be running or the FlopAI plugin is not loaded.
+This MCP server drives a **live Unreal Editor** through the UnrealMCP C++ plugin (TCP, port 55557).
+If a tool returns "cannot reach Unreal", the editor isn't running or the plugin isn't enabled.
 
-## Intent Classification
+## Start every session with
+1. `unreal_status`: confirms the connection, the plugin version, and whether `execute_python` is available.
+2. `project_context`: engine version, current level, maps, enabled plugins.
 
-Before calling any tool, classify what the user needs:
+## Intent first
+- **Question**: answer from knowledge, using read-only tools only if you need specifics.
+- **Inspection**: read-only tools only (`object_describe`, `property_get`, `editor_log`, `viewport_capture`, `get_*`, `read_*`, `analyze_*`).
+- **Change**: observe -> act -> verify (below). When unclear, don't modify.
 
-- **Question / explanation** — Answer from knowledge. Use read-only tools only if specifics are needed. Do NOT make changes.
-- **Inspection / analysis** — Use read-only tools and report findings. Do NOT modify anything.
-- **Modification / creation** — Proceed with the full observe → execute → verify workflow.
+## Tool layers (most specific first, most general last)
+| Layer | Tools | Use for |
+|---|---|---|
+| Domain | `scene_brief`, `scene_query`, `actor_inspect`, `scene_compose`, `level_inspect`, `scene_assert`, `bp_export`, `bp_apply`, `widget_export`, `widget_apply`, `bt_export`, `bt_build`, `search_assets`, `asset_references`, `asset_manage`, `asset_import`, `instanced_mesh_place`, `mesh_collision`, `material_inspect`, `material_edit`, `material_instance`, `niagara_edit`, `sequence_edit`, `data_table`, `enhanced_input`, `game_setup`, `cpp_source`, `live_coding_compile`, `performance_audit`, `blender_run`, `blender_status`, `landscape_edit`, `landscape_inspect`, `foliage_scatter`, `foliage_inspect`, `pcg_graph`, `pcg_inspect`, `spline_edit`, `spline_inspect` (see skill world-building) | Batched, one-call workflows: prefer these |
+| Verification | `pie_test`, `pie_input`, `spawn_in_pie`, `pie_possess`, `frame_stats` | Proving gameplay works at runtime |
+| Dedicated | `create_blueprint`, `add_node`, `connect_nodes`, `create_variable`, `create_function`, `spawn_physics_blueprint_actor`, `apply_material_to_actor`, `set_actor_transform`, ... | Blueprint graphs and common actor work, all battle-tested |
+| World building | `create_town`, `create_castle_fortress`, `construct_house`, `create_maze`, `create_tower`, ... | Fast procedural structures out of basic shapes |
+| Reflection | `object_describe`, `property_get`, `property_set`, `function_call` | Reading or writing **any** property and calling **any** UFUNCTION on any object or actor, with no dedicated tool needed |
+| Universal | `execute_python` | Anything the `unreal` Python module can do: materials, assets, import, sequencer, Niagara placement, editor utilities |
+| Knowledge | `unreal_api_search`, `unreal_api_doc` | Exact Python API names and signatures, offline. Look things up before writing `execute_python` code. |
+| Observation | `editor_log`, `viewport_capture`, `console_command` | Seeing what happened: errors, visuals, stats |
+| Editor | `editor_health` (answers even when the editor is hung), `editor_action` (undo/redo/save_all/open_asset/load_level/select_actors/focus_actor/pie_start/pie_stop), `level_open` (safe map switch / create), `wait_for_shaders` | Session control |
 
-When intent is unclear, default to answering rather than modifying.
+## The loop
+1. **Observe**: `get_actors_in_level` / `find_actors_by_name` / `object_describe` / `project_context`. Note `editor_log` → `last_seq`.
+2. **Act**: the most specific tool that fits. In `execute_python`, wrap edits in `with unreal.ScopedEditorTransaction("what"):`.
+3. **Verify**: re-read the state (`property_get`, `object_describe`), check `editor_log(since_seq=last_seq, min_verbosity="Warning")`, and `viewport_capture` for anything visual. For gameplay, `pie_test` with assertions is the proof.
+4. If it's wrong: `editor_action(action="undo")`, then fix and retry. After 3 failed attempts on the same step, stop and ask the user.
 
-## Tool Categories
+Never report work as done because there were no errors. Verify that the change actually took effect.
 
-### Scene & Level
-- `scene_query` — find actors by class/label/tag/folder with spatial filters (near/box/frustum)
-- `scene_brief` — compact level overview
-- `scene_compose` — declaratively spawn/modify/delete actors with prefabs + patterns
-- `actor_inspect` — drill into one actor found via scene_query
-- `level_inspect` — persistent level + streaming + World Partition + data layers
-- `search_assets` — search Content Browser by name/prefix/class
-- `asset_references` — hard-reference graphs (what does X pull in, or what uses X)
-- `project_context` — engine version, enabled plugins, project settings, maps, content stats
+## Other skills
+- `scene-building`: actors, levels, lighting, world building
+- `blueprint-authoring`: Blueprint graphs, variables, functions, compile/fix loop
+- `material-vfx`: materials, material instances, Niagara placement through Python
+- `game-development`: prompt → playable, end to end, proven with `pie_test`
 
-### Blueprint (Read-Only — All Tiers)
-- `bp_brief` — compact one-call BP overview. Use FIRST for orientation.
-- `bp_inspect` — 21 targeted query operations batched in one call
-- `bp_export` — full GraphSpec JSON dump for cloning/diffing
-
-### Blueprint Authoring (Paid Tier)
-- `bp_create` — create Actor/Pawn/Character/Component/Object/Interface/Enum/Struct BPs
-- `bp_class` — reparent, add/remove interfaces, override functions, set CDO properties
-- `bp_variable` — batched variable CRUD with full type vocabulary
-- `bp_component` — batched component CRUD with inline property writes
-- `bp_graph` — function/macro/event graph CRUD
-- `bp_nodes` — batched node add/remove (~40 node types)
-- `bp_wire` — batched exec + data edges + pin defaults + pin ops
-- `bp_input` — Enhanced Input bundle (IA + IMC + key mappings)
-- `bp_commit` — compile + auto-layout + health report
-- `bp_author` — full GraphSpec one-shot (compound escape hatch)
-- `bp_dry_run` — capability probe before non-trivial writes
-- `repair_blueprint` — rescue corrupted BPs
-
-### Materials & Shading
-- `material_inspect` — read-only overview, expressions, connections, parameters
-- `material_edit` — create materials/instances/functions, author expression graphs
-
-### VFX
-- `niagara_inspect` — read-only Niagara system inspection
-- `niagara_edit` — system/emitter/user-parameter/renderer writes
-- `niagara_script_edit` — reusable NiagaraScript module graphs
-- `chaos_edit` — Geometry Collections (destruction, fracture, clustering)
-
-### Animation
-- `animation_inspect` — read-only animation inspection
-- `animation_edit` — sequence/montage/notify/BlendSpace/socket writes
-- `animation_graph_edit` — AnimBlueprint AnimGraph authoring
-- `ik_rig_edit` — IK Rig chains + solvers
-- `ik_retarget` — skeleton chain mapping for batch retargeting
-
-### UMG / Widgets
-- `widget_inspect` — read-only UMG widget tree inspection
-- `widget_edit` — tree/property/style/animation/MVVM/event writes
-
-### AI & Ability System
-- `behavior_tree` — BTs, Blackboards, AI Controllers, perception, NavMesh, EQS, Smart Objects
-- `gas_edit` — Gameplay Abilities, Effects, Attribute Sets
-- `tag_registry_edit` — project-wide Gameplay Tag hierarchy
-
-### Landscape & Foliage
-- `landscape_inspect` — height/slope/normal queries, statistics
-- `landscape_edit` — sculpting, semantic features, paint layers, heightmap import/export
-- `foliage_inspect` — type + count listing
-- `foliage_edit` — scatter, place exact transforms, remove by radius/type
-
-### Cinematics & Audio
-- `sequencer_edit` — Level Sequences with actor bindings, tracks, keyframes, camera cuts
-- `metasound_edit` — procedural audio (MetaSound graphs)
-- `sound_asset_edit` — SoundCue graphs, SoundClass, Attenuation
-
-### Procedural
-- `pcg_graph_edit` — PCG graphs with generators, samplers, filters, mesh spawners
-
-### Data Assets
-- `asset_factory` — enums/structs/DataTables/DataAssets/Enhanced Input
-
-### Other
-- `ramp_authoring` — curve assets (UCurveFloat, UCurveVector, UCurveLinearColor)
-- `collision_profile_edit` — collision profiles, physical materials, object type responses
-
-### Editor & Diagnostics
-- `editor_actions` — save, undo, redo, select, build lighting, compile, PIE start/stop
-- `editor_log` — Output Log + Message Log with filters
-- `performance_audit` — triangle counts, actor counts, texture memory, optimization warnings
-- `window_capture` — viewport screenshot as PNG
-- `cpp_source` — read/write/search C++ source, Live Coding hot-reload
-
-### Runtime Verification
-- `pie_test_bp` — Blueprint-focused PIE harness with 30+ assertion types (paid)
-- `pie_test_scene` — scene-focused PIE harness (free)
-
-### Execution (Paid Tier)
-- `python_execution` — arbitrary Python inside the editor process (last resort)
-- `unreal_api` — 15,000+ UE API signature lookups
-- `skills` / `bp_skills` — load workflow documentation on demand
-
-## Core Workflow
-
-1. **Orient** — `bp_brief`, `scene_brief`, `search_assets`, or `project_context`
-2. **Execute** — use the appropriate domain tools
-3. **Verify** — re-read with inspect tools, run PIE test for runtime behavior
-
-## Efficiency Rules
-
-- **Batch everything** — every tool that accepts arrays (`queries`, `variables`, `components`, `nodes`, `edges`, `operations`) is designed for one call with many items
-- **Call independent tools in parallel** — don't wait for scene_query before calling search_assets if both are needed
-- **Use filters** — `bp_inspect`, `material_inspect`, `widget_inspect`, `animation_inspect` all support compact mode + filters
-- **Defer compile** — narrow bp_* writes defer compile; batch many, then `bp_commit` once
-
-## Constraints
-
-- Responses are capped at 512KB — use filters and targeted queries
-- `search_assets` returns Content Browser paths in `PackageName.AssetName` format — always use the FULL path as returned
-- `scene_query` returns actor labels — these are NOT asset paths
-- Guessed `/Game/...` paths silently resolve to nullptr — always resolve via `search_assets` first
+These skills are also served by the MCP server itself: `skill://index` lists them, `skill://<name>` returns one, and each is
+available as a prompt, so clients without skill support still get them.

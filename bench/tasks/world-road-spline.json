@@ -1,0 +1,154 @@
+{
+  "id": "world-road-spline",
+  "domain": "world",
+  "title": "Road spline between two towns, carved into the terrain",
+  "prompt": "Build a road from the marker 'TownA' to the marker 'TownB' across the landscape 'Terrain': a spline actor labelled 'Road' whose first point is at TownA and last point at TownB (within 3 m in XY), with at least 3 points that sit on the terrain surface, a road surface made of at least 10 spline-mesh segments, and the landscape carved (flattened) along the road.",
+  "requires": [
+    "command:landscape_create"
+  ],
+  "setup": [
+    {
+      "tool": "landscape_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create",
+            "label": "Terrain",
+            "component_count": [
+              4,
+              4
+            ],
+            "section_size": 31,
+            "location": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "op": "noise",
+            "amplitude": 1200,
+            "wavelength": 4000,
+            "octaves": 4,
+            "seed": 11
+          },
+          {
+            "op": "hill",
+            "center_uv": [
+              0.7,
+              0.3
+            ],
+            "radius": 2500,
+            "height": 1800
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cylinder.Cylinder",
+            "label": "TownA",
+            "location": [
+              -5000,
+              -4500,
+              2000
+            ]
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cylinder.Cylinder",
+            "label": "TownB",
+            "location": [
+              5000,
+              4500,
+              2000
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "spline_inspect",
+        "args": {
+          "target": "Road"
+        },
+        "name": "Road starts at TownA, ends at TownB",
+        "expect": "r['success'] and abs(r['splines'][0]['points'][0][0] + 5000) < 300 and abs(r['splines'][0]['points'][0][1] + 4500) < 300 and abs(r['splines'][0]['points'][-1][0] - 5000) < 300 and abs(r['splines'][0]['points'][-1][1] - 4500) < 300"
+      },
+      {
+        "tool": "spline_inspect",
+        "args": {
+          "target": "Road"
+        },
+        "name": ">= 3 points on the terrain (not at marker height), >= 10 mesh segments",
+        "expect": "r['success'] and r['splines'][0]['point_count'] >= 3 and r['splines'][0]['segments'] >= 10 and max(p[2] for p in r['splines'][0]['points']) < 1900 and len(set(round(p[2]) for p in r['splines'][0]['points'])) > 1"
+      },
+      {
+        "tool": "landscape_inspect",
+        "args": {
+          "target": "Terrain",
+          "slope_stats": false
+        },
+        "name": "terrain kept",
+        "expect": "r['success'] and r['resolution'] == [125, 125]"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "spline_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create",
+            "label": "Road",
+            "points": [
+              [
+                -5000,
+                -4500,
+                0
+              ],
+              [
+                -2000,
+                -500,
+                0
+              ],
+              [
+                1500,
+                1000,
+                0
+              ],
+              [
+                5000,
+                4500,
+                0
+              ]
+            ],
+            "snap_to_ground": true,
+            "ground_offset": 5,
+            "mesh": "/Engine/BasicShapes/Cube.Cube",
+            "mesh_scale": [
+              5,
+              0.1
+            ],
+            "segment_length": 400
+          },
+          {
+            "op": "carve",
+            "target": "Road",
+            "landscape": "Terrain",
+            "width": 500,
+            "falloff": 400
+          }
+        ]
+      }
+    }
+  ]
+}

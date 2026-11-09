@@ -1,0 +1,98 @@
+{
+  "id": "perf-shadow-budget",
+  "domain": "performance",
+  "title": "Shadow-casting light budget",
+  "prompt": "performance_audit reports too many movable shadow-casting lights. Fix it so at most 2 movable lights cast shadows, without deleting any lights.",
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "class": "PointLight",
+            "label": "Lamp",
+            "properties": {
+              "light_component.mobility": "MOVABLE",
+              "light_component.cast_shadows": true
+            },
+            "pattern": {
+              "type": "line",
+              "count": 8,
+              "step": [
+                300,
+                0,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if isinstance(a, unreal.PointLight)]) == 8",
+        "name": "no lights deleted"
+      },
+      {
+        "type": "python",
+        "expr": "sum(1 for a in [a for a in actors if isinstance(a, unreal.PointLight)] if a.get_editor_property('light_component').get_editor_property('cast_shadows') and 'MOVABLE' in str(a.get_editor_property('light_component').get_editor_property('mobility')).upper()) <= 2",
+        "name": "<= 2 movable shadow casters"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "modify",
+            "target": "Lamp_2",
+            "properties": {
+              "light_component.cast_shadows": false
+            }
+          },
+          {
+            "op": "modify",
+            "target": "Lamp_3",
+            "properties": {
+              "light_component.cast_shadows": false
+            }
+          },
+          {
+            "op": "modify",
+            "target": "Lamp_4",
+            "properties": {
+              "light_component.cast_shadows": false
+            }
+          },
+          {
+            "op": "modify",
+            "target": "Lamp_5",
+            "properties": {
+              "light_component.cast_shadows": false
+            }
+          },
+          {
+            "op": "modify",
+            "target": "Lamp_6",
+            "properties": {
+              "light_component.cast_shadows": false
+            }
+          },
+          {
+            "op": "modify",
+            "target": "Lamp_7",
+            "properties": {
+              "light_component.cast_shadows": false
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

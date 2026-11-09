@@ -1,113 +1,87 @@
 ---
 name: blueprint-authoring
 description: >
-  Blueprint authoring workflow for the Flopperam Unreal Engine MCP. Covers the 
-  full create, author, commit, verify cycle using the narrow bp_* tool surface. 
-  Use when creating or editing Blueprints, adding variables/components/events/functions, 
-  wiring graphs, or debugging compile errors.
+  Build and edit Blueprints with bp_export / bp_apply: variables, components, functions, event graphs,
+  pin defaults and links in one atomic call, compiled with structured errors. Also widget trees
+  (widget_apply) and Behavior Trees (bt_build). Use for any gameplay logic, UI or AI work.
 ---
 
-# Blueprint Authoring Workflow
+# Blueprint authoring
 
-## The Blueprint Authoring Cycle
+The loop is **export → plan → `bp_apply` → read `compile` → fix → `pie_test`**. A `bp_apply` call is atomic: if any op fails or the
+Blueprint doesn't compile, the whole batch is undone (`rolled_back: true`) and `failed` / `compile.errors` say why.
+Use `dry_run: true` to try a batch without keeping it.
 
+## Read first
+`bp_export(blueprint)` returns variables (with current values), components, and every graph's nodes. Each node has a `kind`
+with the same fields `add_node` takes, pins with types and defaults, and links as `"<node id>.<pin>"`. Use those node ids to
+connect to existing nodes. Template events (BeginPlay, Tick, ActorBeginOverlap) start out `disabled`; adding the same event
+re-enables that node instead of creating a duplicate.
+
+## One call builds a feature
+```json
+bp_apply(blueprint="/Game/Game/BP_Coin", create_parent="Actor", operations=[
+  {"op":"add_variable","name":"Value","type":"int","default":10,"instance_editable":true},
+  {"op":"add_component","name":"Trigger","class":"SphereComponent","as_root":true,"properties":{"SphereRadius":80}},
+  {"op":"add_component","name":"Mesh","class":"StaticMeshComponent","parent":"Trigger",
+   "properties":{"StaticMesh":"/Engine/BasicShapes/Cylinder.Cylinder","RelativeScale3D":[0.6,0.6,0.1],
+                 "BodyInstance.CollisionProfileName":"NoCollision"}},
+  {"op":"add_node","id":"hit","kind":"component_event","component":"Trigger","event":"OnComponentBeginOverlap"},
+  {"op":"add_node","id":"destroy","kind":"call_function","function":"DestroyActor"},
+  {"op":"connect","from":"hit.then","to":"destroy.exec"}])
 ```
-orient (bp_brief / bp_inspect) → probe (bp_dry_run) → create (bp_create) → author (narrow writes) → commit (bp_commit) → verify (bp_inspect / pie_test_bp)
-```
+- **Ids** are your own aliases, valid within the call. The result maps them to node GUIDs (`ids`) for later calls.
+- **Pins** match by name or label, case-insensitive (`exec`, `then`, `else`, `ReturnValue`, `self`/`Target`).
+  - An unknown pin lists the node's real pins in the error.
+  - A by-reference input, e.g. `SetValueAsVector.KeyName`, gets a MakeLiteral node wired in automatically when you give it a value in `pins`.
+- **Functions** are found across KismetSystemLibrary, KismetMathLibrary, GameplayStatics, Actor, Pawn, Character, controllers, UserWidget, AI and Blackboard libraries, and the Blueprint itself.
+  - Pass `"class"` to pick one, e.g. `"class":"BlackboardComponent"` for `SetValueAsVector`, or `"class":"UserWidget"` for `AddToViewport`.
+  - `K2_` prefixes are tried for you, so `DestroyActor` finds `K2_DestroyActor`.
+  - If unsure of a name, search with `unreal_api_search`.
+- **Class defaults** go through `set_defaults`, which is applied after compiling and accepts paths like
+  `"CharacterMovement.MaxWalkSpeed"`, `"AIControllerClass"` or `"AutoPossessAI":"PlacedInWorldOrSpawned"`.
 
-Skip steps for trivial edits — a single-variable tweak on an already-read BP goes straight from `bp_variable` to `bp_commit`.
+## Node kinds
+`event` (BeginPlay, Tick, ActorBeginOverlap, AnyDamage, EndPlay; widgets: Construct; BT tasks: ExecuteAI) ·
+`custom_event` (+inputs) · `component_event` (OnComponentBeginOverlap, OnComponentHit, ...) · `call_function` ·
+`get_var` / `set_var` (inherited variables work with or without `"class"`: the Blueprint's own parent class is
+accepted) · `key_event` (`"key":"E"`, outputs `pressed` / `released`: a key binding without Tick polling) · `branch` · `sequence` · `cast` · `self` · `macro` (DoOnce, Gate, ForLoop, ForEachLoop, IsValid) ·
+`spawn_actor` · `node` with any K2Node class, e.g. `K2Node_CreateWidget` with `pins: {"Class": "/Game/UI/WBP_HUD.WBP_HUD_C"}`.
 
-## Step 1: Orient (Read Before Write)
+Array functions (`Array_Length`, `Array_Add`, `Array_Contains`, ...) and `ForEachLoop` start out as wildcards. They take their
+type from the array you connect, the same as in the editor. `Array_Get` becomes the editor's **Get** node, with pins `Array`,
+`Dimension 1` and `Output`; the names `TargetArray`, `Index` and `Item` work too. A `warnings` entry about a "wildcard although it
+is connected" means the source pin itself has no type.
 
-At least one read-class tool MUST fire before any write. This satisfies the write guard.
+## Recipes
+- **Show a HUD.** On BeginPlay (pawn, controller or a placed actor): `GetPlayerController` → `K2Node_CreateWidget.OwningPlayer`,
+  `CreateWidget.ReturnValue` → `AddToViewport.self`.
+- **AI that runs a tree.** AIController Blueprint:
+  - BeginPlay → `RunBehaviorTree`, with `pins: {"BTAsset": ".../BT_X.BT_X"}`.
+  - For a Blackboard value: `self` → `GetBlackboard.Target` → `SetValueAsVector.self`, with `pins: {"KeyName": "Goal", "VectorValue": [x, y, z]}`.
+  - On the Character Blueprint: `set_defaults {"AIControllerClass": ".../BP_AI.BP_AI_C", "AutoPossessAI": "PlacedInWorldOrSpawned"}`.
+- **Function with a return value.** `add_function` with `inputs` and `outputs`. Its nodes are `<Name>_entry` and `<Name>_result`; add nodes with `"graph":"<Name>"`.
 
-- `bp_brief(blueprint_path)` — compact one-call overview (parent, components, variables, graphs, dispatchers). Use FIRST.
-- `bp_inspect({queries: [...]})` — 21 targeted ops: `overview`, `get_variables`, `get_functions`, `get_nodes`, `get_connections`, `export_spec`, `health_check`, etc. Batched — every op in one call shares loaded BP cache.
-- `bp_export(blueprint_path)` — full GraphSpec JSON dump for cloning or diffing.
-- `search_assets` — find unknown Blueprint paths by name/prefix.
+## Widgets (UMG)
+`widget_apply(widget, create=true, operations=[...])`:
+- The first `add` becomes the root, usually a `CanvasPanel`.
+- Canvas children take `slot: {anchors, position, size, alignment, auto_size}`.
+- Conveniences: `text`, `font_size`, `color`, `percent`, `fill_color`.
+- Mark widgets you'll drive from logic with `is_variable: true`. They become variables for `bp_apply` `get_var` on the widget Blueprint.
 
-## Step 2: Probe (Optional, Recommended for Complex Work)
+## Behavior Trees
+`bt_build(tree, blackboard, keys=[...], root={...})`:
+- Composites: Selector, Sequence, SimpleParallel. Tasks: MoveTo, Wait, RotateToFaceBBEntry, RunBehavior, or Blueprint tasks.
+- Decorators: Blackboard, Cooldown, Loop, TimeLimit. Services: DefaultFocus, ...
+- Blackboard key properties take the key name.
+- Numbers like `AcceptableRadius` / `WaitTime` take a value, or `{"key":"Name"}` to read them from the Blackboard.
+- The whole tree is validated before anything changes.
+- AI movement needs a NavMesh: place a `NavMeshBoundsVolume` with `scene_compose`. It builds automatically, and `pie_test` waits for it.
 
-- `bp_dry_run(op=check_intent, intent=[...])` — fast static validation. Catches bogus class paths, wrong K2_ function names, unsupported variable types BEFORE an apply cycle.
-- `bp_dry_run(op=check_spec, blueprint_path, spec_json)` — runs the composer's real dry-run (non-destructive, snapshot + rollback). Returns blockers + warnings.
-
-## Step 3: Create Asset
-
-- `bp_create(op=from_parent, blueprint_path, parent_class, components?, variables?, interfaces?)` — create Actor/Pawn/Character/Component/Object BP with inline bootstrap.
-- `bp_create(op=from_actor, actor_label, package_path, name)` — bake a placed level actor into a new BP.
-- `bp_create(op=interface|enum|struct)` — create BPIs / Enums / Structs.
-
-## Step 4: Author (Narrow Writes)
-
-All narrow writes defer compile — stack many, then commit once.
-
-### Variables
-`bp_variable({blueprint_path, variables: [...]})` — batched CRUD.
-
-Type vocabulary: `bool`, `int`, `int64`, `float`, `double`, `string`, `name`, `text`, `byte`, `Vector`, `Rotator`, `Transform`, `Color`, `LinearColor`, object refs (`/Script/Engine.Actor`), BP class refs, enums, containers (`Array<T>`, `Set<T>`, `Map<K,V>`).
-
-Field gotchas:
-- `read_only` (NOT `blueprint_read_only` — extra underscore is silently ignored)
-- `default_value` or `default` (NOT `value` — silently ignored)
-- `category` only (NOT `cat` or `display_category`)
-
-### Components
-`bp_component({blueprint_path, components: [...]})` — batched CRUD with inline property writes (collision, transforms, mesh refs, attach sockets).
-
-### Graphs
-`bp_graph({blueprint_path, graphs: [...]})` — function/macro/event graph CRUD. Auto-creates FunctionEntry + FunctionResult nodes — reference via `$entry.<pin>` / `$result.<param>`.
-
-### Nodes
-`bp_nodes({blueprint_path, graph, nodes: [...]})` — batched add/remove on ONE graph.
-
-~40 node types: `event`, `custom_event`, `function_call`, `variable_get`, `variable_set`, `branch`, `sequence`, `cast`, `make_struct`, `break_struct`, `spawn_actor`, `input_action`, `timeline`, `math`, `comparison`, `select`, `for_each_loop`, `switch_*`, `make_array`, `format_text`, `call_dispatcher`, `bind_dispatcher`.
-
-Declare `stable_id` for each node, reference with `$stable_id` from bp_wire.
-
-### Wiring
-`bp_wire({blueprint_path, graph, edges: [...], defaults: [...], pin_ops: [...]})` — batched exec + data edges + pin defaults + pin ops.
-
-**ALWAYS include exec AND data edges in ONE call** — partial wiring is the #1 failure mode.
-
-Edge format: `$<stable_id>.<pin>` for new nodes, `$<32-char-hex-guid>.<pin>` for existing un-tagged nodes.
-
-### Enhanced Input
-`bp_input({actions: [...], bindings: [...], bind?: {...}})` — create IAs + IMCs + key mappings + modifiers + triggers in ONE call.
-
-### Class-Level Settings
-`bp_class({blueprint_path, operations: [...]})` — reparent, add_interface, set_cdo_property (dot-notation like `"CharacterMovement.MaxWalkSpeed"`).
-
-## Step 5: Commit
-
-`bp_commit(blueprint_path)` — single compile + auto-layout + health report.
-
-Returns: `compile_status`, `errors[]`, `warnings[]`, `orphan_pins`, `dangling_exec_chains`, `unreachable_nodes`.
-
-- **UpToDateWithWarnings is NOT success** — investigate every warning.
-- Multi-commit across fix passes is normal (author → commit → read errors → narrow fix → commit again).
-
-## Step 6: Verify
-
-- `bp_brief` / `bp_inspect` for structural confirmation
-- `pie_test_bp` for runtime-behavioral verification (30+ assertion types)
-- A compile-clean BP that fails PIE is the #1 silent-bug source
-
-## Hard Rules
-
-- **Read before write** — at least one read-class tool must fire first
-- **Batch arrays** — `variables[]`, `components[]`, `graphs[]`, `nodes[]`, `edges[]`, `operations[]` are designed for one call with many items
-- **One bp_wire call per graph** for the initial wiring pass (exec + data together)
-- **One bp_commit per target BP** per authoring pass
-- **snake_case node types** — `event`, `function_call`, `variable_get`, `branch`, `spawn_actor`
-- **Pure functions have NO exec pins** — `variable_get`, math, `K2_GetActorLocation`, `make_struct`, `break_struct`, `Array_Length`
-- **Function inputs are OUTPUT pins** on FunctionEntry — reference via `$entry.<ParamName>`, do NOT create variable_get
-- **Latent nodes** (Delay, RetriggerableDelay) only work in EventGraphs
-- **`math` node is SCALAR-ONLY** — use KismetMathLibrary function_calls for Vector/Rotator math
-- **`function_call` class field is `class`** (NOT `scope` — silently ignored)
-- **`comparison` op is lowercase** — `equal`, `not_equal`, `greater`, `less` (NOT PascalCase)
-
-## Compound Escape Hatches
-
-- `bp_author(blueprint_path, spec_json)` — full GraphSpec one-shot when you have the complete spec
-- `repair_blueprint(blueprint_path)` — rescue corrupted BPs (duplicate graphs, orphan nodes, broken references)
-- `bp_skills({topics: [...]})` — load skill docs before first use of unfamiliar tools (batch 3-8 topics)
+## Gotchas
+- Callable nodes (exec pins) only run when exec flows into them: `GetActorOfClass`, `Delay`, `SetText`, ... `bp_apply` returns
+  `warnings` for any new node whose exec input is unwired. Pure nodes (no exec pins, e.g. `GetPlayerPawn`, math) run on demand.
+- Python's script names differ from C++: `unreal.WidgetLibrary` is `WidgetBlueprintLibrary`, `unreal.AIBlueprintHelperLibrary` doesn't
+  exist in Python (use the Blueprint node), and BT `MoveTo` params are `ValueOrBBKey` structs (handled by `bt_build`).
+- An actor spawned already inside a trigger gets no BeginOverlap. Test pickups by moving the pawn into them (`pie_test` steps).
+- Legacy node-by-node tools (`add_node`, `connect_nodes`, ...) still work, but `bp_apply` is faster, atomic and reports better errors.

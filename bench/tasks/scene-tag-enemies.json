@@ -1,0 +1,129 @@
+{
+  "id": "scene-tag-enemies",
+  "domain": "scene",
+  "title": "Tag and file enemies",
+  "prompt": "Tag every actor whose label starts with 'Enemy' with the actor tag 'hostile' and move them to the outliner folder 'Enemies'. Leave the Ally actors untouched.",
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Enemy",
+            "pattern": {
+              "type": "line",
+              "count": 6,
+              "step": [
+                200,
+                0,
+                0
+              ]
+            }
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Ally",
+            "location": [
+              0,
+              600,
+              0
+            ],
+            "pattern": {
+              "type": "line",
+              "count": 3,
+              "step": [
+                200,
+                0,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_actor_label().startswith('Enemy')]) == 6",
+        "name": "6 enemies"
+      },
+      {
+        "type": "python",
+        "expr": "all('hostile' in [str(t) for t in a.get_editor_property('tags')] for a in [a for a in actors if a.get_actor_label().startswith('Enemy')])",
+        "name": "tagged"
+      },
+      {
+        "type": "python",
+        "expr": "all(str(a.get_folder_path()) == 'Enemies' for a in [a for a in actors if a.get_actor_label().startswith('Enemy')])",
+        "name": "filed"
+      },
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_actor_label().startswith('Ally')]) == 3 and all(not list(a.get_editor_property('tags')) and str(a.get_folder_path()) in ('', 'None') for a in [a for a in actors if a.get_actor_label().startswith('Ally')])",
+        "name": "allies untouched"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "modify",
+            "target": "Enemy_0",
+            "tags": [
+              "hostile"
+            ],
+            "folder": "Enemies"
+          },
+          {
+            "op": "modify",
+            "target": "Enemy_1",
+            "tags": [
+              "hostile"
+            ],
+            "folder": "Enemies"
+          },
+          {
+            "op": "modify",
+            "target": "Enemy_2",
+            "tags": [
+              "hostile"
+            ],
+            "folder": "Enemies"
+          },
+          {
+            "op": "modify",
+            "target": "Enemy_3",
+            "tags": [
+              "hostile"
+            ],
+            "folder": "Enemies"
+          },
+          {
+            "op": "modify",
+            "target": "Enemy_4",
+            "tags": [
+              "hostile"
+            ],
+            "folder": "Enemies"
+          },
+          {
+            "op": "modify",
+            "target": "Enemy_5",
+            "tags": [
+              "hostile"
+            ],
+            "folder": "Enemies"
+          }
+        ]
+      }
+    }
+  ]
+}

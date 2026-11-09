@@ -1,0 +1,129 @@
+{
+  "id": "scene-cleanup",
+  "domain": "scene",
+  "title": "Delete debris only",
+  "prompt": "The level is littered with actors labelled Debris_<n>. Delete all of them and nothing else.",
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Debris",
+            "location": [
+              0,
+              500,
+              0
+            ],
+            "pattern": {
+              "type": "line",
+              "count": 12,
+              "step": [
+                150,
+                0,
+                0
+              ]
+            }
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Keep",
+            "location": [
+              0,
+              -500,
+              0
+            ],
+            "pattern": {
+              "type": "line",
+              "count": 3,
+              "step": [
+                150,
+                0,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "not [a for a in actors if a.get_actor_label().startswith('Debris')]",
+        "name": "no debris"
+      },
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_actor_label().startswith('Keep')]) == 3",
+        "name": "others kept"
+      },
+      {
+        "type": "python",
+        "expr": "len(actors) == 3",
+        "name": "nothing else deleted"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "delete",
+            "target": "Debris_0"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_1"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_2"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_3"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_4"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_5"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_6"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_7"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_8"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_9"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_10"
+          },
+          {
+            "op": "delete",
+            "target": "Debris_11"
+          }
+        ]
+      }
+    }
+  ]
+}

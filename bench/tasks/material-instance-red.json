@@ -1,0 +1,66 @@
+{
+  "id": "material-instance-red",
+  "domain": "materials",
+  "title": "Red material instance",
+  "prompt": "Create a material instance {root}/MI_Red of {root}/M_Base with its Tint parameter set to pure red (1, 0, 0, 1).",
+  "setup": [
+    {
+      "tool": "material_edit",
+      "args": {
+        "path": "{root}/M_Base",
+        "create": true,
+        "operations": [
+          {
+            "op": "add",
+            "id": "tint",
+            "class": "VectorParameter",
+            "properties": {
+              "parameter_name": "Tint"
+            }
+          },
+          {
+            "op": "output",
+            "from": "tint",
+            "property": "BaseColor"
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "scene": [
+      {
+        "type": "asset_exists",
+        "path": "{root}/MI_Red",
+        "class": "MaterialInstanceConstant"
+      },
+      {
+        "type": "python",
+        "expr": "asset('{root}/MI_Red').get_editor_property('parent') == asset('{root}/M_Base')",
+        "name": "parent"
+      },
+      {
+        "type": "python",
+        "expr": "(lambda c: [round(c.r, 2), round(c.g, 2), round(c.b, 2)])(unreal.MaterialEditingLibrary.get_material_instance_vector_parameter_value(asset('{root}/MI_Red'), 'Tint')) == [1, 0, 0]",
+        "name": "Tint red"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "material_instance",
+      "args": {
+        "path": "{root}/MI_Red",
+        "parent": "{root}/M_Base",
+        "parameters": {
+          "Tint": [
+            1,
+            0,
+            0,
+            1
+          ]
+        }
+      }
+    }
+  ]
+}

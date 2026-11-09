@@ -1,0 +1,146 @@
+"""execute_python: run arbitrary Unreal Python inside the editor.
+
+This is the universal escape hatch: anything the ``unreal`` module can do, the agent can
+do. User code runs in a fresh namespace with ``unreal`` imported; assign to ``result``
+to return a JSON-serializable value (UObjects are returned as their path names).
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+from typing import Any
+
+from . import call
+
+_WRAPPER = r'''
+import json as _mcp_json, sys as _mcp_sys, io as _mcp_io, traceback as _mcp_tb
+def _mcp_default(o):
+    for attr in ("get_path_name", "get_name"):
+        fn = getattr(o, attr, None)
+        if callable(fn):
+            try:
+                return fn()
+            except Exception:
+                pass
+    if hasattr(o, "to_tuple"):
+        try:
+            return list(o.to_tuple())
+        except Exception:
+            pass
+    return repr(o)
+_mcp_buf = _mcp_io.StringIO()
+_mcp_old = _mcp_sys.stdout
+_mcp_sys.stdout = _mcp_buf
+_mcp_r = {"ok": True}
+_mcp_g = {"__name__": "__mcp__"}
+try:
+    try:
+        import unreal as _mcp_unreal
+        _mcp_g["unreal"] = _mcp_unreal
+    except ImportError:
+        pass
+    exec(compile(__MCP_SRC__, "<mcp>", "exec"), _mcp_g)
+    _mcp_r["result"] = _mcp_g.get("result")
+except BaseException:
+    _mcp_r["ok"] = False
+    _mcp_r["traceback"] = _mcp_tb.format_exc()
+finally:
+    _mcp_sys.stdout = _mcp_old
+_mcp_r["stdout"] = _mcp_buf.getvalue()
+try:
+    _mcp_line = _mcp_json.dumps(_mcp_r, default=_mcp_default)
+except Exception as _mcp_e:
+    _mcp_line = _mcp_json.dumps({"ok": False, "traceback": "result not serializable: %r" % (_mcp_e,),
+                                 "stdout": _mcp_r.get("stdout", "")})
+print(__MCP_MARK__ + _mcp_line)
+# Drop every reference the script made. Functions defined by the script hold its globals dict in a reference cycle,
+# so without this, wrappers of editor objects linger until CPython's cyclic GC runs at some random later point,
+# possibly after the engine has destroyed those objects (re-imports, level switches): a crash in _PyWeakref_ClearRef.
+_mcp_g.clear()
+del _mcp_g, _mcp_r, _mcp_line, _mcp_default
+if __MCP_GC__:
+    import gc as _mcp_gc
+    _mcp_gc.collect()
+    del _mcp_gc
+'''
+
+
+def build_script(code: str, marker: str, collect: bool = False) -> str:
+    """Wrap user code so its result/stdout/traceback come back as one marked JSON line.
+    collect=True also runs CPython's cyclic GC afterwards, while the objects the script touched are still alive."""
+    return (_WRAPPER
+            .replace("__MCP_SRC__", json.dumps(code))
+            .replace("__MCP_MARK__", json.dumps(marker))
+            .replace("__MCP_GC__", "True" if collect else "False"))
+
+
+def parse_output(log: list[dict[str, Any]], marker: str) -> dict[str, Any] | None:
+    for entry in log:
+        text = entry.get("output", "")
+        idx = text.find(marker)
+        if idx != -1:
+            try:
+                return json.loads(text[idx + len(marker):].strip())
+            except json.JSONDecodeError:
+                return None
+    return None
+
+
+def run_python(get_conn, code: str, timeout_s: float = 60.0, collect: bool = False) -> dict[str, Any]:
+    """Run code in the editor; returns {success, result, stdout, traceback?, log_errors?}."""
+    marker = f"<<MCP:{uuid.uuid4().hex}>>"
+    reply = call(get_conn, "execute_python",
+                 {"code": build_script(code, marker, collect), "mode": "file", "timeout_s": timeout_s})
+    if not reply.get("success"):
+        return reply
+    log = reply.get("log", [])
+    parsed = parse_output(log, marker)
+    errors = [e.get("output", "") for e in log
+              if e.get("type") == "Error" and marker not in e.get("output", "")]
+    if parsed is None:
+        return {"success": False,
+                "error": "script produced no result marker (editor Python crashed or timed out?)",
+                "log": log[-50:]}
+    out: dict[str, Any] = {"success": bool(parsed.get("ok")), "result": parsed.get("result"),
+                           "stdout": parsed.get("stdout", "")}
+    if parsed.get("traceback"):
+        out["traceback"] = parsed["traceback"]
+    if errors:
+        out["log_errors"] = errors[-20:]
+    return out
+
+
+def run_editor_script(get_conn, name: str, args: dict[str, Any], timeout_s: float = 120.0,
+                      collect: bool = False) -> dict[str, Any]:
+    """Run one of unreal_mcp/editor_scripts/<name>.py with ARGS=args; flatten its `result` dict.
+    A script reports a failure it detected itself with result["success"] = False and result["error"]."""
+    from ..editor_scripts import render
+    out = run_python(get_conn, render(name, args), timeout_s, collect)
+    if not out.get("success"):
+        return out
+    res = out.get("result")
+    flat: dict[str, Any] = {"success": True}
+    if isinstance(res, dict):
+        flat.update(res)
+    else:
+        flat["result"] = res
+    if out.get("log_errors"):
+        flat["log_errors"] = out["log_errors"]
+    return flat
+
+
+def register(mcp, get_conn):
+    @mcp.tool()
+    def execute_python(code: str, timeout_s: float = 60.0) -> dict[str, Any]:
+        """Execute Unreal Python in the live editor. The universal tool.
+
+        Use when no dedicated tool covers the task (materials, Niagara, sequencer, asset
+        import, editor utilities, anything in the `unreal` module). `unreal` is
+        pre-imported. Assign to `result` to return data; print() output is captured.
+        Wrap edits in `with unreal.ScopedEditorTransaction("desc"):` so they can be undone.
+        Look up APIs first with unreal_api_search if unsure of names.
+
+        Returns {success, result, stdout, traceback?, log_errors?}.
+        """
+        return run_python(get_conn, code, timeout_s)

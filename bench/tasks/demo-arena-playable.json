@@ -1,0 +1,805 @@
+{
+  "id": "demo-arena-playable",
+  "domain": "gameplay",
+  "title": "Prompt to playable: coin arena",
+  "prompt": "Build a small playable arena game. Greybox a 4000x4000 arena with a PlayerStart at (0, 0, 100). Model a gold coin in Blender and import it to {root}/Props. Make {root}/BP_Coin (sphere trigger, the coin mesh, integer Value = 10) that adds its Value to the score and disappears when the PLAYER touches it (not other actors). Keep the score on a game mode {root}/BP_ArenaGameMode (integer Score) and use it for this level. Show a HUD {root}/WBP_HUD whose ScoreText reads 'Score: <n>' and updates when the score changes. Place three coins at (400, 0, 100), (800, 0, 100) and (1200, 0, 100). Add an enemy {root}/BP_Chaser at (-1500, -1500, 100) that chases the player with a Behavior Tree ({root}/BT_Chaser, blackboard {root}/BB_Chaser with an Actor key Target) driven by {root}/BP_ChaserAI.",
+  "requires": [
+    "blender",
+    "command:bp_apply",
+    "command:widget_apply",
+    "command:bt_build"
+  ],
+  "setup": [],
+  "check": {
+    "scene": [
+      {
+        "type": "python",
+        "expr": "len([a for a in actors if a.get_class().get_name() == 'BP_Coin_C']) == 3",
+        "name": "three coins placed"
+      },
+      {
+        "type": "python",
+        "expr": "'BP_ArenaGameMode' in str(world.get_world_settings().get_editor_property('default_game_mode'))",
+        "name": "level uses BP_ArenaGameMode"
+      },
+      {
+        "type": "asset_exists",
+        "path": "{root}/Props/SM_Coin",
+        "class": "StaticMesh"
+      }
+    ],
+    "tools": [
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_ArenaGameMode",
+          "include_pins": false
+        },
+        "name": "game mode compiles with Score",
+        "expect": "r['success'] and r['status'] in ('ok', 'ok_with_warnings') and any(v['name'] == 'Score' and v['type'] == 'int' for v in r['variables'])"
+      },
+      {
+        "tool": "widget_export",
+        "args": {
+          "widget": "{root}/WBP_HUD"
+        },
+        "name": "HUD has ScoreText",
+        "expect": "r['success'] and any(w['name'] == 'ScoreText' and w.get('is_variable') for w in walk(r['root']))"
+      }
+    ],
+    "pie": {
+      "duration_s": 1,
+      "steps": [
+        {
+          "check": [
+            {
+              "type": "python",
+              "expr": "len([a for a in actors if a.get_class().get_name() == 'BP_Coin_C']) == 3",
+              "name": "three coins at start"
+            },
+            {
+              "type": "python",
+              "expr": "str(unreal.WidgetLibrary.get_all_widgets_of_class(world, unreal.load_class(None, '{root}/WBP_HUD.WBP_HUD_C'), True)[0].get_editor_property('ScoreText').get_text()) == 'Score: 0'",
+              "name": "HUD starts at Score: 0"
+            }
+          ]
+        },
+        {
+          "do": "player.add_movement_input(vec([1, 0, 0]), 1.0)",
+          "until": "len([a for a in actors if a.get_class().get_name() == 'BP_Coin_C']) == 0",
+          "timeout_s": 20,
+          "interval_s": 0.03
+        }
+      ],
+      "assertions": [
+        {
+          "type": "python",
+          "expr": "unreal.GameplayStatics.get_game_mode(world).get_editor_property('Score') == 30",
+          "name": "score is 30"
+        },
+        {
+          "type": "python",
+          "expr": "str(unreal.WidgetLibrary.get_all_widgets_of_class(world, unreal.load_class(None, '{root}/WBP_HUD.WBP_HUD_C'), True)[0].get_editor_property('ScoreText').get_text()) == 'Score: 30'",
+          "name": "HUD reads Score: 30"
+        },
+        {
+          "type": "python",
+          "expr": "any(a.get_class().get_name() == 'BP_Chaser_C' and dist(a, [-1500, -1500, 100]) >= 300 for a in actors)",
+          "name": "chaser moved toward the player"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Wall_N",
+            "location": [
+              0,
+              2000,
+              200
+            ],
+            "scale": [
+              40,
+              0.5,
+              4
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Wall_S",
+            "location": [
+              0,
+              -2000,
+              200
+            ],
+            "scale": [
+              40,
+              0.5,
+              4
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Wall_E",
+            "location": [
+              2000,
+              0,
+              200
+            ],
+            "scale": [
+              0.5,
+              40,
+              4
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Wall_W",
+            "location": [
+              -2000,
+              0,
+              200
+            ],
+            "scale": [
+              0.5,
+              40,
+              4
+            ],
+            "folder": "Arena"
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "SkyLight",
+            "label": "Sky",
+            "location": [
+              0,
+              0,
+              1200
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "NavMeshBoundsVolume",
+            "label": "NavBounds",
+            "location": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              40,
+              40,
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tool": "blender_run",
+      "args": {
+        "code": "import math\nclear_scene()\nc = primitive(\"cylinder\", \"SM_Coin\", radius=0.3, depth=0.06, vertices=40, rotation=(math.pi / 2, 0, 0))\nmodifier(c, \"BEVEL\", width=0.012, segments=2)\nmaterial(c, \"M_CoinGold\", color=(1.0, 0.75, 0.15), metallic=1.0, roughness=0.25, emission=(1.0, 0.6, 0.05), emission_strength=2.0)\nsmart_uv(c); shade_smooth(c)\nexport(\"SM_Coin\")\nresult = triangles()",
+        "import_destination": "{root}/Props",
+        "show_preview": false
+      }
+    },
+    {
+      "tool": "widget_apply",
+      "args": {
+        "widget": "{root}/WBP_HUD",
+        "create": true,
+        "operations": [
+          {
+            "op": "add",
+            "name": "Root",
+            "class": "CanvasPanel"
+          },
+          {
+            "op": "add",
+            "name": "ScoreText",
+            "class": "TextBlock",
+            "is_variable": true,
+            "text": "Score: 0",
+            "font_size": 36,
+            "color": [
+              1,
+              0.85,
+              0.2,
+              1
+            ],
+            "slot": {
+              "anchors": "top_right",
+              "position": [
+                -40,
+                40
+              ],
+              "alignment": [
+                1,
+                0
+              ],
+              "auto_size": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_ArenaGameMode",
+        "create_parent": "GameModeBase",
+        "operations": [
+          {
+            "op": "add_variable",
+            "name": "Score",
+            "type": "int",
+            "default": 0
+          },
+          {
+            "op": "add_variable",
+            "name": "HUD",
+            "type": "object:{root}/WBP_HUD.WBP_HUD_C"
+          },
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "pc",
+            "kind": "call_function",
+            "function": "GetPlayerController",
+            "pins": {
+              "PlayerIndex": 0
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "create",
+            "kind": "node",
+            "class": "K2Node_CreateWidget",
+            "pins": {
+              "Class": "{root}/WBP_HUD.WBP_HUD_C"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "sethud",
+            "kind": "set_var",
+            "variable": "HUD"
+          },
+          {
+            "op": "add_node",
+            "id": "show",
+            "kind": "call_function",
+            "function": "AddToViewport",
+            "class": "UserWidget"
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "create.exec"
+          },
+          {
+            "op": "connect",
+            "from": "pc.ReturnValue",
+            "to": "create.OwningPlayer"
+          },
+          {
+            "op": "connect",
+            "from": "create.then",
+            "to": "sethud.exec"
+          },
+          {
+            "op": "connect",
+            "from": "create.ReturnValue",
+            "to": "sethud.HUD"
+          },
+          {
+            "op": "connect",
+            "from": "sethud.then",
+            "to": "show.exec"
+          },
+          {
+            "op": "connect",
+            "from": "sethud.HUD",
+            "to": "show.self"
+          },
+          {
+            "op": "add_node",
+            "id": "addscore",
+            "kind": "custom_event",
+            "name": "AddScore",
+            "inputs": [
+              {
+                "name": "Amount",
+                "type": "int"
+              }
+            ]
+          },
+          {
+            "op": "add_node",
+            "id": "getscore",
+            "kind": "get_var",
+            "variable": "Score"
+          },
+          {
+            "op": "add_node",
+            "id": "sum",
+            "kind": "call_function",
+            "function": "Add_IntInt"
+          },
+          {
+            "op": "add_node",
+            "id": "setscore",
+            "kind": "set_var",
+            "variable": "Score"
+          },
+          {
+            "op": "connect",
+            "from": "getscore.Score",
+            "to": "sum.A"
+          },
+          {
+            "op": "connect",
+            "from": "addscore.Amount",
+            "to": "sum.B"
+          },
+          {
+            "op": "connect",
+            "from": "sum.ReturnValue",
+            "to": "setscore.Score"
+          },
+          {
+            "op": "connect",
+            "from": "addscore.then",
+            "to": "setscore.exec"
+          },
+          {
+            "op": "add_node",
+            "id": "gethud",
+            "kind": "get_var",
+            "variable": "HUD"
+          },
+          {
+            "op": "add_node",
+            "id": "scoretext",
+            "kind": "get_var",
+            "variable": "ScoreText",
+            "class": "{root}/WBP_HUD.WBP_HUD_C"
+          },
+          {
+            "op": "add_node",
+            "id": "tostr",
+            "kind": "call_function",
+            "function": "Conv_IntToString"
+          },
+          {
+            "op": "add_node",
+            "id": "concat",
+            "kind": "call_function",
+            "function": "Concat_StrStr",
+            "pins": {
+              "A": "Score: "
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "totext",
+            "kind": "call_function",
+            "function": "Conv_StringToText"
+          },
+          {
+            "op": "add_node",
+            "id": "settext",
+            "kind": "call_function",
+            "function": "SetText",
+            "class": "TextBlock"
+          },
+          {
+            "op": "connect",
+            "from": "gethud.HUD",
+            "to": "scoretext.self"
+          },
+          {
+            "op": "connect",
+            "from": "setscore.Score",
+            "to": "tostr.InInt"
+          },
+          {
+            "op": "connect",
+            "from": "tostr.ReturnValue",
+            "to": "concat.B"
+          },
+          {
+            "op": "connect",
+            "from": "concat.ReturnValue",
+            "to": "totext.InString"
+          },
+          {
+            "op": "connect",
+            "from": "scoretext.ScoreText",
+            "to": "settext.self"
+          },
+          {
+            "op": "connect",
+            "from": "totext.ReturnValue",
+            "to": "settext.InText"
+          },
+          {
+            "op": "connect",
+            "from": "setscore.then",
+            "to": "settext.exec"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Coin",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_variable",
+            "name": "Value",
+            "type": "int",
+            "default": 10,
+            "instance_editable": true
+          },
+          {
+            "op": "add_component",
+            "name": "Trigger",
+            "class": "SphereComponent",
+            "as_root": true,
+            "properties": {
+              "SphereRadius": 70
+            }
+          },
+          {
+            "op": "add_component",
+            "name": "Mesh",
+            "class": "StaticMeshComponent",
+            "parent": "Trigger",
+            "properties": {
+              "StaticMesh": "{root}/Props/SM_Coin.SM_Coin",
+              "BodyInstance.CollisionProfileName": "NoCollision"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "hit",
+            "kind": "component_event",
+            "component": "Trigger",
+            "event": "OnComponentBeginOverlap"
+          },
+          {
+            "op": "add_node",
+            "id": "pawn",
+            "kind": "call_function",
+            "function": "GetPlayerPawn",
+            "pins": {
+              "PlayerIndex": 0
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "isplayer",
+            "kind": "call_function",
+            "function": "EqualEqual_ObjectObject"
+          },
+          {
+            "op": "add_node",
+            "id": "br",
+            "kind": "branch"
+          },
+          {
+            "op": "add_node",
+            "id": "gm",
+            "kind": "call_function",
+            "function": "GetGameMode"
+          },
+          {
+            "op": "add_node",
+            "id": "asgm",
+            "kind": "cast",
+            "class": "{root}/BP_ArenaGameMode.BP_ArenaGameMode_C",
+            "pure": true
+          },
+          {
+            "op": "add_node",
+            "id": "value",
+            "kind": "get_var",
+            "variable": "Value"
+          },
+          {
+            "op": "add_node",
+            "id": "add",
+            "kind": "call_function",
+            "function": "AddScore",
+            "class": "{root}/BP_ArenaGameMode.BP_ArenaGameMode_C"
+          },
+          {
+            "op": "add_node",
+            "id": "destroy",
+            "kind": "call_function",
+            "function": "DestroyActor"
+          },
+          {
+            "op": "connect",
+            "from": "hit.OtherActor",
+            "to": "isplayer.A"
+          },
+          {
+            "op": "connect",
+            "from": "pawn.ReturnValue",
+            "to": "isplayer.B"
+          },
+          {
+            "op": "connect",
+            "from": "isplayer.ReturnValue",
+            "to": "br.Condition"
+          },
+          {
+            "op": "connect",
+            "from": "hit.then",
+            "to": "br.exec"
+          },
+          {
+            "op": "connect",
+            "from": "gm.ReturnValue",
+            "to": "asgm.Object"
+          },
+          {
+            "op": "connect",
+            "from": "asgm.AsBP_ArenaGameMode",
+            "to": "add.self"
+          },
+          {
+            "op": "connect",
+            "from": "value.Value",
+            "to": "add.Amount"
+          },
+          {
+            "op": "connect",
+            "from": "br.then",
+            "to": "add.exec"
+          },
+          {
+            "op": "connect",
+            "from": "add.then",
+            "to": "destroy.exec"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bt_build",
+      "args": {
+        "tree": "{root}/BT_Chaser",
+        "blackboard": "{root}/BB_Chaser",
+        "keys": [
+          {
+            "name": "Target",
+            "type": "object",
+            "base_class": "Actor"
+          }
+        ],
+        "root": {
+          "type": "Sequence",
+          "children": [
+            {
+              "type": "MoveTo",
+              "properties": {
+                "BlackboardKey": "Target",
+                "AcceptableRadius": 120
+              }
+            },
+            {
+              "type": "Wait",
+              "properties": {
+                "WaitTime": 0.3
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_ChaserAI",
+        "create_parent": "AIController",
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "run",
+            "kind": "call_function",
+            "function": "RunBehaviorTree",
+            "pins": {
+              "BTAsset": "{root}/BT_Chaser.BT_Chaser"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "me",
+            "kind": "self"
+          },
+          {
+            "op": "add_node",
+            "id": "bb",
+            "kind": "call_function",
+            "function": "GetBlackboard"
+          },
+          {
+            "op": "add_node",
+            "id": "player",
+            "kind": "call_function",
+            "function": "GetPlayerPawn",
+            "pins": {
+              "PlayerIndex": 0
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "set",
+            "kind": "call_function",
+            "function": "SetValueAsObject",
+            "class": "BlackboardComponent",
+            "pins": {
+              "KeyName": "Target"
+            }
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "run.exec"
+          },
+          {
+            "op": "connect",
+            "from": "run.then",
+            "to": "set.exec"
+          },
+          {
+            "op": "connect",
+            "from": "me.self",
+            "to": "bb.Target"
+          },
+          {
+            "op": "connect",
+            "from": "bb.ReturnValue",
+            "to": "set.self"
+          },
+          {
+            "op": "connect",
+            "from": "player.ReturnValue",
+            "to": "set.ObjectValue"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Chaser",
+        "create_parent": "Character",
+        "operations": [
+          {
+            "op": "set_defaults",
+            "properties": {
+              "AIControllerClass": "{root}/BP_ChaserAI.BP_ChaserAI_C",
+              "AutoPossessAI": "PlacedInWorldOrSpawned",
+              "CharacterMovement.MaxWalkSpeed": 250
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "game_setup",
+      "args": {
+        "level_game_mode": "{root}/BP_ArenaGameMode.BP_ArenaGameMode_C"
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Coin.BP_Coin",
+            "label": "Coin",
+            "location": [
+              400,
+              0,
+              100
+            ],
+            "pattern": {
+              "type": "line",
+              "count": 3,
+              "step": [
+                400,
+                0,
+                0
+              ]
+            }
+          },
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Chaser.BP_Chaser",
+            "label": "Chaser",
+            "location": [
+              -1500,
+              -1500,
+              100
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
