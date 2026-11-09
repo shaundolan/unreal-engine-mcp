@@ -22,18 +22,10 @@
 #include "InputCoreTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
-#include "Misc/EngineVersionComparison.h"
 #include "Misc/PackageName.h"
 #include "UObject/SoftObjectPath.h"
-// GGameThreadTime & co. moved from RenderCore.h to RenderTimer.h in 5.x.
-#if __has_include("RenderTimer.h")
-#include "RenderTimer.h"
-#else
-#include "RenderCore.h"
-#endif
-#if !UE_VERSION_OLDER_THAN(5, 6, 0)
+#include "RenderTimer.h"       // GGameThreadTime & co.
 #include "InputKeyEventArgs.h"
-#endif
 
 namespace
 {
@@ -72,11 +64,7 @@ namespace
 
 	void SendKey(APlayerController* PC, const FKey& Key, EInputEvent Event, float Amount)
 	{
-#if UE_VERSION_OLDER_THAN(5, 6, 0)
-		PC->InputKey(FInputKeyParams(Key, Event, double(Amount), Key.IsGamepadKey()));
-#else
 		PC->InputKey(FInputKeyEventArgs::CreateSimulated(Key, Event, Amount));
-#endif
 	}
 
 	void Release(FInjection& J)

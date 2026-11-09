@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.unrealengine.com/"><img src="https://img.shields.io/badge/Unreal%20Engine-5.5%2B-orange.svg" alt="Unreal Engine 5.5+" /></a>
+  <a href="https://www.unrealengine.com/"><img src="https://img.shields.io/badge/Unreal%20Engine-5.8%2B-orange.svg" alt="Unreal Engine 5.8+" /></a>
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT" />
 </p>
 
