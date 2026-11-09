@@ -1,0 +1,113 @@
+{
+  "id": "world-pcg-forest",
+  "domain": "world",
+  "title": "PCG graph scattering meshes over a landscape",
+  "prompt": "Create a PCG graph {root}/PCG_Forest that samples the surface of the landscape and spawns /Engine/BasicShapes/Cylinder.Cylinder static meshes at the points. Place a PCG volume labelled 'ForestVolume' covering the landscape 'Terrain', using that graph, and generate it so that at least 100 meshes are spawned.",
+  "requires": [
+    "command:landscape_create"
+  ],
+  "setup": [
+    {
+      "tool": "landscape_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "create",
+            "label": "Terrain",
+            "component_count": [
+              4,
+              4
+            ],
+            "section_size": 31,
+            "location": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "op": "noise",
+            "amplitude": 1200,
+            "wavelength": 4000,
+            "octaves": 4,
+            "seed": 11
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "pcg_inspect",
+        "args": {
+          "graph": "{root}/PCG_Forest"
+        },
+        "name": "graph wires a SurfaceSampler into a StaticMeshSpawner",
+        "expect": "r['success'] and {'SurfaceSampler', 'StaticMeshSpawner'} <= {n['type'] for n in r['graph']['nodes']} and any(e['to'] == n['id'] + '.In' for n in r['graph']['nodes'] if n['type'] == 'StaticMeshSpawner' for e in r['graph']['edges'])"
+      },
+      {
+        "tool": "pcg_inspect",
+        "args": {
+          "volume": "ForestVolume"
+        },
+        "name": "volume uses the graph and spawned >= 100 cylinders",
+        "expect": "r['success'] and (r['volumes'][0]['graph'] or '').startswith('{root}/PCG_Forest') and r['volumes'][0]['meshes'].get('/Engine/BasicShapes/Cylinder.Cylinder', 0) >= 100"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "pcg_graph",
+      "args": {
+        "graph": "{root}/PCG_Forest",
+        "create": true,
+        "nodes": [
+          {
+            "id": "landscape",
+            "type": "GetLandscapeData"
+          },
+          {
+            "id": "sampler",
+            "type": "SurfaceSampler",
+            "properties": {
+              "points_per_squared_meter": 0.02
+            }
+          },
+          {
+            "id": "spawn",
+            "type": "StaticMeshSpawner",
+            "meshes": [
+              {
+                "mesh": "/Engine/BasicShapes/Cylinder.Cylinder"
+              }
+            ]
+          }
+        ],
+        "edges": [
+          {
+            "from": "landscape.Out",
+            "to": "sampler.Surface"
+          },
+          {
+            "from": "input.In",
+            "to": "sampler.Bounding Shape"
+          },
+          {
+            "from": "sampler",
+            "to": "spawn"
+          },
+          {
+            "from": "spawn",
+            "to": "output"
+          }
+        ],
+        "volume": {
+          "label": "ForestVolume",
+          "fit": "Terrain",
+          "seed": 3
+        }
+      }
+    }
+  ]
+}

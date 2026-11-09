@@ -136,7 +136,7 @@ def _tool_checks(tools, checks: list[dict[str, Any]]) -> dict[str, Any]:
         try:
             rec["passed"] = bool(eval(c["expect"], {"__builtins__": {}}, {  # noqa: S307
                 "r": r, "walk": _walk, "any": any, "all": all, "len": len, "abs": abs, "round": round,
-                "sorted": sorted, "set": set, "str": str, "list": list}))
+                "sorted": sorted, "set": set, "str": str, "list": list, "min": min, "max": max}))
         except Exception as e:
             rec.update(passed=False, error=f"{type(e).__name__}: {e}")
         if not rec["passed"]:

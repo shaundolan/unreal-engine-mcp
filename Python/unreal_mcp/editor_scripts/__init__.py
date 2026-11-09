@@ -25,10 +25,15 @@ def source(name: str) -> str:
 
 
 def render(name: str, args: dict) -> str:
+    """ARGS + _common + any helper modules the script asks for with a `# include: _world` line + the script."""
+    body = source(name)
+    extra = [source(inc.strip()) for line in body.splitlines()[:12] if line.startswith("# include:")
+             for inc in line.split(":", 1)[1].split(",") if inc.strip()]
     return "\n".join([
         f"ARGS = __import__('json').loads({json.dumps(json.dumps(args))})",
         source("_common"),
-        source(name),
+        *extra,
+        body,
     ])
 
 

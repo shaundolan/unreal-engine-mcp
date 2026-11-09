@@ -63,7 +63,9 @@ public class UnrealMCP : ModuleRules
 				"UMG",                 // widget_apply
 				"UMGEditor",           // UWidgetBlueprint
 				"AIModule",            // bt_build
-				"GameplayTasks"
+				"GameplayTasks",
+				"Landscape",          // landscape_create / landscape_inspect / landscape_write
+				"Foliage"             // LandscapeEdit.h includes InstancedFoliageActor.h
 			}
 		);
 		
