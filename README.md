@@ -90,6 +90,15 @@ Against a real editor: `uv run python ../scripts/smoke.py`. Build and test steps
 
 Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## Epic's native MCP server (UE 5.8)
+UE 5.8 ships an experimental in-editor MCP server (`ModelContextProtocol`) with ~870 toolset tools. UnrealMCP works with it
+in both directions:
+- the optional `UnrealMCPToolsets` plugin registers our authoring, verification and scene tools as Epic toolsets, reusing
+  the same C++ handlers;
+- `UNREAL_MCP_EPIC_URL` lets this server proxy Epic's tools as `epic_*`.
+
+See [docs/EPIC_NATIVE_MCP.md](docs/EPIC_NATIVE_MCP.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE). Original work © Flopperam and contributors; fork modifications © Shaun Dolan.

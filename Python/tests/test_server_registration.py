@@ -5,6 +5,8 @@ import filecmp
 import importlib
 from pathlib import Path
 
+import pytest
+
 LEGACY_TOOLS = {
     "get_actors_in_level", "find_actors_by_name", "delete_actor", "set_actor_transform", "create_blueprint",
     "add_component_to_blueprint", "set_static_mesh_properties", "set_physics_properties", "compile_blueprint",
@@ -63,10 +65,11 @@ def test_legacy_tool_routes_through_shared_connection(fake, monkeypatch):
     connection.reset_unreal_connection()
 
 
-def test_sample_project_plugin_copy_in_sync():
-    """FlopperamUnrealMCP/Plugins/UnrealMCP must mirror UnrealMCP/ (run scripts/sync_plugin.sh)."""
+@pytest.mark.parametrize("plugin", ["UnrealMCP", "UnrealMCPToolsets"])
+def test_sample_project_plugin_copy_in_sync(plugin):
+    """FlopperamUnrealMCP/Plugins/<plugin> must mirror <plugin>/ (run scripts/sync_plugin.sh)."""
     root = Path(__file__).resolve().parents[2]
-    src, dst = root / "UnrealMCP", root / "FlopperamUnrealMCP" / "Plugins" / "UnrealMCP"
+    src, dst = root / plugin, root / "FlopperamUnrealMCP" / "Plugins" / plugin
 
     def diff(a: Path, b: Path) -> list[str]:
         cmp = filecmp.dircmp(a, b, ignore=["Binaries", "Intermediate"])

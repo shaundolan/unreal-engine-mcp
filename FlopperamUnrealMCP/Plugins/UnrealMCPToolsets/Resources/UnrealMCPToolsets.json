@@ -1,0 +1,913 @@
+{
+ "generated_by": "python -m unreal_mcp.native_toolsets",
+ "python_wrapper": "\nimport json as _mcp_json, sys as _mcp_sys, io as _mcp_io, traceback as _mcp_tb\ndef _mcp_default(o):\n    for attr in (\"get_path_name\", \"get_name\"):\n        fn = getattr(o, attr, None)\n        if callable(fn):\n            try:\n                return fn()\n            except Exception:\n                pass\n    if hasattr(o, \"to_tuple\"):\n        try:\n            return list(o.to_tuple())\n        except Exception:\n            pass\n    return repr(o)\n_mcp_buf = _mcp_io.StringIO()\n_mcp_old = _mcp_sys.stdout\n_mcp_sys.stdout = _mcp_buf\n_mcp_r = {\"ok\": True}\n_mcp_g = {\"__name__\": \"__mcp__\"}\ntry:\n    try:\n        import unreal as _mcp_unreal\n        _mcp_g[\"unreal\"] = _mcp_unreal\n    except ImportError:\n        pass\n    exec(compile(__MCP_SRC__, \"<mcp>\", \"exec\"), _mcp_g)\n    _mcp_r[\"result\"] = _mcp_g.get(\"result\")\nexcept BaseException:\n    _mcp_r[\"ok\"] = False\n    _mcp_r[\"traceback\"] = _mcp_tb.format_exc()\nfinally:\n    _mcp_sys.stdout = _mcp_old\n_mcp_r[\"stdout\"] = _mcp_buf.getvalue()\ntry:\n    _mcp_line = _mcp_json.dumps(_mcp_r, default=_mcp_default)\nexcept Exception as _mcp_e:\n    _mcp_line = _mcp_json.dumps({\"ok\": False, \"traceback\": \"result not serializable: %r\" % (_mcp_e,),\n                                 \"stdout\": _mcp_r.get(\"stdout\", \"\")})\nprint(__MCP_MARK__ + _mcp_line)\n# Drop every reference the script made. Functions defined by the script hold its globals dict in a reference cycle,\n# so without this, wrappers of editor objects linger until CPython's cyclic GC runs at some random later point,\n# possibly after the engine has destroyed those objects (re-imports, level switches): a crash in _PyWeakref_ClearRef.\n_mcp_g.clear()\ndel _mcp_g, _mcp_r, _mcp_line, _mcp_default\nif __MCP_GC__:\n    import gc as _mcp_gc\n    _mcp_gc.collect()\n    del _mcp_gc\n",
+ "toolsets": [
+  {
+   "description": "UnrealMCP whole-Blueprint authoring: export a Blueprint or Animation Blueprint as a JSON graph spec and apply a batch of edits (variables, components, functions, nodes, pins, links, AnimGraph state machines) atomically in one undo step, compiled, with structured errors and dry_run.",
+   "name": "UnrealMCP.Blueprint",
+   "tools": [
+    {
+     "backend": {
+      "command": "bp_export",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Read a Blueprint as a JSON spec: parent class, compile status, variables (type, value),\n        components (class, parent), and every graph's nodes with kind-specific fields, position,\n        pins (name, dir, type, default) and links (\"<node id>.<pin>\"). Node ids are stable GUIDs\n        usable in bp_apply connect/set_pins/remove_node. graphs: limit to e.g. [\"EventGraph\"].\n        Works for Actor, Character, GameMode, AIController, widget and BT-task Blueprints.",
+     "inputSchema": {
+      "properties": {
+       "blueprint": {
+        "title": "Blueprint",
+        "type": "string"
+       },
+       "graphs": {
+        "anyOf": [
+         {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Graphs"
+       },
+       "include_pins": {
+        "default": true,
+        "title": "Include Pins",
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "blueprint"
+      ],
+      "title": "bp_exportArguments",
+      "type": "object"
+     },
+     "name": "bp_export"
+    },
+    {
+     "backend": {
+      "command": "bp_apply",
+      "kind": "command",
+      "ok_flag": true,
+      "timeout_s": 300
+     },
+     "description": "Edit (or create, with create_parent) a Blueprint in ONE undoable step, then compile.\n\n        create_parent: Actor, Character, Pawn, GameModeBase, PlayerController, AIController,\n        BTTask_BlueprintBase, ActorComponent, ... (widgets: widget_apply). Ops run in order:\n          {\"op\":\"add_variable\",\"name\":\"Score\",\"type\":\"int\",\"default\":0,\"instance_editable\":true}\n              types: bool int float string name text vector rotator transform linearcolor\n                     object:<Class> class:<Class> struct:<Struct> enum:<Enum>, suffix [] for arrays\n          {\"op\":\"add_component\",\"name\":\"Trigger\",\"class\":\"SphereComponent\",\"as_root\":true,\n           \"properties\":{\"SphereRadius\":80}}\n          {\"op\":\"add_component\",\"name\":\"Mesh\",\"class\":\"StaticMeshComponent\",\"parent\":\"Trigger\",\n           \"properties\":{\"StaticMesh\":\"/Engine/BasicShapes/Sphere.Sphere\",\"RelativeScale3D\":[0.5,0.5,0.5]}}\n          {\"op\":\"set_component\",\"name\":\"Mesh\",\"properties\":{...}}\n          {\"op\":\"add_function\",\"name\":\"AddScore\",\"inputs\":[{\"name\":\"Amount\",\"type\":\"int\"}],\n           \"outputs\":[{\"name\":\"NewScore\",\"type\":\"int\"}], \"pure\":false}\n              -> its nodes are \"AddScore_entry\" / \"AddScore_result\"; add nodes with \"graph\":\"AddScore\"\n          {\"op\":\"add_node\",\"id\":\"begin\",\"kind\":\"event\",\"event\":\"BeginPlay\"}\n          {\"op\":\"add_node\",\"id\":\"hit\",\"kind\":\"component_event\",\"component\":\"Trigger\",\n           \"event\":\"OnComponentBeginOverlap\"}\n          {\"op\":\"add_node\",\"id\":\"evt\",\"kind\":\"custom_event\",\"name\":\"OnCollected\",\n           \"inputs\":[{\"name\":\"By\",\"type\":\"object:Actor\"}]}\n          {\"op\":\"add_node\",\"id\":\"print\",\"kind\":\"call_function\",\"function\":\"PrintString\",\n           \"pins\":{\"InString\":\"Hello\"}}           (class optional: KismetSystemLibrary, GameplayStatics,\n                                                    Actor, self, ...; K2_ prefixes are tried automatically)\n          {\"op\":\"add_node\",\"id\":\"get\",\"kind\":\"get_var\",\"variable\":\"Score\"}   (set_var likewise; inherited\n                                                    variables too, \"class\" may name the Blueprint's parent)\n          {\"op\":\"add_node\",\"id\":\"use\",\"kind\":\"key_event\",\"key\":\"E\"}   (\"pressed\"/\"released\" exec outputs,\n                                                    \"Key\" output; optional ctrl/shift/alt, consume_input)\n          {\"op\":\"add_node\",\"id\":\"br\",\"kind\":\"branch\"}     (\"then\"/\"else\" outputs, \"Condition\" input)\n          {\"op\":\"add_node\",\"id\":\"seq\",\"kind\":\"sequence\",\"outputs\":3}\n          {\"op\":\"add_node\",\"id\":\"cast\",\"kind\":\"cast\",\"class\":\"Character\"}\n          {\"op\":\"add_node\",\"kind\":\"self\"} / {\"kind\":\"macro\",\"macro\":\"DoOnce\"} / {\"kind\":\"spawn_actor\"}\n          {\"op\":\"add_node\",\"kind\":\"node\",\"class\":\"K2Node_CreateWidget\",\"pins\":{\"Class\":\"/Game/UI/WBP_HUD.WBP_HUD_C\"}}\n          {\"op\":\"connect\",\"from\":\"begin.then\",\"to\":\"print.exec\"}      (pins by name or label;\n                                                                       exec/then/else/return aliases)\n          {\"op\":\"set_pins\",\"node\":\"print\",\"pins\":{\"Duration\":5}}\n          {\"op\":\"disconnect\",\"from\":\"begin.then\"}   {\"op\":\"remove_node\",\"node\":\"<id>\"}\n          {\"op\":\"remove_variable\",\"name\":\"Old\"}\n          {\"op\":\"set_defaults\",\"properties\":{\"AutoPossessAI\":\"PlacedInWorldOrSpawned\",\n           \"CharacterMovement.MaxWalkSpeed\":300}}   (class defaults, applied after compiling)\n        \"graph\" on add_node picks the graph (default EventGraph). \"x\",\"y\" place nodes (else auto-layout).\n        Existing nodes are referenced by the ids from bp_export. Returns success, failed ops with\n        reasons (unknown pins list the available ones), ids (alias -> node id), compile status/errors.\n        dry_run=true applies, compiles and reports, then undoes everything.",
+     "inputSchema": {
+      "properties": {
+       "atomic": {
+        "default": true,
+        "title": "Atomic",
+        "type": "boolean"
+       },
+       "blueprint": {
+        "title": "Blueprint",
+        "type": "string"
+       },
+       "compile": {
+        "default": true,
+        "title": "Compile",
+        "type": "boolean"
+       },
+       "create_parent": {
+        "default": "",
+        "title": "Create Parent",
+        "type": "string"
+       },
+       "dry_run": {
+        "default": false,
+        "title": "Dry Run",
+        "type": "boolean"
+       },
+       "operations": {
+        "items": {
+         "type": "object"
+        },
+        "title": "Operations",
+        "type": "array"
+       },
+       "save": {
+        "default": true,
+        "title": "Save",
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "blueprint",
+       "operations"
+      ],
+      "title": "bp_applyArguments",
+      "type": "object"
+     },
+     "name": "bp_apply"
+    },
+    {
+     "backend": {
+      "command": "animbp_export",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Read an Animation Blueprint: skeleton, preview mesh, variables, status, the event graph,\n        anim_graph nodes (kind sequence_player/blendspace_player/state_machine/slot/output, asset, slot,\n        inputs = what feeds each pin), output_chain (what reaches Output Pose, e.g.\n        [\"slot\", \"state_machine:Locomotion\"]) and state_machines: name, entry state, states (name,\n        assets played, pose_wired, nodes) and transitions (from, to, blend, priority, automatic,\n        reads = variables the rule reads, calls = functions it calls, rule_wired, rule_nodes).\n        Node ids work in animbp_apply connect/set_pins/remove_node.",
+     "inputSchema": {
+      "properties": {
+       "blueprint": {
+        "title": "Blueprint",
+        "type": "string"
+       },
+       "include_pins": {
+        "default": false,
+        "title": "Include Pins",
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "blueprint"
+      ],
+      "title": "animbp_exportArguments",
+      "type": "object"
+     },
+     "name": "animbp_export"
+    },
+    {
+     "backend": {
+      "command": "animbp_apply",
+      "kind": "command",
+      "ok_flag": true,
+      "timeout_s": 300
+     },
+     "description": "Create (pass skeleton: a Skeleton or SkeletalMesh path) or edit an Animation Blueprint in ONE undoable\n        step, then compile. Every bp_apply op works (add_variable, add_node, connect, set_pins, set_defaults, ...;\n        the event graph is \"EventGraph\"), plus AnimGraph ops:\n          {\"op\":\"add_state_machine\",\"id\":\"loco\",\"name\":\"Locomotion\"}            (graph: AnimGraph by default)\n          {\"op\":\"add_state\",\"id\":\"idle\",\"machine\":\"loco\",\"name\":\"Idle\",\"sequence\":\".../MM_Idle\",\"loop\":true}\n          {\"op\":\"add_state\",\"id\":\"move\",\"machine\":\"loco\",\"name\":\"Move\",\"blendspace\":\".../BS_Move\",\n           \"inputs\":{\"X\":\"Speed\"}}                       first state (or \"entry\":true) is the entry state\n          {\"op\":\"add_transition\",\"id\":\"idle_move\",\"from\":\"idle\",\"to\":\"move\",\"blend\":0.2,\n           \"rule\":{\"var\":\"Speed\",\"cmp\":\">\",\"value\":10}}\n              rules: {\"var\":\"IsInAir\"} (bool) | {\"var\":\"IsInAir\",\"not\":true} | {\"var\":\"Speed\",\"cmp\":\"<=\",\"value\":5}\n                     | {\"all\":[...]} | {\"any\":[...]};  \"automatic\":true = leave when the state's animation ends\n              hand-built rules: add_node with \"graph\":\"idle_move\", connect to \"idle_move_result.bCanEnterTransition\"\n          {\"op\":\"add_node\",\"id\":\"slot\",\"kind\":\"slot\",\"slot\":\"DefaultSlot\"}       (montages play through it)\n          {\"op\":\"add_node\",\"id\":\"p\",\"kind\":\"sequence_player\"|\"blendspace_player\",\"graph\":\"<state id>\",...}\n          {\"op\":\"connect\",\"from\":\"loco.Pose\",\"to\":\"slot.Source\"},\n          {\"op\":\"connect\",\"from\":\"slot.Pose\",\"to\":\"output.Result\"}\n              \"output\" is the Output Pose node; \"<state id>_result\" a state's result (\"Result\" pin);\n              states/machines can also be referenced by name (\"Idle\" or \"Locomotion/Idle\")\n          {\"op\":\"set_entry\",\"state\":\"idle\"}  {\"op\":\"set_properties\",\"node\":\"idle_move\",\"properties\":{\"PriorityOrder\":1}}\n        Event graph (owner pawn -> variables), e.g.:\n          {\"op\":\"add_variable\",\"name\":\"Speed\",\"type\":\"float\"}, {\"op\":\"add_variable\",\"name\":\"IsInAir\",\"type\":\"bool\"},\n          {\"op\":\"add_node\",\"id\":\"upd\",\"kind\":\"event\",\"event\":\"BlueprintUpdateAnimation\"},\n          {\"op\":\"add_node\",\"id\":\"pawn\",\"kind\":\"call_function\",\"function\":\"TryGetPawnOwner\"},\n          {\"op\":\"add_node\",\"id\":\"vel\",\"kind\":\"call_function\",\"function\":\"GetVelocity\",\"class\":\"Actor\"},\n          {\"op\":\"add_node\",\"id\":\"len\",\"kind\":\"call_function\",\"function\":\"VSize\",\"class\":\"KismetMathLibrary\"},\n          {\"op\":\"add_node\",\"id\":\"setspeed\",\"kind\":\"set_var\",\"variable\":\"Speed\"}, connect upd.then->setspeed.exec,\n          pawn.ReturnValue->vel.self, vel.ReturnValue->len.A, len.ReturnValue->setspeed.Speed; IsInAir: cast to\n          Character, GetCharacterMovement, IsFalling (class CharacterMovementComponent) -> set_var IsInAir.\n        Returns success, failed ops, ids (alias -> node id), compile status/errors; atomic rollback as bp_apply.",
+     "inputSchema": {
+      "properties": {
+       "atomic": {
+        "default": true,
+        "title": "Atomic",
+        "type": "boolean"
+       },
+       "blueprint": {
+        "title": "Blueprint",
+        "type": "string"
+       },
+       "compile": {
+        "default": true,
+        "title": "Compile",
+        "type": "boolean"
+       },
+       "dry_run": {
+        "default": false,
+        "title": "Dry Run",
+        "type": "boolean"
+       },
+       "operations": {
+        "items": {
+         "type": "object"
+        },
+        "title": "Operations",
+        "type": "array"
+       },
+       "parent_class": {
+        "default": "",
+        "title": "Parent Class",
+        "type": "string"
+       },
+       "preview_mesh": {
+        "default": "",
+        "title": "Preview Mesh",
+        "type": "string"
+       },
+       "save": {
+        "default": true,
+        "title": "Save",
+        "type": "boolean"
+       },
+       "skeleton": {
+        "default": "",
+        "title": "Skeleton",
+        "type": "string"
+       }
+      },
+      "required": [
+       "blueprint",
+       "operations"
+      ],
+      "title": "animbp_applyArguments",
+      "type": "object"
+     },
+     "name": "animbp_apply"
+    }
+   ]
+  },
+  {
+   "description": "UnrealMCP UMG authoring: export and apply whole widget trees with canvas anchors and slots in one call.",
+   "name": "UnrealMCP.UI",
+   "tools": [
+    {
+     "backend": {
+      "command": "widget_export",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Read a Widget Blueprint's tree: each widget's name, class, is_variable, text/percent,\n        slot (canvas anchors/position/size/alignment, or box padding/alignment) and children.",
+     "inputSchema": {
+      "properties": {
+       "widget": {
+        "title": "Widget",
+        "type": "string"
+       }
+      },
+      "required": [
+       "widget"
+      ],
+      "title": "widget_exportArguments",
+      "type": "object"
+     },
+     "name": "widget_export"
+    },
+    {
+     "backend": {
+      "command": "widget_apply",
+      "kind": "command",
+      "ok_flag": true,
+      "timeout_s": 300
+     },
+     "description": "Create (create=true) or edit a Widget Blueprint's tree in one undoable step.\n          {\"op\":\"add\",\"name\":\"Root\",\"class\":\"CanvasPanel\"}                    (first add = root)\n          {\"op\":\"add\",\"name\":\"HealthBar\",\"class\":\"ProgressBar\",\"parent\":\"Root\",\"is_variable\":true,\n           \"percent\":1.0,\"fill_color\":[0.1,0.9,0.2,1],\n           \"slot\":{\"anchors\":\"top_left\",\"position\":[40,40],\"size\":[400,28],\"alignment\":[0,0]}}\n          {\"op\":\"add\",\"name\":\"ScoreText\",\"class\":\"TextBlock\",\"text\":\"Score: 0\",\"font_size\":32,\n           \"color\":[1,1,1,1],\"justification\":\"right\",\"is_variable\":true,\n           \"slot\":{\"anchors\":\"top_right\",\"position\":[-40,40],\"alignment\":[1,0],\"auto_size\":true}}\n          {\"op\":\"add\",\"name\":\"Menu\",\"class\":\"VerticalBox\",\"parent\":\"Root\",\"slot\":{\"anchors\":\"center\",...}}\n          {\"op\":\"add\",\"name\":\"Title\",\"class\":\"TextBlock\",\"parent\":\"Menu\",\"text\":\"Paused\",\n           \"slot\":{\"Padding\":[0,0,0,20],\"HorizontalAlignment\":\"HAlign_Center\"}}\n          {\"op\":\"set\",\"name\":\"ScoreText\",\"text\":\"Score: 10\"}   {\"op\":\"remove\",\"name\":\"Menu\"}\n        anchors presets: top_left top_center top_right center_left center center_right bottom_left\n        bottom_center bottom_right fill top_fill bottom_fill left_fill right_fill, or [minX,minY,maxX,maxY].\n        \"properties\" sets any other widget property by reflection; non-canvas slot keys are slot\n        properties (Padding, HorizontalAlignment, VerticalAlignment, Size).\n        is_variable widgets become Blueprint variables (get_var in bp_apply, e.g. to SetPercent).\n        Show it in game with bp_apply on a pawn/controller: K2Node_CreateWidget -> AddToViewport.",
+     "inputSchema": {
+      "properties": {
+       "atomic": {
+        "default": true,
+        "title": "Atomic",
+        "type": "boolean"
+       },
+       "compile": {
+        "default": true,
+        "title": "Compile",
+        "type": "boolean"
+       },
+       "create": {
+        "default": false,
+        "title": "Create",
+        "type": "boolean"
+       },
+       "operations": {
+        "items": {
+         "type": "object"
+        },
+        "title": "Operations",
+        "type": "array"
+       },
+       "save": {
+        "default": true,
+        "title": "Save",
+        "type": "boolean"
+       },
+       "widget": {
+        "title": "Widget",
+        "type": "string"
+       }
+      },
+      "required": [
+       "widget",
+       "operations"
+      ],
+      "title": "widget_applyArguments",
+      "type": "object"
+     },
+     "name": "widget_apply"
+    }
+   ]
+  },
+  {
+   "description": "UnrealMCP AI authoring: Blackboard keys plus a whole Behavior Tree from one nested spec, and export.",
+   "name": "UnrealMCP.AI",
+   "tools": [
+    {
+     "backend": {
+      "command": "bt_export",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Read a Behavior Tree (or a Blackboard asset): blackboard keys (name, type, base_class)\n        and the node tree (type, name, properties incl. blackboard key names, decorators,\n        services, children).",
+     "inputSchema": {
+      "properties": {
+       "tree": {
+        "title": "Tree",
+        "type": "string"
+       }
+      },
+      "required": [
+       "tree"
+      ],
+      "title": "bt_exportArguments",
+      "type": "object"
+     },
+     "name": "bt_export"
+    },
+    {
+     "backend": {
+      "command": "bt_build",
+      "kind": "command",
+      "ok_flag": true,
+      "timeout_s": 120.0
+     },
+     "description": "Create/update a Blackboard and build a Behavior Tree in one call. The whole tree is\n        validated first; on any error nothing changes and errors lists every problem.\n\n        keys (upserted): [{\"name\":\"PatrolLocation\",\"type\":\"vector\"},\n                          {\"name\":\"Target\",\"type\":\"object\",\"base_class\":\"Actor\"},\n                          {\"name\":\"HasLineOfSight\",\"type\":\"bool\"}]\n            types: vector rotator bool int float name string object class enum\n        root (replaces the tree; composites: Selector, Sequence, SimpleParallel):\n          {\"type\":\"Selector\",\"children\":[\n             {\"type\":\"Sequence\",\"name\":\"Chase\",\n              \"decorators\":[{\"type\":\"Blackboard\",\"properties\":{\"BlackboardKey\":\"Target\"}}],\n              \"children\":[{\"type\":\"MoveTo\",\"properties\":{\"BlackboardKey\":\"Target\",\"AcceptableRadius\":80}}]},\n             {\"type\":\"Sequence\",\"name\":\"Patrol\",\"children\":[\n                {\"type\":\"/Game/AI/BTT_PickPatrolPoint.BTT_PickPatrolPoint_C\"},\n                {\"type\":\"MoveTo\",\"properties\":{\"BlackboardKey\":\"PatrolLocation\"}},\n                {\"type\":\"Wait\",\"properties\":{\"WaitTime\":2.0}}]}]}\n        Node types accept short names (MoveTo, Wait, RotateToFaceBBEntry, RunBehavior, Blackboard,\n        Cooldown, Loop, TimeLimit, DefaultFocus, ...), full class names, or Blueprint task classes.\n        Blackboard key properties take the key name. Run it from an AIController Blueprint:\n        bp_apply event BeginPlay -> call_function RunBehaviorTree (BTAsset pin = this tree).",
+     "inputSchema": {
+      "properties": {
+       "blackboard": {
+        "default": "",
+        "title": "Blackboard",
+        "type": "string"
+       },
+       "keys": {
+        "anyOf": [
+         {
+          "items": {
+           "type": "object"
+          },
+          "type": "array"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Keys"
+       },
+       "root": {
+        "anyOf": [
+         {
+          "type": "object"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Root"
+       },
+       "save": {
+        "default": true,
+        "title": "Save",
+        "type": "boolean"
+       },
+       "tree": {
+        "default": "",
+        "title": "Tree",
+        "type": "string"
+       }
+      },
+      "title": "bt_buildArguments",
+      "type": "object"
+     },
+     "name": "bt_build"
+    }
+   ]
+  },
+  {
+   "description": "UnrealMCP level tools: compact level brief, actor inspection, level structure, and scene_compose (batched spawn/modify/delete with grid/circle/line patterns in ONE undo step).",
+   "name": "UnrealMCP.Scene",
+   "tools": [
+    {
+     "backend": {
+      "kind": "editor_script",
+      "script": "# Shared helpers prepended to every editor script. Runs inside Unreal (`unreal` is imported).\n# ruff: noqa: F821\nimport math as _math\nimport re\n\nimport unreal\n\n\ndef actor_sub():\n    return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)\n\n\ndef editor_world():\n    return unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()\n\n\ndef all_actors():\n    return list(actor_sub().get_all_level_actors())\n\n\ndef find_actor(label_or_name):\n    want = str(label_or_name).lower()\n    by_name = None\n    for a in all_actors():\n        if a.get_actor_label().lower() == want:\n            return a\n        if by_name is None and a.get_name().lower() == want:\n            by_name = a\n    return by_name\n\n\ndef require_actor(label_or_name):\n    a = find_actor(label_or_name)\n    if a is None:\n        raise LookupError(f\"no actor labelled or named {label_or_name!r}\")\n    return a\n\n\ndef vec(v, default=(0.0, 0.0, 0.0)):\n    \"\"\"[x,y,z] | {\"x\":..} | {\"X\":..} | number (uniform) -> unreal.Vector\"\"\"\n    if v is None:\n        v = default\n    if isinstance(v, (int, float)):\n        return unreal.Vector(float(v), float(v), float(v))\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Vector(g.get(\"x\", 0.0), g.get(\"y\", 0.0), g.get(\"z\", 0.0))\n    return unreal.Vector(float(v[0]), float(v[1]), float(v[2]))\n\n\ndef rot(v):\n    \"\"\"[pitch, yaw, roll] | {\"pitch\":..,\"yaw\":..,\"roll\":..} -> unreal.Rotator\"\"\"\n    if v is None:\n        return unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0)\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Rotator(roll=g.get(\"roll\", 0.0), pitch=g.get(\"pitch\", 0.0), yaw=g.get(\"yaw\", 0.0))\n    return unreal.Rotator(roll=float(v[2]), pitch=float(v[0]), yaw=float(v[1]))\n\n\ndef color(v):\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.LinearColor(g.get(\"r\", 0.0), g.get(\"g\", 0.0), g.get(\"b\", 0.0), g.get(\"a\", 1.0))\n    a = float(v[3]) if len(v) > 3 else 1.0\n    return unreal.LinearColor(float(v[0]), float(v[1]), float(v[2]), a)\n\n\ndef v3(v):\n    return [round(v.x, 3), round(v.y, 3), round(v.z, 3)]\n\n\ndef r3(r):\n    return [round(r.pitch, 3), round(r.yaw, 3), round(r.roll, 3)]\n\n\ndef resolve_class(name):\n    \"\"\"'StaticMeshActor' | 'unreal.PointLight' | '/Script/Engine.PointLight' | '/Game/BP_X.BP_X_C'\"\"\"\n    if not name:\n        return None\n    if name.startswith(\"/\"):\n        cls = unreal.load_class(None, name)\n        if cls is None and not name.endswith(\"_C\"):\n            bp = unreal.load_asset(name)\n            if bp is not None and hasattr(bp, \"generated_class\"):\n                cls = bp.generated_class()\n        return cls\n    short = name.split(\".\")[-1]\n    cls = getattr(unreal, short, None)\n    if cls is None:\n        return None\n    return cls.static_class() if hasattr(cls, \"static_class\") else cls\n\n\ndef class_name_of(obj):\n    return obj.get_class().get_name()\n\n\ndef is_a(actor, class_filter):\n    \"\"\"Class match by name, walking the actual class hierarchy is not exposed; use isinstance.\"\"\"\n    if not class_filter:\n        return True\n    cls = getattr(unreal, class_filter.split(\".\")[-1], None)\n    if cls is not None and isinstance(cls, type):\n        return isinstance(actor, cls)\n    return class_name_of(actor).lower() == class_filter.lower()\n\n\ndef actor_summary(a, fields=(\"class\", \"location\")):\n    out = {\"label\": a.get_actor_label(), \"name\": a.get_name()}\n    if \"class\" in fields:\n        out[\"class\"] = class_name_of(a)\n    if \"location\" in fields:\n        out[\"location\"] = v3(a.get_actor_location())\n    if \"rotation\" in fields:\n        out[\"rotation\"] = r3(a.get_actor_rotation())\n    if \"scale\" in fields:\n        out[\"scale\"] = v3(a.get_actor_scale3d())\n    if \"tags\" in fields:\n        out[\"tags\"] = [str(t) for t in a.tags]\n    if \"folder\" in fields:\n        out[\"folder\"] = str(a.get_folder_path())\n    if \"bounds\" in fields:\n        origin, extent = a.get_actor_bounds(False)\n        out[\"bounds\"] = {\"origin\": v3(origin), \"extent\": v3(extent)}\n    return out\n\n\ndef distance(a, b):\n    return _math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)\n\n\ndef coerce(current, value):\n    \"\"\"Convert a JSON value to match the type of an existing editor property value.\"\"\"\n    if isinstance(current, unreal.Vector):\n        return vec(value)\n    if isinstance(current, unreal.Rotator):\n        return rot(value)\n    if isinstance(current, unreal.LinearColor):\n        return color(value)\n    if isinstance(current, unreal.Color) and isinstance(value, (list, dict)):\n        c = color(value)\n        return unreal.Color(int(c.r), int(c.g), int(c.b), int(c.a))\n    if isinstance(value, str) and value.startswith(\"/\") and (current is None or isinstance(current, unreal.Object)):\n        loaded = unreal.load_asset(value)\n        if loaded is None:\n            raise LookupError(f\"asset {value!r} not found\")\n        return loaded\n    enum_base = getattr(unreal, \"EnumBase\", None)\n    if enum_base is not None and isinstance(current, enum_base) and isinstance(value, str):\n        member = getattr(type(current), value.split(\".\")[-1].upper(), None)\n        if member is None:\n            raise ValueError(f\"{value!r} is not a member of {type(current).__name__}\")\n        return member\n    if isinstance(current, bool):\n        return bool(value)\n    if isinstance(current, int) and not isinstance(current, bool) and isinstance(value, (int, float)):\n        return int(value)\n    if isinstance(current, float) and isinstance(value, (int, float)):\n        return float(value)\n    return value\n\n\ndef set_props(obj, props):\n    \"\"\"Set editor properties; supports 'component.prop' one level deep on actors.\"\"\"\n    done = []\n    for key, value in (props or {}).items():\n        target, prop = obj, key\n        if \".\" in key:\n            head, prop = key.split(\".\", 1)\n            target = obj.get_editor_property(head)\n            if target is None:\n                raise LookupError(f\"{head!r} is None on {obj.get_name()}\")\n        current = target.get_editor_property(prop)\n        target.set_editor_property(prop, coerce(current, value))\n        done.append(key)\n    return done\n\n\ndef asset_summary(ad):\n    cls = ad.asset_class_path\n    return {\n        \"path\": f\"{ad.package_name}.{ad.asset_name}\",\n        \"name\": str(ad.asset_name),\n        \"class\": str(cls.asset_name) if hasattr(cls, \"asset_name\") else str(cls),\n        \"package\": str(ad.package_name),\n    }\n\n\ndef asset_registry():\n    return unreal.AssetRegistryHelpers.get_asset_registry()\n\n\ndef _ensure_navmesh():\n    \"\"\"Script-placed nav bounds: register them, drop NavMesh data sized before the bounds existed\n    (it hits a tiny tile limit), and rebuild. Mirrors the manual fix: delete RecastNavMesh, Build Paths.\"\"\"\n    w = editor_world()\n    nav = unreal.NavigationSystemV1.get_navigation_system(w)\n    sub = actor_sub()\n    acts = sub.get_all_level_actors()\n    for v in [a for a in acts if a.get_class().get_name() == \"NavMeshBoundsVolume\"]:\n        if nav is not None:\n            nav.on_navigation_bounds_updated(v)\n    for a in [a for a in acts if a.get_class().get_name() == \"RecastNavMesh\"]:\n        sub.destroy_actor(a)\n    unreal.SystemLibrary.execute_console_command(w, \"RebuildNavigation\")\n\n\ndef enum_name(v):\n    \"\"\"unreal enum value -> 'INSTANT' (str() gives '<GameplayEffectDurationType.INSTANT: 0>' in the editor).\"\"\"\n    m = re.search(r\"\\.([A-Z0-9_]+)\", str(v))\n    return m.group(1) if m else str(v)\n\n# Compact level overview. ARGS: top_classes (int)\n# ruff: noqa: F821\n_actors = all_actors()\n_by_class = {}\n_by_folder = {}\n_lo = [float(\"inf\")] * 3\n_hi = [float(\"-inf\")] * 3\n_lights = []\n_cameras = []\nfor _a in _actors:\n    _c = class_name_of(_a)\n    _by_class[_c] = _by_class.get(_c, 0) + 1\n    _f = str(_a.get_folder_path()) or \"(root)\"\n    _by_folder[_f] = _by_folder.get(_f, 0) + 1\n    _p = _a.get_actor_location()\n    for _i, _v in enumerate((_p.x, _p.y, _p.z)):\n        _lo[_i] = min(_lo[_i], _v)\n        _hi[_i] = max(_hi[_i], _v)\n    if \"Light\" in _c and \"Component\" not in _c:\n        _lights.append(_a.get_actor_label())\n    if \"Camera\" in _c:\n        _cameras.append(_a.get_actor_label())\n\n_world = editor_world()\n_top = int(ARGS.get(\"top_classes\") or 25)\nresult = {\n    \"level\": _world.get_path_name() if _world else None,\n    \"actor_count\": len(_actors),\n    \"classes\": dict(sorted(_by_class.items(), key=lambda kv: -kv[1])[:_top]),\n    \"folders\": dict(sorted(_by_folder.items(), key=lambda kv: -kv[1])[:_top]),\n    \"bounds\": {\"min\": [round(x, 1) for x in _lo], \"max\": [round(x, 1) for x in _hi]} if _actors else None,\n    \"lights\": _lights[:50],\n    \"cameras\": _cameras[:50],\n}\n",
+      "timeout_s": 120.0
+     },
+     "description": "Compact overview of the current level: actor count, top classes and folders, spatial\n        bounds, lights and cameras. Use first to orient in an unfamiliar level.",
+     "inputSchema": {
+      "properties": {
+       "top_classes": {
+        "default": 25,
+        "title": "Top Classes",
+        "type": "integer"
+       }
+      },
+      "title": "scene_briefArguments",
+      "type": "object"
+     },
+     "name": "scene_brief"
+    },
+    {
+     "backend": {
+      "kind": "editor_script",
+      "script": "# Shared helpers prepended to every editor script. Runs inside Unreal (`unreal` is imported).\n# ruff: noqa: F821\nimport math as _math\nimport re\n\nimport unreal\n\n\ndef actor_sub():\n    return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)\n\n\ndef editor_world():\n    return unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()\n\n\ndef all_actors():\n    return list(actor_sub().get_all_level_actors())\n\n\ndef find_actor(label_or_name):\n    want = str(label_or_name).lower()\n    by_name = None\n    for a in all_actors():\n        if a.get_actor_label().lower() == want:\n            return a\n        if by_name is None and a.get_name().lower() == want:\n            by_name = a\n    return by_name\n\n\ndef require_actor(label_or_name):\n    a = find_actor(label_or_name)\n    if a is None:\n        raise LookupError(f\"no actor labelled or named {label_or_name!r}\")\n    return a\n\n\ndef vec(v, default=(0.0, 0.0, 0.0)):\n    \"\"\"[x,y,z] | {\"x\":..} | {\"X\":..} | number (uniform) -> unreal.Vector\"\"\"\n    if v is None:\n        v = default\n    if isinstance(v, (int, float)):\n        return unreal.Vector(float(v), float(v), float(v))\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Vector(g.get(\"x\", 0.0), g.get(\"y\", 0.0), g.get(\"z\", 0.0))\n    return unreal.Vector(float(v[0]), float(v[1]), float(v[2]))\n\n\ndef rot(v):\n    \"\"\"[pitch, yaw, roll] | {\"pitch\":..,\"yaw\":..,\"roll\":..} -> unreal.Rotator\"\"\"\n    if v is None:\n        return unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0)\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Rotator(roll=g.get(\"roll\", 0.0), pitch=g.get(\"pitch\", 0.0), yaw=g.get(\"yaw\", 0.0))\n    return unreal.Rotator(roll=float(v[2]), pitch=float(v[0]), yaw=float(v[1]))\n\n\ndef color(v):\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.LinearColor(g.get(\"r\", 0.0), g.get(\"g\", 0.0), g.get(\"b\", 0.0), g.get(\"a\", 1.0))\n    a = float(v[3]) if len(v) > 3 else 1.0\n    return unreal.LinearColor(float(v[0]), float(v[1]), float(v[2]), a)\n\n\ndef v3(v):\n    return [round(v.x, 3), round(v.y, 3), round(v.z, 3)]\n\n\ndef r3(r):\n    return [round(r.pitch, 3), round(r.yaw, 3), round(r.roll, 3)]\n\n\ndef resolve_class(name):\n    \"\"\"'StaticMeshActor' | 'unreal.PointLight' | '/Script/Engine.PointLight' | '/Game/BP_X.BP_X_C'\"\"\"\n    if not name:\n        return None\n    if name.startswith(\"/\"):\n        cls = unreal.load_class(None, name)\n        if cls is None and not name.endswith(\"_C\"):\n            bp = unreal.load_asset(name)\n            if bp is not None and hasattr(bp, \"generated_class\"):\n                cls = bp.generated_class()\n        return cls\n    short = name.split(\".\")[-1]\n    cls = getattr(unreal, short, None)\n    if cls is None:\n        return None\n    return cls.static_class() if hasattr(cls, \"static_class\") else cls\n\n\ndef class_name_of(obj):\n    return obj.get_class().get_name()\n\n\ndef is_a(actor, class_filter):\n    \"\"\"Class match by name, walking the actual class hierarchy is not exposed; use isinstance.\"\"\"\n    if not class_filter:\n        return True\n    cls = getattr(unreal, class_filter.split(\".\")[-1], None)\n    if cls is not None and isinstance(cls, type):\n        return isinstance(actor, cls)\n    return class_name_of(actor).lower() == class_filter.lower()\n\n\ndef actor_summary(a, fields=(\"class\", \"location\")):\n    out = {\"label\": a.get_actor_label(), \"name\": a.get_name()}\n    if \"class\" in fields:\n        out[\"class\"] = class_name_of(a)\n    if \"location\" in fields:\n        out[\"location\"] = v3(a.get_actor_location())\n    if \"rotation\" in fields:\n        out[\"rotation\"] = r3(a.get_actor_rotation())\n    if \"scale\" in fields:\n        out[\"scale\"] = v3(a.get_actor_scale3d())\n    if \"tags\" in fields:\n        out[\"tags\"] = [str(t) for t in a.tags]\n    if \"folder\" in fields:\n        out[\"folder\"] = str(a.get_folder_path())\n    if \"bounds\" in fields:\n        origin, extent = a.get_actor_bounds(False)\n        out[\"bounds\"] = {\"origin\": v3(origin), \"extent\": v3(extent)}\n    return out\n\n\ndef distance(a, b):\n    return _math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)\n\n\ndef coerce(current, value):\n    \"\"\"Convert a JSON value to match the type of an existing editor property value.\"\"\"\n    if isinstance(current, unreal.Vector):\n        return vec(value)\n    if isinstance(current, unreal.Rotator):\n        return rot(value)\n    if isinstance(current, unreal.LinearColor):\n        return color(value)\n    if isinstance(current, unreal.Color) and isinstance(value, (list, dict)):\n        c = color(value)\n        return unreal.Color(int(c.r), int(c.g), int(c.b), int(c.a))\n    if isinstance(value, str) and value.startswith(\"/\") and (current is None or isinstance(current, unreal.Object)):\n        loaded = unreal.load_asset(value)\n        if loaded is None:\n            raise LookupError(f\"asset {value!r} not found\")\n        return loaded\n    enum_base = getattr(unreal, \"EnumBase\", None)\n    if enum_base is not None and isinstance(current, enum_base) and isinstance(value, str):\n        member = getattr(type(current), value.split(\".\")[-1].upper(), None)\n        if member is None:\n            raise ValueError(f\"{value!r} is not a member of {type(current).__name__}\")\n        return member\n    if isinstance(current, bool):\n        return bool(value)\n    if isinstance(current, int) and not isinstance(current, bool) and isinstance(value, (int, float)):\n        return int(value)\n    if isinstance(current, float) and isinstance(value, (int, float)):\n        return float(value)\n    return value\n\n\ndef set_props(obj, props):\n    \"\"\"Set editor properties; supports 'component.prop' one level deep on actors.\"\"\"\n    done = []\n    for key, value in (props or {}).items():\n        target, prop = obj, key\n        if \".\" in key:\n            head, prop = key.split(\".\", 1)\n            target = obj.get_editor_property(head)\n            if target is None:\n                raise LookupError(f\"{head!r} is None on {obj.get_name()}\")\n        current = target.get_editor_property(prop)\n        target.set_editor_property(prop, coerce(current, value))\n        done.append(key)\n    return done\n\n\ndef asset_summary(ad):\n    cls = ad.asset_class_path\n    return {\n        \"path\": f\"{ad.package_name}.{ad.asset_name}\",\n        \"name\": str(ad.asset_name),\n        \"class\": str(cls.asset_name) if hasattr(cls, \"asset_name\") else str(cls),\n        \"package\": str(ad.package_name),\n    }\n\n\ndef asset_registry():\n    return unreal.AssetRegistryHelpers.get_asset_registry()\n\n\ndef _ensure_navmesh():\n    \"\"\"Script-placed nav bounds: register them, drop NavMesh data sized before the bounds existed\n    (it hits a tiny tile limit), and rebuild. Mirrors the manual fix: delete RecastNavMesh, Build Paths.\"\"\"\n    w = editor_world()\n    nav = unreal.NavigationSystemV1.get_navigation_system(w)\n    sub = actor_sub()\n    acts = sub.get_all_level_actors()\n    for v in [a for a in acts if a.get_class().get_name() == \"NavMeshBoundsVolume\"]:\n        if nav is not None:\n            nav.on_navigation_bounds_updated(v)\n    for a in [a for a in acts if a.get_class().get_name() == \"RecastNavMesh\"]:\n        sub.destroy_actor(a)\n    unreal.SystemLibrary.execute_console_command(w, \"RebuildNavigation\")\n\n\ndef enum_name(v):\n    \"\"\"unreal enum value -> 'INSTANT' (str() gives '<GameplayEffectDurationType.INSTANT: 0>' in the editor).\"\"\"\n    m = re.search(r\"\\.([A-Z0-9_]+)\", str(v))\n    return m.group(1) if m else str(v)\n\n# One actor in depth. ARGS: target, properties [names to read], include_components (bool)\n# ruff: noqa: F821\n_a = require_actor(ARGS[\"target\"])\n_out = actor_summary(_a, (\"class\", \"location\", \"rotation\", \"scale\", \"tags\", \"folder\", \"bounds\"))\n_out[\"hidden_in_editor\"] = bool(_a.is_hidden_ed()) if hasattr(_a, \"is_hidden_ed\") else None\n\nif ARGS.get(\"include_components\", True):\n    _comps = []\n    for _c in _a.get_components_by_class(unreal.ActorComponent):\n        _info = {\"name\": _c.get_name(), \"class\": class_name_of(_c)}\n        if isinstance(_c, unreal.StaticMeshComponent):\n            _m = _c.static_mesh\n            _info[\"static_mesh\"] = _m.get_path_name() if _m else None\n            _info[\"materials\"] = [(_x.get_path_name() if _x else None) for _x in _c.get_materials()]\n        if isinstance(_c, unreal.SceneComponent):\n            _info[\"relative_location\"] = v3(_c.relative_location)\n        if isinstance(_c, unreal.LightComponent):\n            _info[\"intensity\"] = _c.intensity\n        _comps.append(_info)\n    _out[\"components\"] = _comps\n\n_props = {}\nfor _p in ARGS.get(\"properties\") or []:\n    try:\n        _obj, _name = _a, _p\n        if \".\" in _p:\n            _head, _name = _p.split(\".\", 1)\n            _obj = _a.get_editor_property(_head)\n        _props[_p] = _obj.get_editor_property(_name)\n    except Exception as _e:  # report per property, keep going\n        _props[_p] = f\"<error: {_e}>\"\nif _props:\n    _out[\"properties\"] = _props\nresult = _out\n",
+      "timeout_s": 120.0
+     },
+     "description": "One actor in depth: transform, tags, folder, bounds, components (meshes, materials,\n        light intensity) and any requested editor properties (e.g. [\"mobility\",\n        \"static_mesh_component.cast_shadow\"]). For raw reflection use object_describe.",
+     "inputSchema": {
+      "properties": {
+       "include_components": {
+        "default": true,
+        "title": "Include Components",
+        "type": "boolean"
+       },
+       "properties": {
+        "anyOf": [
+         {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Properties"
+       },
+       "target": {
+        "title": "Target",
+        "type": "string"
+       }
+      },
+      "required": [
+       "target"
+      ],
+      "title": "actor_inspectArguments",
+      "type": "object"
+     },
+     "name": "actor_inspect"
+    },
+    {
+     "backend": {
+      "kind": "editor_script",
+      "script": "# Shared helpers prepended to every editor script. Runs inside Unreal (`unreal` is imported).\n# ruff: noqa: F821\nimport math as _math\nimport re\n\nimport unreal\n\n\ndef actor_sub():\n    return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)\n\n\ndef editor_world():\n    return unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()\n\n\ndef all_actors():\n    return list(actor_sub().get_all_level_actors())\n\n\ndef find_actor(label_or_name):\n    want = str(label_or_name).lower()\n    by_name = None\n    for a in all_actors():\n        if a.get_actor_label().lower() == want:\n            return a\n        if by_name is None and a.get_name().lower() == want:\n            by_name = a\n    return by_name\n\n\ndef require_actor(label_or_name):\n    a = find_actor(label_or_name)\n    if a is None:\n        raise LookupError(f\"no actor labelled or named {label_or_name!r}\")\n    return a\n\n\ndef vec(v, default=(0.0, 0.0, 0.0)):\n    \"\"\"[x,y,z] | {\"x\":..} | {\"X\":..} | number (uniform) -> unreal.Vector\"\"\"\n    if v is None:\n        v = default\n    if isinstance(v, (int, float)):\n        return unreal.Vector(float(v), float(v), float(v))\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Vector(g.get(\"x\", 0.0), g.get(\"y\", 0.0), g.get(\"z\", 0.0))\n    return unreal.Vector(float(v[0]), float(v[1]), float(v[2]))\n\n\ndef rot(v):\n    \"\"\"[pitch, yaw, roll] | {\"pitch\":..,\"yaw\":..,\"roll\":..} -> unreal.Rotator\"\"\"\n    if v is None:\n        return unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0)\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Rotator(roll=g.get(\"roll\", 0.0), pitch=g.get(\"pitch\", 0.0), yaw=g.get(\"yaw\", 0.0))\n    return unreal.Rotator(roll=float(v[2]), pitch=float(v[0]), yaw=float(v[1]))\n\n\ndef color(v):\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.LinearColor(g.get(\"r\", 0.0), g.get(\"g\", 0.0), g.get(\"b\", 0.0), g.get(\"a\", 1.0))\n    a = float(v[3]) if len(v) > 3 else 1.0\n    return unreal.LinearColor(float(v[0]), float(v[1]), float(v[2]), a)\n\n\ndef v3(v):\n    return [round(v.x, 3), round(v.y, 3), round(v.z, 3)]\n\n\ndef r3(r):\n    return [round(r.pitch, 3), round(r.yaw, 3), round(r.roll, 3)]\n\n\ndef resolve_class(name):\n    \"\"\"'StaticMeshActor' | 'unreal.PointLight' | '/Script/Engine.PointLight' | '/Game/BP_X.BP_X_C'\"\"\"\n    if not name:\n        return None\n    if name.startswith(\"/\"):\n        cls = unreal.load_class(None, name)\n        if cls is None and not name.endswith(\"_C\"):\n            bp = unreal.load_asset(name)\n            if bp is not None and hasattr(bp, \"generated_class\"):\n                cls = bp.generated_class()\n        return cls\n    short = name.split(\".\")[-1]\n    cls = getattr(unreal, short, None)\n    if cls is None:\n        return None\n    return cls.static_class() if hasattr(cls, \"static_class\") else cls\n\n\ndef class_name_of(obj):\n    return obj.get_class().get_name()\n\n\ndef is_a(actor, class_filter):\n    \"\"\"Class match by name, walking the actual class hierarchy is not exposed; use isinstance.\"\"\"\n    if not class_filter:\n        return True\n    cls = getattr(unreal, class_filter.split(\".\")[-1], None)\n    if cls is not None and isinstance(cls, type):\n        return isinstance(actor, cls)\n    return class_name_of(actor).lower() == class_filter.lower()\n\n\ndef actor_summary(a, fields=(\"class\", \"location\")):\n    out = {\"label\": a.get_actor_label(), \"name\": a.get_name()}\n    if \"class\" in fields:\n        out[\"class\"] = class_name_of(a)\n    if \"location\" in fields:\n        out[\"location\"] = v3(a.get_actor_location())\n    if \"rotation\" in fields:\n        out[\"rotation\"] = r3(a.get_actor_rotation())\n    if \"scale\" in fields:\n        out[\"scale\"] = v3(a.get_actor_scale3d())\n    if \"tags\" in fields:\n        out[\"tags\"] = [str(t) for t in a.tags]\n    if \"folder\" in fields:\n        out[\"folder\"] = str(a.get_folder_path())\n    if \"bounds\" in fields:\n        origin, extent = a.get_actor_bounds(False)\n        out[\"bounds\"] = {\"origin\": v3(origin), \"extent\": v3(extent)}\n    return out\n\n\ndef distance(a, b):\n    return _math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)\n\n\ndef coerce(current, value):\n    \"\"\"Convert a JSON value to match the type of an existing editor property value.\"\"\"\n    if isinstance(current, unreal.Vector):\n        return vec(value)\n    if isinstance(current, unreal.Rotator):\n        return rot(value)\n    if isinstance(current, unreal.LinearColor):\n        return color(value)\n    if isinstance(current, unreal.Color) and isinstance(value, (list, dict)):\n        c = color(value)\n        return unreal.Color(int(c.r), int(c.g), int(c.b), int(c.a))\n    if isinstance(value, str) and value.startswith(\"/\") and (current is None or isinstance(current, unreal.Object)):\n        loaded = unreal.load_asset(value)\n        if loaded is None:\n            raise LookupError(f\"asset {value!r} not found\")\n        return loaded\n    enum_base = getattr(unreal, \"EnumBase\", None)\n    if enum_base is not None and isinstance(current, enum_base) and isinstance(value, str):\n        member = getattr(type(current), value.split(\".\")[-1].upper(), None)\n        if member is None:\n            raise ValueError(f\"{value!r} is not a member of {type(current).__name__}\")\n        return member\n    if isinstance(current, bool):\n        return bool(value)\n    if isinstance(current, int) and not isinstance(current, bool) and isinstance(value, (int, float)):\n        return int(value)\n    if isinstance(current, float) and isinstance(value, (int, float)):\n        return float(value)\n    return value\n\n\ndef set_props(obj, props):\n    \"\"\"Set editor properties; supports 'component.prop' one level deep on actors.\"\"\"\n    done = []\n    for key, value in (props or {}).items():\n        target, prop = obj, key\n        if \".\" in key:\n            head, prop = key.split(\".\", 1)\n            target = obj.get_editor_property(head)\n            if target is None:\n                raise LookupError(f\"{head!r} is None on {obj.get_name()}\")\n        current = target.get_editor_property(prop)\n        target.set_editor_property(prop, coerce(current, value))\n        done.append(key)\n    return done\n\n\ndef asset_summary(ad):\n    cls = ad.asset_class_path\n    return {\n        \"path\": f\"{ad.package_name}.{ad.asset_name}\",\n        \"name\": str(ad.asset_name),\n        \"class\": str(cls.asset_name) if hasattr(cls, \"asset_name\") else str(cls),\n        \"package\": str(ad.package_name),\n    }\n\n\ndef asset_registry():\n    return unreal.AssetRegistryHelpers.get_asset_registry()\n\n\ndef _ensure_navmesh():\n    \"\"\"Script-placed nav bounds: register them, drop NavMesh data sized before the bounds existed\n    (it hits a tiny tile limit), and rebuild. Mirrors the manual fix: delete RecastNavMesh, Build Paths.\"\"\"\n    w = editor_world()\n    nav = unreal.NavigationSystemV1.get_navigation_system(w)\n    sub = actor_sub()\n    acts = sub.get_all_level_actors()\n    for v in [a for a in acts if a.get_class().get_name() == \"NavMeshBoundsVolume\"]:\n        if nav is not None:\n            nav.on_navigation_bounds_updated(v)\n    for a in [a for a in acts if a.get_class().get_name() == \"RecastNavMesh\"]:\n        sub.destroy_actor(a)\n    unreal.SystemLibrary.execute_console_command(w, \"RebuildNavigation\")\n\n\ndef enum_name(v):\n    \"\"\"unreal enum value -> 'INSTANT' (str() gives '<GameplayEffectDurationType.INSTANT: 0>' in the editor).\"\"\"\n    m = re.search(r\"\\.([A-Z0-9_]+)\", str(v))\n    return m.group(1) if m else str(v)\n\n# Persistent level, sublevels / streaming, World Partition, world settings. ARGS: (none)\n# ruff: noqa: F821\n_w = editor_world()\nif _w is None:\n    raise RuntimeError(\"no editor world\")\n_out = {\"world\": _w.get_path_name()}\n\n_levels = []\ntry:\n    for _lvl in unreal.EditorLevelUtils.get_levels(_w):\n        _levels.append(_lvl.get_outer().get_path_name() if _lvl.get_outer() else _lvl.get_path_name())\nexcept Exception as _e:\n    _levels = [f\"<unavailable: {_e}>\"]\n_out[\"loaded_levels\"] = _levels\n\n_streaming = []\ntry:\n    for _s in _w.get_editor_property(\"streaming_levels\") or []:\n        _streaming.append({\"package\": str(_s.get_editor_property(\"world_asset\")),\n                           \"class\": class_name_of(_s)})\nexcept Exception:\n    pass\n_out[\"streaming_levels\"] = _streaming\n\n_ws = _w.get_world_settings()\n_settings = {}\nfor _k in (\"kill_z\", \"world_gravity_z\", \"global_gravity_set\", \"default_game_mode\", \"enable_world_bounds_checks\"):\n    try:\n        _v = _ws.get_editor_property(_k)\n        _settings[_k] = _v.get_path_name() if hasattr(_v, \"get_path_name\") else _v\n    except Exception:\n        pass\n_out[\"world_settings\"] = _settings\ntry:\n    _out[\"world_partition\"] = _ws.get_editor_property(\"world_partition\") is not None\nexcept Exception:\n    _out[\"world_partition\"] = None\n_out[\"actor_count\"] = len(all_actors())\nresult = _out\n",
+      "timeout_s": 120.0
+     },
+     "description": "Level structure: persistent world, loaded and streaming sublevels, World Partition\n        flag, key world settings (kill Z, gravity, default game mode).",
+     "inputSchema": {
+      "properties": {},
+      "title": "level_inspectArguments",
+      "type": "object"
+     },
+     "name": "level_inspect"
+    },
+    {
+     "backend": {
+      "kind": "editor_script",
+      "script": "# Shared helpers prepended to every editor script. Runs inside Unreal (`unreal` is imported).\n# ruff: noqa: F821\nimport math as _math\nimport re\n\nimport unreal\n\n\ndef actor_sub():\n    return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)\n\n\ndef editor_world():\n    return unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()\n\n\ndef all_actors():\n    return list(actor_sub().get_all_level_actors())\n\n\ndef find_actor(label_or_name):\n    want = str(label_or_name).lower()\n    by_name = None\n    for a in all_actors():\n        if a.get_actor_label().lower() == want:\n            return a\n        if by_name is None and a.get_name().lower() == want:\n            by_name = a\n    return by_name\n\n\ndef require_actor(label_or_name):\n    a = find_actor(label_or_name)\n    if a is None:\n        raise LookupError(f\"no actor labelled or named {label_or_name!r}\")\n    return a\n\n\ndef vec(v, default=(0.0, 0.0, 0.0)):\n    \"\"\"[x,y,z] | {\"x\":..} | {\"X\":..} | number (uniform) -> unreal.Vector\"\"\"\n    if v is None:\n        v = default\n    if isinstance(v, (int, float)):\n        return unreal.Vector(float(v), float(v), float(v))\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Vector(g.get(\"x\", 0.0), g.get(\"y\", 0.0), g.get(\"z\", 0.0))\n    return unreal.Vector(float(v[0]), float(v[1]), float(v[2]))\n\n\ndef rot(v):\n    \"\"\"[pitch, yaw, roll] | {\"pitch\":..,\"yaw\":..,\"roll\":..} -> unreal.Rotator\"\"\"\n    if v is None:\n        return unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0)\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Rotator(roll=g.get(\"roll\", 0.0), pitch=g.get(\"pitch\", 0.0), yaw=g.get(\"yaw\", 0.0))\n    return unreal.Rotator(roll=float(v[2]), pitch=float(v[0]), yaw=float(v[1]))\n\n\ndef color(v):\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.LinearColor(g.get(\"r\", 0.0), g.get(\"g\", 0.0), g.get(\"b\", 0.0), g.get(\"a\", 1.0))\n    a = float(v[3]) if len(v) > 3 else 1.0\n    return unreal.LinearColor(float(v[0]), float(v[1]), float(v[2]), a)\n\n\ndef v3(v):\n    return [round(v.x, 3), round(v.y, 3), round(v.z, 3)]\n\n\ndef r3(r):\n    return [round(r.pitch, 3), round(r.yaw, 3), round(r.roll, 3)]\n\n\ndef resolve_class(name):\n    \"\"\"'StaticMeshActor' | 'unreal.PointLight' | '/Script/Engine.PointLight' | '/Game/BP_X.BP_X_C'\"\"\"\n    if not name:\n        return None\n    if name.startswith(\"/\"):\n        cls = unreal.load_class(None, name)\n        if cls is None and not name.endswith(\"_C\"):\n            bp = unreal.load_asset(name)\n            if bp is not None and hasattr(bp, \"generated_class\"):\n                cls = bp.generated_class()\n        return cls\n    short = name.split(\".\")[-1]\n    cls = getattr(unreal, short, None)\n    if cls is None:\n        return None\n    return cls.static_class() if hasattr(cls, \"static_class\") else cls\n\n\ndef class_name_of(obj):\n    return obj.get_class().get_name()\n\n\ndef is_a(actor, class_filter):\n    \"\"\"Class match by name, walking the actual class hierarchy is not exposed; use isinstance.\"\"\"\n    if not class_filter:\n        return True\n    cls = getattr(unreal, class_filter.split(\".\")[-1], None)\n    if cls is not None and isinstance(cls, type):\n        return isinstance(actor, cls)\n    return class_name_of(actor).lower() == class_filter.lower()\n\n\ndef actor_summary(a, fields=(\"class\", \"location\")):\n    out = {\"label\": a.get_actor_label(), \"name\": a.get_name()}\n    if \"class\" in fields:\n        out[\"class\"] = class_name_of(a)\n    if \"location\" in fields:\n        out[\"location\"] = v3(a.get_actor_location())\n    if \"rotation\" in fields:\n        out[\"rotation\"] = r3(a.get_actor_rotation())\n    if \"scale\" in fields:\n        out[\"scale\"] = v3(a.get_actor_scale3d())\n    if \"tags\" in fields:\n        out[\"tags\"] = [str(t) for t in a.tags]\n    if \"folder\" in fields:\n        out[\"folder\"] = str(a.get_folder_path())\n    if \"bounds\" in fields:\n        origin, extent = a.get_actor_bounds(False)\n        out[\"bounds\"] = {\"origin\": v3(origin), \"extent\": v3(extent)}\n    return out\n\n\ndef distance(a, b):\n    return _math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)\n\n\ndef coerce(current, value):\n    \"\"\"Convert a JSON value to match the type of an existing editor property value.\"\"\"\n    if isinstance(current, unreal.Vector):\n        return vec(value)\n    if isinstance(current, unreal.Rotator):\n        return rot(value)\n    if isinstance(current, unreal.LinearColor):\n        return color(value)\n    if isinstance(current, unreal.Color) and isinstance(value, (list, dict)):\n        c = color(value)\n        return unreal.Color(int(c.r), int(c.g), int(c.b), int(c.a))\n    if isinstance(value, str) and value.startswith(\"/\") and (current is None or isinstance(current, unreal.Object)):\n        loaded = unreal.load_asset(value)\n        if loaded is None:\n            raise LookupError(f\"asset {value!r} not found\")\n        return loaded\n    enum_base = getattr(unreal, \"EnumBase\", None)\n    if enum_base is not None and isinstance(current, enum_base) and isinstance(value, str):\n        member = getattr(type(current), value.split(\".\")[-1].upper(), None)\n        if member is None:\n            raise ValueError(f\"{value!r} is not a member of {type(current).__name__}\")\n        return member\n    if isinstance(current, bool):\n        return bool(value)\n    if isinstance(current, int) and not isinstance(current, bool) and isinstance(value, (int, float)):\n        return int(value)\n    if isinstance(current, float) and isinstance(value, (int, float)):\n        return float(value)\n    return value\n\n\ndef set_props(obj, props):\n    \"\"\"Set editor properties; supports 'component.prop' one level deep on actors.\"\"\"\n    done = []\n    for key, value in (props or {}).items():\n        target, prop = obj, key\n        if \".\" in key:\n            head, prop = key.split(\".\", 1)\n            target = obj.get_editor_property(head)\n            if target is None:\n                raise LookupError(f\"{head!r} is None on {obj.get_name()}\")\n        current = target.get_editor_property(prop)\n        target.set_editor_property(prop, coerce(current, value))\n        done.append(key)\n    return done\n\n\ndef asset_summary(ad):\n    cls = ad.asset_class_path\n    return {\n        \"path\": f\"{ad.package_name}.{ad.asset_name}\",\n        \"name\": str(ad.asset_name),\n        \"class\": str(cls.asset_name) if hasattr(cls, \"asset_name\") else str(cls),\n        \"package\": str(ad.package_name),\n    }\n\n\ndef asset_registry():\n    return unreal.AssetRegistryHelpers.get_asset_registry()\n\n\ndef _ensure_navmesh():\n    \"\"\"Script-placed nav bounds: register them, drop NavMesh data sized before the bounds existed\n    (it hits a tiny tile limit), and rebuild. Mirrors the manual fix: delete RecastNavMesh, Build Paths.\"\"\"\n    w = editor_world()\n    nav = unreal.NavigationSystemV1.get_navigation_system(w)\n    sub = actor_sub()\n    acts = sub.get_all_level_actors()\n    for v in [a for a in acts if a.get_class().get_name() == \"NavMeshBoundsVolume\"]:\n        if nav is not None:\n            nav.on_navigation_bounds_updated(v)\n    for a in [a for a in acts if a.get_class().get_name() == \"RecastNavMesh\"]:\n        sub.destroy_actor(a)\n    unreal.SystemLibrary.execute_console_command(w, \"RebuildNavigation\")\n\n\ndef enum_name(v):\n    \"\"\"unreal enum value -> 'INSTANT' (str() gives '<GameplayEffectDurationType.INSTANT: 0>' in the editor).\"\"\"\n    m = re.search(r\"\\.([A-Z0-9_]+)\", str(v))\n    return m.group(1) if m else str(v)\n\n# Declarative batch of spawn/modify/delete ops in ONE undo transaction.\n# ARGS: operations [...], stop_on_error (bool)\n#   spawn:  {op, class | asset, label, location, rotation, scale, tags, folder, properties,\n#            pattern: {type: grid, count: [nx, ny], spacing: [dx, dy]}\n#                   | {type: circle, count, radius, face_center}\n#                   | {type: line, count, step: [x, y, z]}}\n#   modify: {op, target, location, rotation, scale, label, tags, folder, properties, hidden}\n#   delete: {op, target}\n# ruff: noqa: F821\n\n\ndef _pattern_offsets(p):\n    if not p:\n        return [((0.0, 0.0, 0.0), None)]\n    t = p.get(\"type\")\n    if t == \"grid\":\n        nx, ny = p.get(\"count\", [1, 1])\n        dx, dy = p.get(\"spacing\", [100, 100])\n        return [((i * dx, j * dy, 0.0), None) for j in range(int(ny)) for i in range(int(nx))]\n    if t == \"circle\":\n        n, r = int(p.get(\"count\", 8)), float(p.get(\"radius\", 500))\n        out = []\n        for i in range(n):\n            ang = 2 * _math.pi * i / n\n            yaw = _math.degrees(ang) + 180.0 if p.get(\"face_center\") else None\n            out.append(((r * _math.cos(ang), r * _math.sin(ang), 0.0), yaw))\n        return out\n    if t == \"line\":\n        n = int(p.get(\"count\", 2))\n        sx, sy, sz = p.get(\"step\", [100, 0, 0])\n        return [((i * sx, i * sy, i * sz), None) for i in range(n)]\n    raise ValueError(f\"unknown pattern type {t!r}\")\n\n\ndef _apply_common(a, op):\n    if op.get(\"label\"):\n        a.set_actor_label(op[\"label\"])\n    if op.get(\"scale\") is not None:\n        a.set_actor_scale3d(vec(op[\"scale\"]))\n    if op.get(\"tags\") is not None:\n        a.tags = [unreal.Name(t) for t in op[\"tags\"]]\n    if op.get(\"folder\") is not None:\n        a.set_folder_path(op[\"folder\"])\n    if op.get(\"hidden\") is not None:\n        a.set_is_temporarily_hidden_in_editor(bool(op[\"hidden\"]))\n    return set_props(a, op.get(\"properties\"))\n\n\ndef _spawn(op):\n    sub = actor_sub()\n    base = vec(op.get(\"location\"))\n    base_rot = rot(op.get(\"rotation\"))\n    source = None\n    if op.get(\"asset\"):\n        source = unreal.load_asset(op[\"asset\"])\n        if source is None:\n            raise LookupError(f\"asset {op['asset']!r} not found\")\n    else:\n        source = resolve_class(op.get(\"class\"))\n        if source is None:\n            raise LookupError(f\"class {op.get('class')!r} not found\")\n    labels = []\n    offsets = _pattern_offsets(op.get(\"pattern\"))\n    for idx, (off, yaw) in enumerate(offsets):\n        loc = unreal.Vector(base.x + off[0], base.y + off[1], base.z + off[2])\n        r = unreal.Rotator(roll=base_rot.roll, pitch=base_rot.pitch, yaw=yaw if yaw is not None else base_rot.yaw)\n        if op.get(\"asset\"):\n            a = sub.spawn_actor_from_object(source, loc, r)\n        else:\n            a = sub.spawn_actor_from_class(source, loc, r)\n        if a is None:\n            raise RuntimeError(\"spawn returned None\")\n        one = dict(op)\n        if op.get(\"label\") and len(offsets) > 1:\n            one[\"label\"] = f\"{op['label']}_{idx}\"\n        _apply_common(a, one)\n        labels.append(a.get_actor_label())\n    return {\"spawned\": labels}\n\n\ndef _modify(op):\n    a = require_actor(op[\"target\"])\n    if op.get(\"location\") is not None:\n        a.set_actor_location(vec(op[\"location\"]), False, False)\n    if op.get(\"rotation\") is not None:\n        a.set_actor_rotation(rot(op[\"rotation\"]), False)\n    props = _apply_common(a, op)\n    return {\"modified\": a.get_actor_label(), \"properties_set\": props}\n\n\ndef _delete(op):\n    a = require_actor(op[\"target\"])\n    label = a.get_actor_label()\n    actor_sub().destroy_actor(a)\n    return {\"deleted\": label}\n\n\n_handlers = {\"spawn\": _spawn, \"modify\": _modify, \"delete\": _delete}\n_results = []\n_ok = 0\nwith unreal.ScopedEditorTransaction(\"MCP scene_compose\"):\n    for _i, _op in enumerate(ARGS.get(\"operations\") or []):\n        try:\n            _h = _handlers.get(_op.get(\"op\"))\n            if _h is None:\n                raise ValueError(f\"unknown op {_op.get('op')!r}; expected spawn, modify or delete\")\n            _results.append({\"index\": _i, \"ok\": True, **_h(_op)})\n            _ok += 1\n        except Exception as _e:\n            _results.append({\"index\": _i, \"ok\": False, \"error\": f\"{type(_e).__name__}: {_e}\"})\n            if ARGS.get(\"stop_on_error\"):\n                break\n# Nav bounds placed from code don't trigger the editor's navigation build the way a hand-placed\n# volume does; without it AI MoveTo silently goes nowhere.\n_nav = any(\"navmesh\" in str(_op.get(\"class\") or \"\").lower() or \"navmesh\" in str(_op.get(\"target\") or \"\").lower()\n           or str(_op.get(\"label\") or \"\").lower().startswith(\"nav\") for _op in (ARGS.get(\"operations\") or []))\nif _nav and _ok:\n    _ensure_navmesh()\nresult = {\"succeeded\": _ok, \"failed\": len(_results) - _ok, \"results\": _results}\nif _nav and _ok:\n    result[\"navigation_rebuilt\"] = True\n",
+      "timeout_s": 300
+     },
+     "description": "Spawn, modify and delete many actors in ONE call and ONE undo step.\n\n        operations, each one of:\n          {\"op\":\"spawn\", \"class\":\"PointLight\" | \"asset\":\"/Engine/BasicShapes/Cube.Cube\",\n           \"label\":\"Lamp\", \"location\":[x,y,z], \"rotation\":[pitch,yaw,roll], \"scale\":[x,y,z] | 2,\n           \"tags\":[\"lamp\"], \"folder\":\"Lighting\", \"properties\":{\"light_component.intensity\": 5000},\n           \"pattern\":{\"type\":\"grid\",\"count\":[4,4],\"spacing\":[300,300]}\n                   | {\"type\":\"circle\",\"count\":12,\"radius\":800,\"face_center\":true}\n                   | {\"type\":\"line\",\"count\":10,\"step\":[200,0,0]}}\n          {\"op\":\"modify\", \"target\":\"Lamp_3\", \"location\":..., \"rotation\":..., \"scale\":...,\n           \"label\":..., \"tags\":..., \"folder\":..., \"hidden\":true, \"properties\":{...}}\n          {\"op\":\"delete\", \"target\":\"Lamp_0\"}\n        Patterned spawns get labels \"<label>_<i>\". Each op reports ok/error; the rest continue\n        unless stop_on_error. Property keys are Python editor-property names (snake_case),\n        optionally \"component.property\".",
+     "inputSchema": {
+      "properties": {
+       "operations": {
+        "items": {
+         "type": "object"
+        },
+        "title": "Operations",
+        "type": "array"
+       },
+       "stop_on_error": {
+        "default": false,
+        "title": "Stop On Error",
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "operations"
+      ],
+      "title": "scene_composeArguments",
+      "type": "object"
+     },
+     "name": "scene_compose"
+    }
+   ]
+  },
+  {
+   "description": "UnrealMCP asset search and dependency/referencer graphs.",
+   "name": "UnrealMCP.Assets",
+   "tools": [
+    {
+     "backend": {
+      "kind": "editor_script",
+      "rename": {
+       "class_name": "class"
+      },
+      "script": "# Shared helpers prepended to every editor script. Runs inside Unreal (`unreal` is imported).\n# ruff: noqa: F821\nimport math as _math\nimport re\n\nimport unreal\n\n\ndef actor_sub():\n    return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)\n\n\ndef editor_world():\n    return unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()\n\n\ndef all_actors():\n    return list(actor_sub().get_all_level_actors())\n\n\ndef find_actor(label_or_name):\n    want = str(label_or_name).lower()\n    by_name = None\n    for a in all_actors():\n        if a.get_actor_label().lower() == want:\n            return a\n        if by_name is None and a.get_name().lower() == want:\n            by_name = a\n    return by_name\n\n\ndef require_actor(label_or_name):\n    a = find_actor(label_or_name)\n    if a is None:\n        raise LookupError(f\"no actor labelled or named {label_or_name!r}\")\n    return a\n\n\ndef vec(v, default=(0.0, 0.0, 0.0)):\n    \"\"\"[x,y,z] | {\"x\":..} | {\"X\":..} | number (uniform) -> unreal.Vector\"\"\"\n    if v is None:\n        v = default\n    if isinstance(v, (int, float)):\n        return unreal.Vector(float(v), float(v), float(v))\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Vector(g.get(\"x\", 0.0), g.get(\"y\", 0.0), g.get(\"z\", 0.0))\n    return unreal.Vector(float(v[0]), float(v[1]), float(v[2]))\n\n\ndef rot(v):\n    \"\"\"[pitch, yaw, roll] | {\"pitch\":..,\"yaw\":..,\"roll\":..} -> unreal.Rotator\"\"\"\n    if v is None:\n        return unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0)\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Rotator(roll=g.get(\"roll\", 0.0), pitch=g.get(\"pitch\", 0.0), yaw=g.get(\"yaw\", 0.0))\n    return unreal.Rotator(roll=float(v[2]), pitch=float(v[0]), yaw=float(v[1]))\n\n\ndef color(v):\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.LinearColor(g.get(\"r\", 0.0), g.get(\"g\", 0.0), g.get(\"b\", 0.0), g.get(\"a\", 1.0))\n    a = float(v[3]) if len(v) > 3 else 1.0\n    return unreal.LinearColor(float(v[0]), float(v[1]), float(v[2]), a)\n\n\ndef v3(v):\n    return [round(v.x, 3), round(v.y, 3), round(v.z, 3)]\n\n\ndef r3(r):\n    return [round(r.pitch, 3), round(r.yaw, 3), round(r.roll, 3)]\n\n\ndef resolve_class(name):\n    \"\"\"'StaticMeshActor' | 'unreal.PointLight' | '/Script/Engine.PointLight' | '/Game/BP_X.BP_X_C'\"\"\"\n    if not name:\n        return None\n    if name.startswith(\"/\"):\n        cls = unreal.load_class(None, name)\n        if cls is None and not name.endswith(\"_C\"):\n            bp = unreal.load_asset(name)\n            if bp is not None and hasattr(bp, \"generated_class\"):\n                cls = bp.generated_class()\n        return cls\n    short = name.split(\".\")[-1]\n    cls = getattr(unreal, short, None)\n    if cls is None:\n        return None\n    return cls.static_class() if hasattr(cls, \"static_class\") else cls\n\n\ndef class_name_of(obj):\n    return obj.get_class().get_name()\n\n\ndef is_a(actor, class_filter):\n    \"\"\"Class match by name, walking the actual class hierarchy is not exposed; use isinstance.\"\"\"\n    if not class_filter:\n        return True\n    cls = getattr(unreal, class_filter.split(\".\")[-1], None)\n    if cls is not None and isinstance(cls, type):\n        return isinstance(actor, cls)\n    return class_name_of(actor).lower() == class_filter.lower()\n\n\ndef actor_summary(a, fields=(\"class\", \"location\")):\n    out = {\"label\": a.get_actor_label(), \"name\": a.get_name()}\n    if \"class\" in fields:\n        out[\"class\"] = class_name_of(a)\n    if \"location\" in fields:\n        out[\"location\"] = v3(a.get_actor_location())\n    if \"rotation\" in fields:\n        out[\"rotation\"] = r3(a.get_actor_rotation())\n    if \"scale\" in fields:\n        out[\"scale\"] = v3(a.get_actor_scale3d())\n    if \"tags\" in fields:\n        out[\"tags\"] = [str(t) for t in a.tags]\n    if \"folder\" in fields:\n        out[\"folder\"] = str(a.get_folder_path())\n    if \"bounds\" in fields:\n        origin, extent = a.get_actor_bounds(False)\n        out[\"bounds\"] = {\"origin\": v3(origin), \"extent\": v3(extent)}\n    return out\n\n\ndef distance(a, b):\n    return _math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)\n\n\ndef coerce(current, value):\n    \"\"\"Convert a JSON value to match the type of an existing editor property value.\"\"\"\n    if isinstance(current, unreal.Vector):\n        return vec(value)\n    if isinstance(current, unreal.Rotator):\n        return rot(value)\n    if isinstance(current, unreal.LinearColor):\n        return color(value)\n    if isinstance(current, unreal.Color) and isinstance(value, (list, dict)):\n        c = color(value)\n        return unreal.Color(int(c.r), int(c.g), int(c.b), int(c.a))\n    if isinstance(value, str) and value.startswith(\"/\") and (current is None or isinstance(current, unreal.Object)):\n        loaded = unreal.load_asset(value)\n        if loaded is None:\n            raise LookupError(f\"asset {value!r} not found\")\n        return loaded\n    enum_base = getattr(unreal, \"EnumBase\", None)\n    if enum_base is not None and isinstance(current, enum_base) and isinstance(value, str):\n        member = getattr(type(current), value.split(\".\")[-1].upper(), None)\n        if member is None:\n            raise ValueError(f\"{value!r} is not a member of {type(current).__name__}\")\n        return member\n    if isinstance(current, bool):\n        return bool(value)\n    if isinstance(current, int) and not isinstance(current, bool) and isinstance(value, (int, float)):\n        return int(value)\n    if isinstance(current, float) and isinstance(value, (int, float)):\n        return float(value)\n    return value\n\n\ndef set_props(obj, props):\n    \"\"\"Set editor properties; supports 'component.prop' one level deep on actors.\"\"\"\n    done = []\n    for key, value in (props or {}).items():\n        target, prop = obj, key\n        if \".\" in key:\n            head, prop = key.split(\".\", 1)\n            target = obj.get_editor_property(head)\n            if target is None:\n                raise LookupError(f\"{head!r} is None on {obj.get_name()}\")\n        current = target.get_editor_property(prop)\n        target.set_editor_property(prop, coerce(current, value))\n        done.append(key)\n    return done\n\n\ndef asset_summary(ad):\n    cls = ad.asset_class_path\n    return {\n        \"path\": f\"{ad.package_name}.{ad.asset_name}\",\n        \"name\": str(ad.asset_name),\n        \"class\": str(cls.asset_name) if hasattr(cls, \"asset_name\") else str(cls),\n        \"package\": str(ad.package_name),\n    }\n\n\ndef asset_registry():\n    return unreal.AssetRegistryHelpers.get_asset_registry()\n\n\ndef _ensure_navmesh():\n    \"\"\"Script-placed nav bounds: register them, drop NavMesh data sized before the bounds existed\n    (it hits a tiny tile limit), and rebuild. Mirrors the manual fix: delete RecastNavMesh, Build Paths.\"\"\"\n    w = editor_world()\n    nav = unreal.NavigationSystemV1.get_navigation_system(w)\n    sub = actor_sub()\n    acts = sub.get_all_level_actors()\n    for v in [a for a in acts if a.get_class().get_name() == \"NavMeshBoundsVolume\"]:\n        if nav is not None:\n            nav.on_navigation_bounds_updated(v)\n    for a in [a for a in acts if a.get_class().get_name() == \"RecastNavMesh\"]:\n        sub.destroy_actor(a)\n    unreal.SystemLibrary.execute_console_command(w, \"RebuildNavigation\")\n\n\ndef enum_name(v):\n    \"\"\"unreal enum value -> 'INSTANT' (str() gives '<GameplayEffectDurationType.INSTANT: 0>' in the editor).\"\"\"\n    m = re.search(r\"\\.([A-Z0-9_]+)\", str(v))\n    return m.group(1) if m else str(v)\n\n# Content Browser search. ARGS: query (substring of name), class (e.g. StaticMesh), path (default /Game),\n#                              recursive, limit\n# ruff: noqa: F821\n_ar = asset_registry()\n_path = ARGS.get(\"path\") or \"/Game\"\n_q = (ARGS.get(\"query\") or \"\").lower()\n_cls = (ARGS.get(\"class\") or \"\").lower()\n_limit = int(ARGS.get(\"limit\") or 100)\n\n_found = []\n_total = 0\nfor _ad in _ar.get_assets_by_path(_path, recursive=bool(ARGS.get(\"recursive\", True))):\n    _s = asset_summary(_ad)\n    if _q and _q not in _s[\"name\"].lower():\n        continue\n    if _cls and _s[\"class\"].lower() != _cls:\n        continue\n    _total += 1\n    if len(_found) < _limit:\n        _found.append(_s)\nresult = {\"total_matches\": _total, \"truncated\": _total > _limit, \"assets\": _found}\n",
+      "timeout_s": 120.0
+     },
+     "description": "Search the Content Browser. query: case-insensitive substring of the asset name.\n        class_name: exact asset class, e.g. StaticMesh, Material, MaterialInstanceConstant,\n        Texture2D, Blueprint, NiagaraSystem, SoundWave, World. Returns full object paths\n        (/Game/Dir/Asset.Asset) usable by every other tool. Engine content: path=\"/Engine\".",
+     "inputSchema": {
+      "properties": {
+       "class_name": {
+        "default": "",
+        "title": "Class Name",
+        "type": "string"
+       },
+       "limit": {
+        "default": 100,
+        "title": "Limit",
+        "type": "integer"
+       },
+       "path": {
+        "default": "/Game",
+        "title": "Path",
+        "type": "string"
+       },
+       "query": {
+        "default": "",
+        "title": "Query",
+        "type": "string"
+       },
+       "recursive": {
+        "default": true,
+        "title": "Recursive",
+        "type": "boolean"
+       }
+      },
+      "title": "search_assetsArguments",
+      "type": "object"
+     },
+     "name": "search_assets"
+    },
+    {
+     "backend": {
+      "kind": "editor_script",
+      "script": "# Shared helpers prepended to every editor script. Runs inside Unreal (`unreal` is imported).\n# ruff: noqa: F821\nimport math as _math\nimport re\n\nimport unreal\n\n\ndef actor_sub():\n    return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)\n\n\ndef editor_world():\n    return unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()\n\n\ndef all_actors():\n    return list(actor_sub().get_all_level_actors())\n\n\ndef find_actor(label_or_name):\n    want = str(label_or_name).lower()\n    by_name = None\n    for a in all_actors():\n        if a.get_actor_label().lower() == want:\n            return a\n        if by_name is None and a.get_name().lower() == want:\n            by_name = a\n    return by_name\n\n\ndef require_actor(label_or_name):\n    a = find_actor(label_or_name)\n    if a is None:\n        raise LookupError(f\"no actor labelled or named {label_or_name!r}\")\n    return a\n\n\ndef vec(v, default=(0.0, 0.0, 0.0)):\n    \"\"\"[x,y,z] | {\"x\":..} | {\"X\":..} | number (uniform) -> unreal.Vector\"\"\"\n    if v is None:\n        v = default\n    if isinstance(v, (int, float)):\n        return unreal.Vector(float(v), float(v), float(v))\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Vector(g.get(\"x\", 0.0), g.get(\"y\", 0.0), g.get(\"z\", 0.0))\n    return unreal.Vector(float(v[0]), float(v[1]), float(v[2]))\n\n\ndef rot(v):\n    \"\"\"[pitch, yaw, roll] | {\"pitch\":..,\"yaw\":..,\"roll\":..} -> unreal.Rotator\"\"\"\n    if v is None:\n        return unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0)\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.Rotator(roll=g.get(\"roll\", 0.0), pitch=g.get(\"pitch\", 0.0), yaw=g.get(\"yaw\", 0.0))\n    return unreal.Rotator(roll=float(v[2]), pitch=float(v[0]), yaw=float(v[1]))\n\n\ndef color(v):\n    if isinstance(v, dict):\n        g = {k.lower(): float(x) for k, x in v.items()}\n        return unreal.LinearColor(g.get(\"r\", 0.0), g.get(\"g\", 0.0), g.get(\"b\", 0.0), g.get(\"a\", 1.0))\n    a = float(v[3]) if len(v) > 3 else 1.0\n    return unreal.LinearColor(float(v[0]), float(v[1]), float(v[2]), a)\n\n\ndef v3(v):\n    return [round(v.x, 3), round(v.y, 3), round(v.z, 3)]\n\n\ndef r3(r):\n    return [round(r.pitch, 3), round(r.yaw, 3), round(r.roll, 3)]\n\n\ndef resolve_class(name):\n    \"\"\"'StaticMeshActor' | 'unreal.PointLight' | '/Script/Engine.PointLight' | '/Game/BP_X.BP_X_C'\"\"\"\n    if not name:\n        return None\n    if name.startswith(\"/\"):\n        cls = unreal.load_class(None, name)\n        if cls is None and not name.endswith(\"_C\"):\n            bp = unreal.load_asset(name)\n            if bp is not None and hasattr(bp, \"generated_class\"):\n                cls = bp.generated_class()\n        return cls\n    short = name.split(\".\")[-1]\n    cls = getattr(unreal, short, None)\n    if cls is None:\n        return None\n    return cls.static_class() if hasattr(cls, \"static_class\") else cls\n\n\ndef class_name_of(obj):\n    return obj.get_class().get_name()\n\n\ndef is_a(actor, class_filter):\n    \"\"\"Class match by name, walking the actual class hierarchy is not exposed; use isinstance.\"\"\"\n    if not class_filter:\n        return True\n    cls = getattr(unreal, class_filter.split(\".\")[-1], None)\n    if cls is not None and isinstance(cls, type):\n        return isinstance(actor, cls)\n    return class_name_of(actor).lower() == class_filter.lower()\n\n\ndef actor_summary(a, fields=(\"class\", \"location\")):\n    out = {\"label\": a.get_actor_label(), \"name\": a.get_name()}\n    if \"class\" in fields:\n        out[\"class\"] = class_name_of(a)\n    if \"location\" in fields:\n        out[\"location\"] = v3(a.get_actor_location())\n    if \"rotation\" in fields:\n        out[\"rotation\"] = r3(a.get_actor_rotation())\n    if \"scale\" in fields:\n        out[\"scale\"] = v3(a.get_actor_scale3d())\n    if \"tags\" in fields:\n        out[\"tags\"] = [str(t) for t in a.tags]\n    if \"folder\" in fields:\n        out[\"folder\"] = str(a.get_folder_path())\n    if \"bounds\" in fields:\n        origin, extent = a.get_actor_bounds(False)\n        out[\"bounds\"] = {\"origin\": v3(origin), \"extent\": v3(extent)}\n    return out\n\n\ndef distance(a, b):\n    return _math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)\n\n\ndef coerce(current, value):\n    \"\"\"Convert a JSON value to match the type of an existing editor property value.\"\"\"\n    if isinstance(current, unreal.Vector):\n        return vec(value)\n    if isinstance(current, unreal.Rotator):\n        return rot(value)\n    if isinstance(current, unreal.LinearColor):\n        return color(value)\n    if isinstance(current, unreal.Color) and isinstance(value, (list, dict)):\n        c = color(value)\n        return unreal.Color(int(c.r), int(c.g), int(c.b), int(c.a))\n    if isinstance(value, str) and value.startswith(\"/\") and (current is None or isinstance(current, unreal.Object)):\n        loaded = unreal.load_asset(value)\n        if loaded is None:\n            raise LookupError(f\"asset {value!r} not found\")\n        return loaded\n    enum_base = getattr(unreal, \"EnumBase\", None)\n    if enum_base is not None and isinstance(current, enum_base) and isinstance(value, str):\n        member = getattr(type(current), value.split(\".\")[-1].upper(), None)\n        if member is None:\n            raise ValueError(f\"{value!r} is not a member of {type(current).__name__}\")\n        return member\n    if isinstance(current, bool):\n        return bool(value)\n    if isinstance(current, int) and not isinstance(current, bool) and isinstance(value, (int, float)):\n        return int(value)\n    if isinstance(current, float) and isinstance(value, (int, float)):\n        return float(value)\n    return value\n\n\ndef set_props(obj, props):\n    \"\"\"Set editor properties; supports 'component.prop' one level deep on actors.\"\"\"\n    done = []\n    for key, value in (props or {}).items():\n        target, prop = obj, key\n        if \".\" in key:\n            head, prop = key.split(\".\", 1)\n            target = obj.get_editor_property(head)\n            if target is None:\n                raise LookupError(f\"{head!r} is None on {obj.get_name()}\")\n        current = target.get_editor_property(prop)\n        target.set_editor_property(prop, coerce(current, value))\n        done.append(key)\n    return done\n\n\ndef asset_summary(ad):\n    cls = ad.asset_class_path\n    return {\n        \"path\": f\"{ad.package_name}.{ad.asset_name}\",\n        \"name\": str(ad.asset_name),\n        \"class\": str(cls.asset_name) if hasattr(cls, \"asset_name\") else str(cls),\n        \"package\": str(ad.package_name),\n    }\n\n\ndef asset_registry():\n    return unreal.AssetRegistryHelpers.get_asset_registry()\n\n\ndef _ensure_navmesh():\n    \"\"\"Script-placed nav bounds: register them, drop NavMesh data sized before the bounds existed\n    (it hits a tiny tile limit), and rebuild. Mirrors the manual fix: delete RecastNavMesh, Build Paths.\"\"\"\n    w = editor_world()\n    nav = unreal.NavigationSystemV1.get_navigation_system(w)\n    sub = actor_sub()\n    acts = sub.get_all_level_actors()\n    for v in [a for a in acts if a.get_class().get_name() == \"NavMeshBoundsVolume\"]:\n        if nav is not None:\n            nav.on_navigation_bounds_updated(v)\n    for a in [a for a in acts if a.get_class().get_name() == \"RecastNavMesh\"]:\n        sub.destroy_actor(a)\n    unreal.SystemLibrary.execute_console_command(w, \"RebuildNavigation\")\n\n\ndef enum_name(v):\n    \"\"\"unreal enum value -> 'INSTANT' (str() gives '<GameplayEffectDurationType.INSTANT: 0>' in the editor).\"\"\"\n    m = re.search(r\"\\.([A-Z0-9_]+)\", str(v))\n    return m.group(1) if m else str(v)\n\n# Dependency graph walk. ARGS: asset (path or package), direction: dependencies | referencers, depth, limit\n# ruff: noqa: F821\n_ar = asset_registry()\n_pkg = ARGS[\"asset\"].split(\".\")[0]\n_dir = ARGS.get(\"direction\") or \"dependencies\"\nif _dir not in (\"dependencies\", \"referencers\"):\n    raise ValueError(\"direction must be 'dependencies' or 'referencers'\")\n_depth = max(1, int(ARGS.get(\"depth\") or 1))\n_limit = int(ARGS.get(\"limit\") or 500)\n_opts = unreal.AssetRegistryDependencyOptions(\n    include_soft_package_references=True, include_hard_package_references=True,\n    include_searchable_names=False, include_soft_management_references=False,\n    include_hard_management_references=False)\n\n_seen = {_pkg: 0}\n_frontier = [_pkg]\n_edges = []\nfor _level in range(1, _depth + 1):\n    _next = []\n    for _p in _frontier:\n        if _dir == \"dependencies\":\n            _linked = _ar.get_dependencies(unreal.Name(_p), _opts) or []\n        else:\n            _linked = _ar.get_referencers(unreal.Name(_p), _opts) or []\n        for _l in _linked:\n            _l = str(_l)\n            _edges.append([_p, _l])\n            if _l not in _seen and len(_seen) < _limit:\n                _seen[_l] = _level\n                _next.append(_l)\n    _frontier = _next\n    if not _frontier:\n        break\n\nresult = {\"root\": _pkg, \"direction\": _dir,\n          \"packages\": [{\"package\": k, \"depth\": d} for k, d in _seen.items() if k != _pkg],\n          \"edges\": _edges[:_limit], \"truncated\": len(_seen) >= _limit}\n",
+      "timeout_s": 120.0
+     },
+     "description": "Package dependency graph. direction=\"dependencies\": what this asset pulls in;\n        direction=\"referencers\": what uses it (check before deleting or renaming).\n        depth > 1 walks transitively.",
+     "inputSchema": {
+      "properties": {
+       "asset": {
+        "title": "Asset",
+        "type": "string"
+       },
+       "depth": {
+        "default": 1,
+        "title": "Depth",
+        "type": "integer"
+       },
+       "direction": {
+        "default": "dependencies",
+        "title": "Direction",
+        "type": "string"
+       },
+       "limit": {
+        "default": 500,
+        "title": "Limit",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "asset"
+      ],
+      "title": "asset_referencesArguments",
+      "type": "object"
+     },
+     "name": "asset_references"
+    }
+   ]
+  },
+  {
+   "description": "UnrealMCP editor control: project context, safe level switching, console commands, Output Log tail with a cursor.",
+   "name": "UnrealMCP.Editor",
+   "tools": [
+    {
+     "backend": {
+      "command": "project_context",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Engine version, project name/dir, current level, enabled plugins, maps,\n        and the path of the generated Python API stub (for unreal_api_build_index).",
+     "inputSchema": {
+      "properties": {},
+      "title": "project_contextArguments",
+      "type": "object"
+     },
+     "name": "project_context"
+    },
+    {
+     "backend": {
+      "command": "level_open",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Switch the editor to another map safely (use this instead of LevelEditorSubsystem.load_level /\n        new_level in execute_python).\n\n        path: \"/Game/Maps/Arena\". create=true makes the map with new_level and saves it when it\n        does not exist yet. The current level must be saved first: save_current=true saves every\n        dirty package (no prompts), discard_changes=true drops the edits.\n        Before switching it drops Python references and collects garbage, and if the target's\n        world is already in memory as a standalone copy (made by duplicate_asset, load_asset or an\n        earlier new_level) it unloads that copy first: loading over it fatals the editor with\n        \"World Memory Leaks\". Returns current_level, created, unloaded_stale_copy.",
+     "inputSchema": {
+      "properties": {
+       "create": {
+        "default": false,
+        "title": "Create",
+        "type": "boolean"
+       },
+       "discard_changes": {
+        "default": false,
+        "title": "Discard Changes",
+        "type": "boolean"
+       },
+       "path": {
+        "title": "Path",
+        "type": "string"
+       },
+       "save_current": {
+        "default": false,
+        "title": "Save Current",
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "path"
+      ],
+      "title": "level_openArguments",
+      "type": "object"
+     },
+     "name": "level_open"
+    },
+    {
+     "backend": {
+      "command": "console_command",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Run an editor console command (e.g. \"stat unit\", \"r.ScreenPercentage 50\",\n        \"obj list class=StaticMesh\") and return its captured output.",
+     "inputSchema": {
+      "properties": {
+       "command": {
+        "title": "Command",
+        "type": "string"
+       }
+      },
+      "required": [
+       "command"
+      ],
+      "title": "console_commandArguments",
+      "type": "object"
+     },
+     "name": "console_command"
+    },
+    {
+     "backend": {
+      "command": "editor_log",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Tail the editor Output Log (kept in a ring buffer by the plugin).\n\n        min_verbosity: Error, Warning, Display or Log. filter: case-insensitive substring.\n        since_seq: only entries after this sequence number. Pass back `last_seq` from a\n        previous call to see only what happened since (e.g. after a compile or PIE run).",
+     "inputSchema": {
+      "properties": {
+       "category": {
+        "default": "",
+        "title": "Category",
+        "type": "string"
+       },
+       "filter": {
+        "default": "",
+        "title": "Filter",
+        "type": "string"
+       },
+       "lines": {
+        "default": 200,
+        "title": "Lines",
+        "type": "integer"
+       },
+       "min_verbosity": {
+        "default": "Log",
+        "title": "Min Verbosity",
+        "type": "string"
+       },
+       "since_seq": {
+        "default": 0,
+        "title": "Since Seq",
+        "type": "integer"
+       }
+      },
+      "title": "editor_logArguments",
+      "type": "object"
+     },
+     "name": "editor_log"
+    }
+   ]
+  },
+  {
+   "description": "UnrealMCP reflection: describe any UObject/UClass, get/set any UPROPERTY (undoable), call any UFUNCTION.",
+   "name": "UnrealMCP.Reflection",
+   "tools": [
+    {
+     "backend": {
+      "command": "object_describe",
+      "kind": "command",
+      "rename": {
+       "class_name": "class"
+      },
+      "timeout_s": 120.0
+     },
+     "description": "Describe a UObject or UClass: properties (name, type, flags) and functions (signatures).\n\n        path: object path, e.g. \"/Game/BP_Player.BP_Player_C\", an actor label in the current\n              level (e.g. \"PointLight_1\"), or \"/Script/Engine.Default__Character\".\n        class_name: alternatively a class, e.g. \"StaticMeshActor\" or \"/Script/Engine.Character\".\n        include_values: also return current property values (objects only).\n        filter: case-insensitive substring to narrow property/function names.",
+     "inputSchema": {
+      "properties": {
+       "class_name": {
+        "default": "",
+        "title": "Class Name",
+        "type": "string"
+       },
+       "filter": {
+        "default": "",
+        "title": "Filter",
+        "type": "string"
+       },
+       "include_functions": {
+        "default": true,
+        "title": "Include Functions",
+        "type": "boolean"
+       },
+       "include_values": {
+        "default": false,
+        "title": "Include Values",
+        "type": "boolean"
+       },
+       "path": {
+        "default": "",
+        "title": "Path",
+        "type": "string"
+       }
+      },
+      "title": "object_describeArguments",
+      "type": "object"
+     },
+     "name": "object_describe"
+    },
+    {
+     "backend": {
+      "command": "property_get",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Read any property of a UObject or actor. Supports dotted struct/sub-object paths,\n        e.g. property=\"RootComponent.RelativeLocation\" or \"LightComponent.Intensity\".",
+     "inputSchema": {
+      "properties": {
+       "path": {
+        "title": "Path",
+        "type": "string"
+       },
+       "property": {
+        "title": "Property",
+        "type": "string"
+       }
+      },
+      "required": [
+       "path",
+       "property"
+      ],
+      "title": "property_getArguments",
+      "type": "object"
+     },
+     "name": "property_get"
+    },
+    {
+     "backend": {
+      "command": "property_set",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Write any property of a UObject or actor (undoable). Value is JSON matching the\n        property type: numbers, strings, {\"X\":..,\"Y\":..,\"Z\":..} for vectors, object paths for\n        object references, arrays for TArray. Returns old and new values.",
+     "inputSchema": {
+      "properties": {
+       "path": {
+        "title": "Path",
+        "type": "string"
+       },
+       "property": {
+        "title": "Property",
+        "type": "string"
+       },
+       "value": {
+        "title": "Value"
+       }
+      },
+      "required": [
+       "path",
+       "property",
+       "value"
+      ],
+      "title": "property_setArguments",
+      "type": "object"
+     },
+     "name": "property_set"
+    },
+    {
+     "backend": {
+      "command": "function_call",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Call any UFUNCTION on an object (BlueprintCallable, CallInEditor, or native).\n\n        args maps parameter names to JSON values. Returns the return value and out-params.\n        For static library functions use the class default object, e.g.\n        path=\"/Script/Engine.Default__KismetSystemLibrary\".",
+     "inputSchema": {
+      "properties": {
+       "args": {
+        "anyOf": [
+         {
+          "type": "object"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Args"
+       },
+       "function": {
+        "title": "Function",
+        "type": "string"
+       },
+       "path": {
+        "title": "Path",
+        "type": "string"
+       }
+      },
+      "required": [
+       "path",
+       "function"
+      ],
+      "title": "function_callArguments",
+      "type": "object"
+     },
+     "name": "function_call"
+    }
+   ]
+  },
+  {
+   "description": "UnrealMCP runtime: inject real key / Enhanced Input action presses into a running PIE session and measure frame, game, render, RHI and GPU times.",
+   "name": "UnrealMCP.Play",
+   "tools": [
+    {
+     "backend": {
+      "command": "pie_input",
+      "kind": "command",
+      "timeout_s": 120.0
+     },
+     "description": "Inject input into a RUNNING PIE session (start it with editor_action pie_start), outside\n        pie_test. key: FKey name (SpaceBar, W, LeftMouseButton, MouseX, Gamepad_LeftX, ...) or action:\n        InputAction asset path (Enhanced Input, injected every frame). mode: press (tap, default\n        0.1 s), hold (down for duration_s, default 1 s), axis (value every frame; number or [x, y]),\n        release_all. Returns immediately; the input runs on the editor for duration_s.",
+     "inputSchema": {
+      "properties": {
+       "action": {
+        "default": "",
+        "title": "Action",
+        "type": "string"
+       },
+       "duration_s": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Duration S"
+       },
+       "key": {
+        "default": "",
+        "title": "Key",
+        "type": "string"
+       },
+       "mode": {
+        "default": "press",
+        "title": "Mode",
+        "type": "string"
+       },
+       "player": {
+        "default": 0,
+        "title": "Player",
+        "type": "integer"
+       },
+       "value": {
+        "default": null,
+        "title": "Value"
+       }
+      },
+      "title": "pie_inputArguments",
+      "type": "object"
+     },
+     "name": "pie_input"
+    },
+    {
+     "backend": {
+      "kind": "frame_stats",
+      "timeout_s": 60
+     },
+     "description": "Measure the next `frames` editor frames (PIE or not): average / p95 / p99 frame time,\n        fps, and game-thread, render-thread, RHI-thread and GPU ms. For a gameplay benchmark run it\n        inside pie_test steps ({\"frame_stats\": 300}) so it measures the game, not the idle editor.",
+     "inputSchema": {
+      "properties": {
+       "frames": {
+        "default": 120,
+        "title": "Frames",
+        "type": "integer"
+       },
+       "timeout_s": {
+        "default": 60.0,
+        "title": "Timeout S",
+        "type": "number"
+       }
+      },
+      "title": "frame_statsArguments",
+      "type": "object"
+     },
+     "name": "frame_stats"
+    }
+   ]
+  }
+ ],
+ "version": "0.3.0"
+}

@@ -118,6 +118,41 @@ $env:UNREAL_MCP_BIND = "0.0.0.0"; $env:UNREAL_MCP_TOKEN = "<random-secret>"; scr
 - [ ] A wrong token gets `unauthorized`.
 - [ ] `0.0.0.0` without a token falls back to `127.0.0.1` (Output Log error). Allow port 55557 in Windows Firewall.
 
+## 10b. Epic native MCP server + UnrealMCPToolsets (branch feat/native-mcp)
+This has only been built and unit-tested. **It has never run live**, so this is its first real check. Background is in
+[EPIC_NATIVE_MCP.md](EPIC_NATIVE_MCP.md).
+
+The sample project now enables these plugins: ModelContextProtocol, ToolsetRegistry, EditorToolset, UMGToolSet, GameplayTagsToolset and
+UnrealMCPToolsets. Both plugins get synced by `sync_plugin.ps1`.
+```powershell
+scripts\ue_windows.ps1 build                         # expect build ok; MSVC builds UnrealMCPToolsets too
+$env:UE_EXTRA_ARGS = "-ModelContextProtocolStartServer -ModelContextProtocolPort=8568"
+scripts\ue_windows.ps1 launch
+cd Python; uv run python ..\scripts\epic_mcp_smoke.py --url http://127.0.0.1:8568/mcp; cd ..
+```
+- [ ] `editor.log` contains `UnrealMCPToolsets: registered 8 toolsets (24 tools) with the ToolsetRegistry`,
+      `Starting MCP server on port 8568` and `Tool search enabled: registered 3 meta-tools (...)`.
+- [ ] The smoke script exits 0 and prints the following:
+  - `tools/list: 3 tools (tool_search)` and `ours: [...]` with 8 `UnrealMCP.*` toolsets.
+  - Our tools: `ok UnrealMCP.Editor.project_context`, `ok UnrealMCP.Scene.scene_brief`, `ok UnrealMCP.Play.frame_stats` (frame_ms present)
+    and `ok UnrealMCP.Blueprint.bp_export -> error: ...` (an expected error).
+  - Epic's tools: `ok ...EditorAppToolset.IsPIERunning` and `ok ...SceneTools.get_current_level`.
+- [ ] Eager mode: `scripts\ue_windows.ps1 quit`, then add
+      `-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bEnableToolSearch=False`
+      to `UE_EXTRA_ARGS` and relaunch. The smoke script should print `tools/list: ~308 tools (eager)` and list all 24
+      `UnrealMCP.<Toolset>.<tool>` names.
+- [ ] Gateway: with the editor still up, run
+      `$env:UNREAL_MCP_PORT=55557; $env:UNREAL_MCP_EPIC_URL="http://127.0.0.1:8568/mcp"` and start an agent session
+      (`claude mcp add unreal -e ... -- uv --directory <repo>\Python run unreal_mcp_server_advanced.py`). Then:
+  - `epic_list_toolsets` lists Epic's toolsets and ours.
+  - `epic_call_tool(toolset_name="EditorToolset.EditorAppToolset", tool_name="CaptureViewport")` returns an **image** the model can see.
+  - Claude Code direct: `claude mcp add --transport http unreal-native http://127.0.0.1:8568/mcp`, then `/mcp` shows
+    `list_toolsets`, `describe_toolset` and `call_tool`.
+- [ ] Report: the smoke output from both modes, any `LogToolsetRegistry` or `LogModelContextProtocol` warnings, and
+      whether `bp_apply` through `call_tool` creates and compiles a Blueprint. For example: `toolset_name=UnrealMCP.Blueprint`,
+      `tool_name=bp_apply`, `arguments={"blueprint":"/Game/Native/BP_T","create_parent":"Actor","operations":[{"op":"add_variable","name":"Score","type":"int"}]}`.
+      Expected: `success: true` and `compile` status ok.
+
 ## 10. Finish and report
 ```powershell
 cd ..; scripts\ue_windows.ps1 quit
