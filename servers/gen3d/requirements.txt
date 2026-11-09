@@ -1,0 +1,14 @@
+# Server core (enough for --backend mock)
+fastapi>=0.110
+uvicorn>=0.29
+pillow>=10
+# Shared by the real backends (install torch first, matching your CUDA: https://pytorch.org/get-started/locally/)
+trimesh>=4
+rembg[gpu]>=2.0.50
+huggingface_hub>=0.23
+# Text -> image (--t2i flux-schnell | sdxl)
+diffusers>=0.30
+transformers>=4.44
+accelerate>=0.33
+sentencepiece
+protobuf
