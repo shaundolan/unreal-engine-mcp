@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Linux plugin dev loop for the sample project (Windows: scripts/ue_windows.ps1).
 #   scripts/ue_linux.sh build      sync plugin copy + compile (this project's editor must be closed)
-#   scripts/ue_linux.sh launch     start the editor offscreen (no window) and wait until the MCP plugin answers ping
+#   scripts/ue_linux.sh launch     start the editor offscreen (no window, -unattended) and wait until the MCP plugin answers ping
 #   scripts/ue_linux.sh launch-gui same, with a visible editor window
 # Offscreen is the default for automation: in UE 5.8.4 Linux/Vulkan a stale window swapchain
 # ("AcquireNextImage() failed due to the outdated swapchain") can deadlock the RHI/render/game threads.
+# Offscreen launches also pass -unattended: nobody can answer a modal dialog there, and on a crash the
+# CrashReportClient window would otherwise pop up on the desktop. UE_EXTRA_ARGS (e.g. "-nosound") are appended.
 #   scripts/ue_linux.sh quit       close the editor over MCP (falls back to SIGTERM of the editor this script started)
 #   scripts/ue_linux.sh rebuild    quit + build + launch
+#   scripts/ue_linux.sh close-crash-reporter   close a CrashReportClient left by a crashed editor of this project
 # UE_PROJECT selects another .uproject (default: the sample project). UE_ROOT defaults to ~/Downloads/Linux_Unreal_Engine_5.8.4;
 # Logs (build.log, editor.log) and the editor pid file go to $UE_LOG_DIR (default /tmp/unreal-mcp/<port>).
 # UNREAL_MCP_PORT / UNREAL_MCP_TOKEN pick the editor: the launched editor listens there, and ping/quit only talk to it.
@@ -48,6 +51,18 @@ our_pid() {
   fi
 }
 
+# A crashed editor of THIS project starts CrashReportClient (a desktop window unless -unattended). Close only the
+# ones whose command line points at this project's Saved/Crashes, never anyone else's.
+close_crash_reporter() {
+  local p crash_dir
+  crash_dir="$(dirname "$PROJECT")/Saved/Crashes"
+  for p in $(pgrep -f CrashReportClient 2>/dev/null || true); do
+    if tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | grep -qF -- "$crash_dir"; then
+      echo "closing CrashReportClient $p"; kill -TERM "$p" 2>/dev/null || true
+    fi
+  done
+}
+
 do_quit() {
   local pid
   pid="$(our_pid)"
@@ -65,6 +80,7 @@ UnrealConnection().send_command('execute_python', {'code': 'import unreal; unrea
   fi
   for _ in $(seq 1 45); do kill -0 "$pid" 2>/dev/null || { echo "editor closed"; rm -f "$PID_FILE"; return 0; }; sleep 2; done
   echo "editor did not quit; sending SIGTERM to $pid"; kill -TERM "$pid" 2>/dev/null || true; sleep 5; rm -f "$PID_FILE"
+  close_crash_reporter
 }
 
 do_build() {
@@ -84,21 +100,23 @@ do_build() {
 }
 
 do_launch() {
-  local mode=("-RenderOffscreen")
+  local mode=("-RenderOffscreen" "-unattended")
   [ "${1:-}" = "gui" ] && mode=()
+  # shellcheck disable=SC2206
+  local extra=(${UE_EXTRA_ARGS:-})
   if ping_editor; then echo "an editor already answers on port $PORT"; return 0; fi
   if [ -n "$(our_pid)" ]; then echo "editor $(our_pid) is still starting or hung; run quit first"; return 1; fi
   local open
   open="$(project_editors)"
   if [ -n "$open" ]; then echo "the project is already open in editor pid(s) $(echo $open) on another port"; return 1; fi
-  UNREAL_MCP_PORT="$PORT" setsid "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$PROJECT" -nosplash "${mode[@]}" \
+  UNREAL_MCP_PORT="$PORT" setsid "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$PROJECT" -nosplash "${mode[@]}" "${extra[@]}" \
     -abslog="$EDITOR_LOG" \
     "-ini:Engine:[/Script/PythonScriptPlugin.PythonScriptPluginSettings]:bDeveloperMode=True" >/dev/null 2>&1 &
   local pid=$!
   echo "$pid" >"$PID_FILE"
   for i in $(seq 1 180); do
     if ping_editor; then sleep 10; echo "editor $pid ready on port $PORT after ~$((i * 5))s"; return 0; fi
-    kill -0 "$pid" 2>/dev/null || { echo "EDITOR EXITED"; tail -20 "$EDITOR_LOG"; rm -f "$PID_FILE"; return 1; }
+    kill -0 "$pid" 2>/dev/null || { echo "EDITOR EXITED"; tail -20 "$EDITOR_LOG"; rm -f "$PID_FILE"; close_crash_reporter; return 1; }
     sleep 5
   done
   echo "editor did not answer within 15 min"; return 1
@@ -109,6 +127,7 @@ case "${1:-}" in
   launch) do_launch ;;
   launch-gui) do_launch gui ;;
   quit) do_quit ;;
+  close-crash-reporter) close_crash_reporter ;;
   rebuild) do_quit && do_build && do_launch ;;
-  *) echo "usage: $0 build|launch|launch-gui|quit|rebuild"; exit 2 ;;
+  *) echo "usage: $0 build|launch|launch-gui|quit|rebuild|close-crash-reporter"; exit 2 ;;
 esac

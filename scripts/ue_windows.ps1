@@ -165,7 +165,7 @@ function Invoke-Launch([bool]$Gui) {
         "-ini:Engine:[/Script/PythonScriptPlugin.PythonScriptPluginSettings]:bDeveloperMode=True",
         # a background editor throttles to a few fps ("Use Less CPU when in Background"), which slows pie_test
         "-ini:EditorPerProjectUserSettings:[/Script/UnrealEd.EditorPerformanceSettings]:bThrottleCPUWhenNotForeground=False")
-    if (-not $Gui) { $editorArgs += "-RenderOffscreen" }
+    if (-not $Gui) { $editorArgs += "-RenderOffscreen"; $editorArgs += "-unattended" }  # no modal dialogs / crash-reporter window
     $env:UNREAL_MCP_PORT = "$Port"   # inherited by the editor: the plugin listens there
     $proc = Start-Process -FilePath $EditorExe -ArgumentList $editorArgs -PassThru
     Set-Content -Path $PidFile -Value $proc.Id

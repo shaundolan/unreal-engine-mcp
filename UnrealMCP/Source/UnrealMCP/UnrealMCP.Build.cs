@@ -71,7 +71,8 @@ public class UnrealMCP : ModuleRules
 				"AnimGraph",           // animbp_apply: state machines, states, transitions, asset players
 				"AnimGraphRuntime",
 				"AnimationBlueprintLibrary", // anim_asset_apply: notifies
-				"GameplayTags"         // gameplay_tags
+				"GameplayTags",        // gameplay_tags
+				"LevelEditor"          // level_open: ULevelEditorSubsystem::NewLevel
 			}
 		);
 		

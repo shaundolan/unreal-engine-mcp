@@ -1,6 +1,7 @@
 #include "Commands/EpicUnrealMCPObservationCommands.h"
 #include "Commands/EpicUnrealMCPReflectionCommands.h"
 #include "Commands/EpicUnrealMCPPythonCommands.h"
+#include "Commands/MCPLevelCommands.h"
 #include "Editor.h"
 #include "Engine/GameViewportClient.h"
 #include "EditorViewportClient.h"
@@ -354,16 +355,12 @@ static TSharedPtr<FJsonObject> HandleEditorAction(const TSharedPtr<FJsonObject>&
 	}
 	if (Action == TEXT("save_all"))
 	{
-		// An untitled (/Temp/) map would pop a modal Save As dialog and stall the game thread.
-		UWorld* World = FEpicUnrealMCPReflectionCommands::GetEditorWorld();
-		const bool bUntitledMap = World && World->GetOutermost()->GetName().StartsWith(TEXT("/Temp/"));
-		const bool bOk = FEditorFileUtils::SaveDirtyPackages(/*bPromptUserToSave*/ false, /*bSaveMapPackages*/ !bUntitledMap, /*bSaveContentPackages*/ true);
-		Out->SetBoolField(TEXT("saved"), bOk);
-		if (bUntitledMap)
-		{
-			Out->SetStringField(TEXT("warning"), TEXT("current map is untitled and was NOT saved; save it once via execute_python: unreal.EditorLoadingAndSavingUtils.save_map(world, '/Game/Maps/Name')"));
-		}
-		return Out;
+		// Never prompts (checkout, make-writable and failed-save dialogs would block an offscreen editor), saves maps
+		// too, including a NewLevel map that was never written, and reports what was saved, failed or skipped.
+		TSharedPtr<FJsonObject> Saved = FMCPLevelCommands::SaveAllNonInteractive(true, true);
+		Saved->SetStringField(TEXT("action"), Action);
+		Saved->SetBoolField(TEXT("saved"), Saved->GetBoolField(TEXT("all_saved")));
+		return Saved;
 	}
 	if (Action == TEXT("open_asset"))
 	{
@@ -379,29 +376,17 @@ static TSharedPtr<FJsonObject> HandleEditorAction(const TSharedPtr<FJsonObject>&
 	}
 	if (Action == TEXT("load_level"))
 	{
+		// Same safe path as level_open: GC first, unload a stale in-memory copy of the target, no prompts.
 		FString LevelPath;
 		Params->TryGetStringField(TEXT("level_path"), LevelPath);
 		bool bDiscard = false;
 		Params->TryGetBoolField(TEXT("discard_changes"), bDiscard);
-		if (UWorld* Current = FEpicUnrealMCPReflectionCommands::GetEditorWorld())
-		{
-			UPackage* Pkg = Current->GetOutermost();
-			if (Pkg->IsDirty())
-			{
-				if (!bDiscard)
-				{
-					return MCPError(TEXT("current level has unsaved changes; run save_all first or pass discard_changes=true (loading would otherwise open a modal save prompt)"));
-				}
-				Pkg->SetDirtyFlag(false);
-			}
-		}
-		UWorld* Loaded = UEditorLoadingAndSavingUtils::LoadMap(LevelPath);
-		if (!Loaded)
-		{
-			return MCPError(FString::Printf(TEXT("could not load level '%s'"), *LevelPath));
-		}
-		Out->SetStringField(TEXT("current_level"), Loaded->GetOutermost()->GetName());
-		return Out;
+		TSharedPtr<FJsonObject> P = MakeShared<FJsonObject>();
+		P->SetStringField(TEXT("path"), LevelPath);
+		P->SetBoolField(TEXT("discard_changes"), bDiscard);
+		TSharedPtr<FJsonObject> R = FMCPLevelCommands::OpenLevel(P);
+		R->SetStringField(TEXT("action"), Action);
+		return R;
 	}
 	if (Action == TEXT("select_actors"))
 	{

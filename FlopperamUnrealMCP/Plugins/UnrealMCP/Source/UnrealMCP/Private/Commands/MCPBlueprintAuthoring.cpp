@@ -28,6 +28,7 @@
 #include "K2Node_FunctionResult.h"
 #include "K2Node_GetArrayItem.h"
 #include "K2Node_IfThenElse.h"
+#include "K2Node_InputKey.h"
 #include "K2Node_MacroInstance.h"
 #include "K2Node_Self.h"
 #include "K2Node_SpawnActorFromClass.h"
@@ -411,6 +412,11 @@ static TSharedPtr<FJsonObject> NodeSpec(UEdGraphNode* N)
 	{
 		S->SetStringField(TEXT("kind"), TEXT("get_var"));
 		S->SetStringField(TEXT("variable"), VG->VariableReference.GetMemberName().ToString());
+	}
+	else if (const UK2Node_InputKey* IK = Cast<UK2Node_InputKey>(N))
+	{
+		S->SetStringField(TEXT("kind"), TEXT("key_event"));
+		S->SetStringField(TEXT("key"), IK->InputKey.GetFName().ToString());
 	}
 	else if (Cast<UK2Node_IfThenElse>(N)) S->SetStringField(TEXT("kind"), TEXT("branch"));
 	else if (Cast<UK2Node_ExecutionSequence>(N)) S->SetStringField(TEXT("kind"), TEXT("sequence"));
@@ -1063,6 +1069,14 @@ static UEdGraphNode* CreateNodeFromOp(FApplyContext& Ctx, UEdGraph* G, const TSh
 			Err = FString::Printf(TEXT("class '%s' not found"), *ClassHint);
 			return nullptr;
 		}
+		// A class the Blueprint itself is (its parent or any ancestor, or its own generated class) means an inherited
+		// or own variable: reference it as a self member. As an external member it would need a Target pin wired to
+		// self and fail to compile.
+		if (External && (External == BP->GeneratedClass || External == BP->SkeletonGeneratedClass
+			|| (BP->ParentClass && BP->ParentClass->IsChildOf(External))))
+		{
+			External = nullptr;
+		}
 		if (!External && BP->SkeletonGeneratedClass && !FindFProperty<FProperty>(BP->SkeletonGeneratedClass, Var))
 		{
 			// Fresh variables/components need the skeleton regenerated before they resolve.
@@ -1072,6 +1086,36 @@ static UEdGraphNode* CreateNodeFromOp(FApplyContext& Ctx, UEdGraph* G, const TSh
 		UEdGraphNode* N = Kind == TEXT("get_var")
 			? static_cast<UEdGraphNode*>(NewNode<UK2Node_VariableGet>(G, [&](UK2Node_VariableGet* V) { Setup(V->VariableReference); }))
 			: static_cast<UEdGraphNode*>(NewNode<UK2Node_VariableSet>(G, [&](UK2Node_VariableSet* V) { Setup(V->VariableReference); }));
+		PlaceNode(Ctx, G, N, Op);
+		return N;
+	}
+	if (Kind == TEXT("key_event") || Kind == TEXT("input_key"))
+	{
+		// K2Node_InputKey: "Pressed" / "Released" exec outputs and a "Key" output. The actor must receive input
+		// (a possessed pawn, its PlayerController, or EnableInput on any other actor).
+		const FKey Key(*Str(TEXT("key")));
+		if (!Key.IsValid())
+		{
+			Err = FString::Printf(TEXT("unknown key '%s' (E, SpaceBar, Enter, Escape, LeftMouseButton, Gamepad_FaceButton_Bottom, ...)"), *Str(TEXT("key")));
+			return nullptr;
+		}
+		if (!BP->UbergraphPages.Contains(G))
+		{
+			Err = TEXT("key_event nodes can only go in an event graph (EventGraph), not in a function");
+			return nullptr;
+		}
+		auto Flag = [&Op](const TCHAR* F, bool bDefault) { bool B = bDefault; Op->TryGetBoolField(F, B); return B; };
+		UK2Node_InputKey* N = NewNode<UK2Node_InputKey>(G, [&](UK2Node_InputKey* K)
+		{
+			K->InputKey = Key;
+			K->bConsumeInput = Flag(TEXT("consume_input"), true);
+			K->bExecuteWhenPaused = Flag(TEXT("execute_when_paused"), false);
+			K->bOverrideParentBinding = Flag(TEXT("override_parent_binding"), true);
+			K->bControl = Flag(TEXT("ctrl"), false);
+			K->bAlt = Flag(TEXT("alt"), false);
+			K->bShift = Flag(TEXT("shift"), false);
+			K->bCommand = Flag(TEXT("cmd"), false);
+		});
 		PlaceNode(Ctx, G, N, Op);
 		return N;
 	}
@@ -1146,7 +1190,7 @@ static UEdGraphNode* CreateNodeFromOp(FApplyContext& Ctx, UEdGraph* G, const TSh
 		return N;
 	}
 	Err = FString::Printf(TEXT("unknown node kind '%s' (event, custom_event, component_event, call_function, get_var, set_var, "
-		"branch, sequence, cast, self, macro, spawn_actor, node)"), *Kind);
+		"key_event, branch, sequence, cast, self, macro, spawn_actor, node)"), *Kind);
 	return nullptr;
 }
 
