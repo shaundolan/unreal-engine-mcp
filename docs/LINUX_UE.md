@@ -4,6 +4,13 @@ Tested 2026-11-08: Unreal 5.8.4 (Linux zip from unrealengine.com/linux), Ubuntu,
 Results: smoke 16/16, UE-Bench reference 15/15, baseline 0/15 (`bench/results/2026-11-08-ue5.8.4-linux/`).
 
 Plugin dev loop: `scripts/ue_linux.sh build|launch|quit|rebuild` (rebuild = quit over MCP, compile, relaunch, wait for ping).
+Several editors can share the machine, one per `UNREAL_MCP_PORT`:
+- logs and the pid file go to `/tmp/unreal-mcp/<port>/`;
+- `quit` only signals the editor the script started on that port;
+- `launch` and `build` refuse while the project is open in another editor.
+
+Builds pass `-NoHotReloadFromIDE`. Without it, any other running editor makes UBT write a `-NNNN` hot-reload binary that the next
+launch ignores, so the editor silently loads stale plugin code.
 
 ```bash
 E=~/Downloads/Linux_Unreal_Engine_5.8.4          # wherever the zip was unpacked (77 GB)

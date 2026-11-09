@@ -74,6 +74,17 @@ steps=[
   {"do":"player.jump()"}, {"wait_s":0.3},
   {"check":[{"type":"python","expr":"player.get_actor_location().z > 150"}]}]
 ```
+To prove the **input bindings** work, press real keys or inject Enhanced Input actions instead of calling the pawn.
+A name starting with `/` is an InputAction asset; anything else is an FKey name.
+```json
+steps=[
+  {"hold":"W","duration_s":1.5},                     {"press":"SpaceBar"},
+  {"axis":"/Game/Input/IA_Move","value":[0,1],"duration_s":2},
+  {"look":[5,0],"duration_s":0.5},                   {"hold":"W","duration_s":3,"async":true},
+  {"frame_stats":300,"max_p95_ms":33.3}]
+```
+`frame_stats` reports avg/p95 frame, game, render, RHI and GPU ms. `navmesh_repaired: true` in the result means pie_test had to
+rebuild the NavMesh first, so add or rebuild a `NavMeshBoundsVolume` properly before shipping.
 If something fails, read `results[].actual`, `steps[].assertions` and `errors_in_log`, fix just that, and re-run.
 Then run `performance_audit` and `editor_action(action="save_all")`.
 
@@ -83,7 +94,7 @@ Then run `performance_audit` and `editor_action(action="save_all")`.
 UE-Bench task `bench/tasks/demo-arena-playable.json`.
 
 ## Limits today (be honest with the user)
-- PIE input is driven through pawn and controller calls (`add_movement_input`, `jump`, BlueprintCallable functions), not raw key events.
-  Enhanced Input action bindings aren't exercised directly.
+- PIE input reaches the player controller directly. UI widgets (buttons, menus) aren't clicked through Slate yet.
+  Call their functions, or test them with `do` steps.
 - Animation Blueprint graphs and Niagara module graphs can't be authored structurally yet. Use existing assets and parameters.
 - Live Coding is Windows-only. On a Linux editor, rebuild instead.

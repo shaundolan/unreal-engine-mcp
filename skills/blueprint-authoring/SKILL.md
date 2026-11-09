@@ -47,6 +47,11 @@ bp_apply(blueprint="/Game/Game/BP_Coin", create_parent="Actor", operations=[
 `get_var` / `set_var` · `branch` · `sequence` · `cast` · `self` · `macro` (DoOnce, Gate, ForLoop, ForEachLoop, IsValid) ·
 `spawn_actor` · `node` with any K2Node class, e.g. `K2Node_CreateWidget` with `pins: {"Class": "/Game/UI/WBP_HUD.WBP_HUD_C"}`.
 
+Array functions (`Array_Length`, `Array_Add`, `Array_Contains`, ...) and `ForEachLoop` start out as wildcards. They take their
+type from the array you connect, the same as in the editor. `Array_Get` becomes the editor's **Get** node, with pins `Array`,
+`Dimension 1` and `Output`; the names `TargetArray`, `Index` and `Item` work too. A `warnings` entry about a "wildcard although it
+is connected" means the source pin itself has no type.
+
 ## Recipes
 - **Show a HUD.** On BeginPlay (pawn, controller or a placed actor): `GetPlayerController` → `K2Node_CreateWidget.OwningPlayer`,
   `CreateWidget.ReturnValue` → `AddToViewport.self`.

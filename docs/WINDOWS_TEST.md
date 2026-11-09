@@ -1,63 +1,117 @@
-# Windows build & test checklist (plugin 0.2)
+# Windows test checklist (RTX 4090, plugin 0.3.0)
 
-The 0.2 C++ changes (framed protocol, command registry, execute_python, reflection, observation) were written
-without an engine available and have **not been compiled yet**. Run this on the Windows UE box to verify them.
+Everything below is already verified on UE 5.8.4 Linux with a GTX 1080 (see `bench/results/`). This run checks the
+Win64 build, D3D12, Live Coding and Win64 packaging. It also gets real GPU numbers. Run the steps in order from
+PowerShell in the repo root. Keep each step's output (copy the console, or the log path it prints) for the report.
 
-## 0. Prereqs
-- UE 5.5+ installed (Epic launcher) with **Editor symbols** optional; Visual Studio 2022 with *Game development with C++*.
-- `uv` (`winget install astral-sh.uv`) and git.
+## 0. Prerequisites
+- [ ] UE **5.8** from the Epic launcher. `UE_ROOT` defaults to `C:\Program Files\Epic Games\UE_5.8`. Set it if yours differs:
+      `$env:UE_ROOT = "D:\Epic\UE_5.8"`.
+- [ ] Visual Studio 2022 (or Build Tools) with **Game development with C++**, the MSVC v143 toolset and a Windows 10/11 SDK.
+- [ ] git, and `uv` (`winget install astral-sh.uv`; open a new terminal afterwards).
+- [ ] Optional: Blender 4.x. Without it, the `modeling-blender-crate` and `demo-arena-playable` bench tasks are skipped.
+- [ ] Scripts allowed for this shell: `Set-ExecutionPolicy -Scope Process Bypass`.
 
-## 1. Build the plugin
 ```powershell
 git clone https://github.com/shaundolan/unreal-engine-mcp; cd unreal-engine-mcp
-git checkout feat/phase0-1-foundation
-& "C:\Program Files\Epic Games\UE_5.5\Engine\Build\BatchFiles\Build.bat" `
-  FlopperamUnrealMCPEditor Win64 Development `
-  -Project="$PWD\FlopperamUnrealMCP\FlopperamUnrealMCP.uproject" -WaitMutex
+git checkout feat/windows-verify          # or whatever branch the lead names
+cd Python; uv sync --group dev; cd ..
 ```
-If it fails, save the full UBT output (`Engine\Programs\UnrealBuildTool\Log.txt`) and bring it back. Fix the
-errors in `UnrealMCP/` (source of truth), then `scripts\sync_plugin.ps1`.
 
-Things to check first:
-- `FImageUtils::ImageResize` overload (`EpicUnrealMCPObservationCommands.cpp`)
-- `FJsonObjectConverter::*` and `FProperty::ImportText_Direct` signatures (`EpicUnrealMCPReflectionCommands.cpp`)
-- `FPythonCommandEx` fields/enums (`EpicUnrealMCPPythonCommands.cpp`)
-
-## 2. Launch
+## 1. Unit tests (no editor)
 ```powershell
-start FlopperamUnrealMCP\FlopperamUnrealMCP.uproject
+cd Python; uv run pytest; uv run ruff check .; cd ..
 ```
-In the Output Log, look for: `UnrealMCP 0.2.0 listening on 127.0.0.1:55557 (token off)` and
-`UnrealMCP: NN commands registered`. If you see `Python is not available`, enable *Python Editor Script Plugin*.
+- [ ] All pass. A failure here is a Windows path or encoding bug in the server, not an engine problem.
 
-## 3. Smoke test (same machine)
+## 2. Build the plugin
 ```powershell
-cd Python; uv sync; uv run python ..\scripts\smoke.py
+scripts\ue_windows.ps1 build
 ```
-Every line should say PASS. The script creates `MCP_SmokeLight` and `/Game/Blueprints/MCP_SmokeBP` and then deletes them.
+- [ ] `build ok (N warnings) -> %TEMP%\unreal-mcp\55557\build.log`. On failure, the script prints the `error C####` lines.
+      Save `build.log`. The C++ was compiled on clang 20 (Linux) only, so watch for MSVC-only errors (C4456 shadowing,
+      C4668 and the like, which are warnings as errors in some configurations).
+- [ ] The plugin binary is `FlopperamUnrealMCP\Plugins\UnrealMCP\Binaries\Win64\UnrealEditor-UnrealMCP.dll`, with no
+      `-NNNN` suffix.
 
-## 4. Remote mode (agents on Linux, editor on Windows)
+## 3. Launch
 ```powershell
-setx UNREAL_MCP_BIND 0.0.0.0
-setx UNREAL_MCP_TOKEN <random-secret>   # then restart the editor
+scripts\ue_windows.ps1 launch        # offscreen; use launch-gui to watch
 ```
-On Linux: `UNREAL_MCP_HOST=<windows-ip> UNREAL_MCP_TOKEN=<secret> uv run python ../scripts/smoke.py`.
-Also check that a wrong token gets `unauthorized`, and that binding `0.0.0.0` *without* a token falls back to `127.0.0.1` (Output Log error).
+- [ ] `editor <pid> ready on port 55557 after ~Ns`.
+- [ ] The editor log (`%TEMP%\unreal-mcp\55557\editor.log`) shows `UnrealMCP 0.3.0 listening on 127.0.0.1:55557` and
+      `NN commands registered`.
+- [ ] Note the RHI the log reports (D3D12, SM6 expected).
+- [ ] Not using the default port? Set `$env:UNREAL_MCP_PORT = 55561` before `launch`. Every step below reads the same
+      variable. `quit` only ever closes the editor this script started on that port.
 
-## 5. API index
-Editor Preferences → Plugins → Python → **Developer Mode** on, restart the editor, then:
+## 4. Smoke test
 ```powershell
-uv run python -m unreal_mcp.api_index build "$PWD\..\FlopperamUnrealMCP\Intermediate\PythonStub\unreal.py"
-uv run python -m unreal_mcp.api_index search "spawn actor from class"
+cd Python; uv run python ..\scripts\smoke.py
 ```
-Record the symbol count and build time. Expect tens of thousands of symbols.
+- [ ] `0 failure(s)` (16 checks).
 
-## 6. UE-Bench reference run
+## 5. UE-Bench
 ```powershell
-cd Python; uv run python -m unreal_mcp.bench run --agent solution
+uv run python -m unreal_mcp.bench run --agent solution --label "reference, UE 5.8 Win64, RTX 4090"
+uv run python -m unreal_mcp.bench run --agent none --label "baseline, UE 5.8 Win64"
 ```
-Every task should pass (modeling is skipped without Blender on the PC). A failure here means the fake API disagrees
-with the real engine: note the task and the `failures` line. Then `--agent none` should fail every task.
+- [ ] Reference: 20/20 (18/18 without Blender).
+- [ ] Baseline: 0 passed.
+- [ ] Results are in `Python\bench-results\<timestamp>\scoreboard.md`. Copy both to
+      `bench/results/<date>-ue5.8-win64-rtx4090/` as `reference.md` and `baseline.md`.
+- [ ] Any reference failure means the fake API disagrees with the real engine on Windows. Report the task id and its
+      `failures` line.
+- Optional: a real agent. Pass the prompt as a file or on stdin, not as `{prompt}`. A multi-line argument doesn't
+  survive the `claude.cmd` shim.
+  ```powershell
+  uv run python -m unreal_mcp.bench run --agent cmd --filter scene --label "claude-code win64" `
+    --agent-cmd 'claude -p --mcp-config ..\bench\mcp.bench.json --allowedTools mcp__unreal'
+  ```
 
-## 7. Report back
-Paste: the UBT result, the smoke output, the API index count, the bench scoreboard (`bench-results/*/scoreboard.md`), and anything surprising (timings, warnings in the log).
+## 6. New in this branch: check these live
+Run the following through the MCP server (an agent session), or adapt `scripts/smoke.py`.
+- [ ] **pie_test input.** In any level with a pawn, e.g. the default `DefaultPawn`:
+  `pie_test(steps=[{"hold":"W","duration_s":1.5}, {"look":[5,0],"duration_s":0.5}, {"press":"SpaceBar"}, {"frame_stats":300}])`.
+  All steps should be `ok`. Linux also verified that W moves the pawn and that look turns the control rotation.
+- [ ] **Enhanced Input action injection.** Build `input-wasd` (bench) plus a Character that binds IA_Move. Then run
+  `{"axis":"/Game/UEBench/input-wasd/Input/IA_Move","value":[0,1],"duration_s":2}` and check that the pawn moved. On Linux
+  the injection was accepted, but its effect was **not** observed. This is the first real check of it.
+- [ ] **frame_stats on the 4090.** Record `frame_ms`, `game_ms`, `render_ms`, `rhi_ms` and `gpu_ms` for the
+  `demo-arena-playable` level, offscreen and in `launch-gui`. On Linux offscreen, `render_ms`/`rhi_ms` were reported as
+  `unavailable`. Check whether D3D12 fills them in. `gpu_ms` should be non-zero.
+- [ ] **bp_apply with arrays.** `bp_apply` an `int[]` variable into `Array_Length`, `Array_Get` and `ForEachLoop`. The result
+  should compile, and `bp_export` should show `int[]`/`int` pins, not `wildcard`. Verified on Linux. This repeats it on MSVC.
+- [ ] **Live Coding (Windows only).** Edit a function body in `FlopperamUnrealMCP\Source\...` with `cpp_source`, run
+  `live_coding_compile()`, and expect `compiled: true`. Then add a deliberate typo and expect `compiled: false` with the error.
+
+## 7. Package a Win64 build
+```powershell
+uv run python ..\scripts\package.py --platform Win64      # or call package_project / package_status from an agent
+```
+- [ ] It ends with `SUCCEEDED (exit 0)` and lists `launcher: ...\Windows\FlopperamUnrealMCP.exe` first. The first cook takes a
+      while: note the time.
+- [ ] Run that exe. The level should load. Run it once with `-RenderOffscreen` and once windowed.
+- [ ] If it fails, the job log is `FlopperamUnrealMCP\Saved\MCPPackage\<job>.log`. The command line is in `<job>.json`. It
+      runs `cmd.exe /d /s /c "...RunUAT.bat BuildCookRun ..."`, so it copes with spaces in the engine path.
+
+## 8. Remote mode (optional: agents on Linux, editor on Windows)
+```powershell
+$env:UNREAL_MCP_BIND = "0.0.0.0"; $env:UNREAL_MCP_TOKEN = "<random-secret>"; scripts\ue_windows.ps1 launch
+```
+- [ ] On Linux, `UNREAL_MCP_HOST=<windows-ip> UNREAL_MCP_TOKEN=<secret> uv run python ../scripts/smoke.py` passes.
+- [ ] A wrong token gets `unauthorized`.
+- [ ] `0.0.0.0` without a token falls back to `127.0.0.1` (Output Log error). Allow port 55557 in Windows Firewall.
+
+## 9. Finish and report
+```powershell
+cd ..; scripts\ue_windows.ps1 quit
+```
+Paste back:
+- the build result and warning count;
+- the RHI line;
+- the smoke output;
+- both bench scoreboards;
+- the step 6 results (the input effect, the frame_stats JSON, the Live Coding result);
+- the package time and launcher path;
+- anything surprising in `editor.log`.
