@@ -295,6 +295,30 @@ static bool JsonToProperty(const TSharedPtr<FJsonValue>& InValue, FProperty* Pro
 		if (Obj->Values.Num()) AsStruct = MakeShared<FJsonValueObject>(Obj);
 	}
 	const TSharedPtr<FJsonValue>& Value = AsStruct.IsValid() ? AsStruct : InValue;
+	// An object/class path that does not resolve must be an error, not a silent None.
+	FString Path;
+	if (const FObjectPropertyBase* OP = CastField<FObjectPropertyBase>(Prop); OP && Value.IsValid() && Value->TryGetString(Path)
+		&& !Path.IsEmpty() && !Path.Equals(TEXT("None"), ESearchCase::IgnoreCase))
+	{
+		UObject* Found = nullptr;
+		if (const FClassProperty* CP = CastField<FClassProperty>(Prop))
+		{
+			UClass* C = FEpicUnrealMCPReflectionCommands::ResolveClass(Path);
+			Found = (C && C->IsChildOf(CP->MetaClass)) ? C : nullptr;
+		}
+		else
+		{
+			Found = StaticLoadObject(OP->PropertyClass, nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+		}
+		if (!Found)
+		{
+			OutError = FString::Printf(TEXT("'%s' does not resolve to a %s"), *Path,
+				CastField<FClassProperty>(Prop) ? *CastField<FClassProperty>(Prop)->MetaClass->GetName() : *OP->PropertyClass->GetName());
+			return false;
+		}
+		OP->SetObjectPropertyValue(ValuePtr, Found);
+		return true;
+	}
 	if (FJsonObjectConverter::JsonValueToUProperty(Value, Prop, ValuePtr))
 	{
 		return true;
