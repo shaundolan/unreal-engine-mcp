@@ -1,0 +1,11 @@
+[
+  {"text": "Looking at the level first.", "tool_calls": [{"name": "scene_brief", "args": {}}]},
+  {"text": "Adding a cube above the origin.", "tool_calls": [{"name": "scene_compose", "args": {"operations": [
+    {"op": "spawn", "asset": "/Engine/BasicShapes/Cube.Cube", "label": "Agent_Demo_Cube", "location": [0, 0, 150]}]}}]},
+  {"text": "Checking it is there.", "tool_calls": [{"name": "scene_assert", "args": {"assertions": [
+    {"type": "actor_exists", "label": "Agent_Demo_Cube", "min": 1}]}}]},
+  {"text": "Done: Agent_Demo_Cube is in the level (mock provider, scripted). Try Undo last agent turn."},
+  {"text": "Next I would delete an asset, which needs your confirmation.", "tool_calls": [{"name": "asset_manage", "args": {"operations": [
+    {"op": "delete", "path": "/Game/DoesNotExist/SM_Nothing"}]}}]},
+  {"text": "That was the confirmation flow. The mock script is finished."}
+]

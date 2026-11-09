@@ -163,15 +163,15 @@ uv run python -m unreal_mcp.agent_runner --once "add a cube" --provider mock --m
 ## Driving the panel without the UI
 
 The `agent_panel` plugin command runs the same client object the tab renders, which is how the panel is tested
-offscreen: `status` (including `tab_registered` / `tab_open`), `open`, `close`, `start_runner {extra_args}`,
+without the UI (`scripts/agent_panel_live.py`): `status` (including `tab_registered` / `tab_open`), `open`, `close`, `start_runner {extra_args}`,
 `stop_runner`, `connect`, `send {text, provider, model, specialist, mock_script}`, `stop`, `confirm {id, allow}`,
 `reset`, `transcript {since}`, `undo_last_turn`, `context`. `agent_turn {action: begin|end|undo|status}` is the undo
 accounting.
 
 ## Limitations
 
-- The Slate UI has been checked only through its model and the tab registry offscreen; nobody has clicked through it in
-  a visible editor yet.
+- **Not yet run live.** The plugin side compiles (Linux) and the runner is unit-tested against the fake editor. The live
+  checklist, including the scripted `scripts/agent_panel_live.py`, is in [WINDOWS_TEST.md](WINDOWS_TEST.md) §10.
 - One conversation per connection. Reconnecting (or restarting the runner) starts a new one.
 - Images aren't shown in the panel (they go to the model).
 - Stop takes effect between tool calls, not in the middle of one.

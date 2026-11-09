@@ -24,7 +24,7 @@ from running them. "?" means we don't know.
 
 | Feature | Aura | Epic native (5.8, experimental) | UnrealMCP | Status |
 |---|---|---|---|---|
-| In-editor chat panel | ✅ | ✅ AI Assistant tab: a web view of Epic's hosted assistant, needs an Epic account | ✅ "UnrealMCP Agent" Slate tab: transcript, collapsible tool rows, stop, status line | built; registration, opening and a scripted round trip verified live offscreen; UI not yet clicked through by a person |
+| In-editor chat panel | ✅ | ✅ AI Assistant tab: a web view of Epic's hosted assistant, needs an Epic account | ✅ "UnrealMCP Agent" Slate tab: transcript, collapsible tool rows, stop, status line | compiles (Linux, 0 warnings); runner unit-tested; live check pending on the 4090 ([WINDOWS_TEST.md](WINDOWS_TEST.md) §10) |
 | Choice of model | hosted models | Epic's backend; no provider hook in the C++ | Anthropic (own key), any OpenAI-compatible endpoint (local models), Claude Code CLI | unit-tested with fakes; no paid or real-model run on this branch |
 | Works fully offline | ❌ | MCP server yes, assistant no | ✅ with a local model | — |
 | MCP server for external agents | hosted endpoint + API key | ✅ HTTP `127.0.0.1:8000/mcp`, tools from ToolsetRegistry toolsets, writes client configs for Claude Code / Cursor / VS Code / Gemini / Codex | ✅ stdio, 110+ tools | ours live (Linux); Epic's not run here |
@@ -33,9 +33,9 @@ from running them. "?" means we don't know.
 | Python batch editing | Dragon | ? (Python Editor Script Plugin) | `execute_python` + batch subagent (preview, one transaction, per-item report) | live tool; subagent untested |
 | Verification with real input | Verification agent | AutomationTestToolset (not assessed) | `pie_test` with key / Enhanced Input presses, `scene_assert`, `viewport_capture` + vision critique, `frame_stats` | live |
 | VFX / Niagara | VFX agent | NiagaraToolsets (not assessed) | `niagara_edit` (placement, User params), materials; `niagara_apply` on a sibling branch | partial |
-| Editor context (selection, level) | ? | Slate querier reads the editor UI | level, PIE state, selected actors, Content Browser selection and folder in every message; `unreal://selection` resource | live (resource); panel context verified via `agent_panel context` |
-| Undo an agent turn | ? | separate transaction buffer per assistant session | "Undo last agent turn": exactly the turn's transactions, refused if anything happened since | live-verified offscreen |
-| Confirmation before destructive ops | ? | pending-file approval list | configurable rules (off / destructive / strict / all), also enforced in Claude Code mode via `--permission-prompt-tool` | unit-tested; live with mock |
+| Editor context (selection, level) | ? | Slate querier reads the editor UI | level, PIE state, selected actors, Content Browser selection and folder in every message; `unreal://selection` resource | compiles; unit-tested; live check pending (§10) |
+| Undo an agent turn | ? | separate transaction buffer per assistant session | "Undo last agent turn": exactly the turn's transactions, refused if anything happened since | compiles; live check pending (§10) |
+| Confirmation before destructive ops | ? | pending-file approval list | configurable rules (off / destructive / strict / all), also enforced in Claude Code mode via `--permission-prompt-tool` | unit-tested (fake editor); live check pending (§10) |
 | Public benchmark | ❌ | ❌ | UE-Bench, 24 tasks with checkers | v0 |
 | Cost | subscription | free (Epic account) | free; you pay your own model provider, or nothing with a local model | — |
 | Platforms | Windows (?) | engine platforms | Linux live; Windows compiles pending | — |

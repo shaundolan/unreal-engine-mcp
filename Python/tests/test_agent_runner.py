@@ -544,6 +544,32 @@ def test_mock_provider_records_and_finishes():
     assert len(p.results) == 1
 
 
+def test_demo_mock_script_runs(runner, editor):
+    """scripts/agent_mock_demo.json (used in the WINDOWS_TEST checklist) names real tools with valid arguments."""
+    script = json.loads((REPO / "scripts" / "agent_mock_demo.json").read_text())
+
+    async def go():
+        session, events = make_session(runner)
+
+        async def deny():
+            while not any(e["type"] == "confirm_request" for e in events):
+                await asyncio.sleep(0.01)
+            req = next(e for e in events if e["type"] == "confirm_request")
+            await session.handle({"type": "confirm", "id": req["id"], "allow": False})
+
+        await collect_turn(session, events, {"type": "user_message", "text": "demo", "mock_script": script})
+        t = asyncio.create_task(deny())
+        await collect_turn(session, events, {"type": "user_message", "text": "next"})
+        await t
+        return events
+
+    events = run(go())
+    results = [e for e in events if e["type"] == "tool_result"]
+    assert [r["name"] for r in results] == ["scene_brief", "scene_compose", "scene_assert", "asset_manage"]
+    assert all(r["ok"] for r in results[:2]) and results[3].get("denied")
+    assert not any("invalid arguments" in r["result"] or "unknown tool" in r["result"] for r in results)
+
+
 def test_claude_code_can_attach_epic_native_server():
     p = ClaudeCodeProvider("", "S", TOOLS, {"native_mcp_url": "http://127.0.0.1:8000/mcp"})
     cfg = p.mcp_config()["mcpServers"]

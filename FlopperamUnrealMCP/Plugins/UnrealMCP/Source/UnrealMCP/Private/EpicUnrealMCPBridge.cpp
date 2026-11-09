@@ -23,6 +23,7 @@
 #include "Commands/MCPAuthoringCommands.h"
 #include "Commands/MCPPlayCommands.h"
 #include "Commands/MCPLevelCommands.h"
+#include "Commands/MCPAgentCommands.h"
 
 DEFINE_LOG_CATEGORY(LogUnrealMCP);
 
@@ -155,6 +156,7 @@ void UEpicUnrealMCPBridge::RegisterAllCommands()
 	FMCPAnimAuthoring::Register(R);
 	FMCPGameplayTagCommands::Register(R);
 	FMCPLevelCommands::Register(R);
+	FMCPAgentCommands::Register(R);
 
 	UE_LOG(LogUnrealMCP, Display, TEXT("UnrealMCP: %d commands registered"), R.Commands.Num());
 }

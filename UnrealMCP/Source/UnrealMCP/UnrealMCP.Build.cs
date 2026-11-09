@@ -72,7 +72,12 @@ public class UnrealMCP : ModuleRules
 				"AnimGraphRuntime",
 				"AnimationBlueprintLibrary", // anim_asset_apply: notifies
 				"GameplayTags",        // gameplay_tags
-				"LevelEditor"          // level_open: ULevelEditorSubsystem::NewLevel
+				"LevelEditor",         // level_open: ULevelEditorSubsystem::NewLevel
+				"WebSockets",          // agent panel <-> agent runner
+				"ContentBrowser",      // agent panel: Content Browser selection as context
+				"ContentBrowserData",  // FContentBrowserItemPath (current folder)
+				"WorkspaceMenuStructure", // agent panel tab under Window > Tools
+				"ApplicationCore"
 			}
 		);
 		

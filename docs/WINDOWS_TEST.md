@@ -118,7 +118,75 @@ $env:UNREAL_MCP_BIND = "0.0.0.0"; $env:UNREAL_MCP_TOKEN = "<random-secret>"; scr
 - [ ] A wrong token gets `unauthorized`.
 - [ ] `0.0.0.0` without a token falls back to `127.0.0.1` (Output Log error). Allow port 55557 in Windows Firewall.
 
-## 10. Finish and report
+## 10. Agent panel and agent pack (branch feat/agent-experience)
+None of this has run live yet. It compiles on Linux and the runner is unit-tested against the fake plugin. Rebuild
+first (step 2): there's new C++ under `Source/UnrealMCP/Private/Agent/` and new module dependencies (WebSockets,
+ContentBrowser, WorkspaceMenuStructure, ApplicationCore). Use only the mock provider unless you mean to spend money.
+
+**a. Scripted end-to-end check (no model):**
+```powershell
+cd Python; uv sync --group dev; uv run python ..\scripts\agent_panel_live.py
+```
+Expect every line to be `[PASS]` and `0 failure(s)`. In order, it checks that:
+- the tab spawner `UnrealMCPAgent` is registered and the tab opens;
+- the runner's Python dir resolves;
+- the panel starts the runner itself (`uv ... -m unreal_mcp.agent_runner --port 55600`) and connects within 300 s (the
+  first start installs the venv);
+- `hello` lists 4 providers and the specialists;
+- a mock turn spawns `Agent_Cube`, with two ok tool rows and streamed text;
+- an `asset_manage` delete raises a confirmation, and when it's denied the call doesn't run;
+- "Undo last agent turn" removes `Agent_Cube_B` and keeps `Agent_Cube`, then refuses to undo the same turn again;
+- `stop_runner` stops the process and the tab closes.
+
+If the connection step fails, the FAIL line includes the runner's output. Check for port 55600 already in use, uv
+missing from the editor's PATH, or a firewall prompt.
+
+**b. By hand in the visible editor (the part nothing has checked yet):**
+- [ ] Window → Tools → **UnrealMCP Agent** opens a dockable tab. It docks, undocks, and reopens after an editor restart.
+- [ ] Editor Preferences → Plugins → **UnrealMCP Agent** shows Runner Port, Python Dir, Uv Executable, Extra Runner Args,
+  Auto Start, Default Provider / Model / Specialist, Send Editor Context and Confirm Mode.
+- [ ] With Python Dir set to a wrong path, the status line explains how to configure it.
+- [ ] Put `--mock-script <repo>\scripts\agent_mock_demo.json` in Extra Runner Args and press **Start runner**. The status goes Starting → Connected, and the Agent combo lists general plus the 7
+  specialists.
+- [ ] Select two actors and send "hello" with provider `mock`. The transcript shows your message, streamed text, and tool
+  rows that expand to show pretty-printed arguments and the result; the status line reads Thinking / Running tool / Done.
+  `agent_panel context` (or the runner log) shows both selected actors and the Content Browser selection.
+- [ ] A confirmation row's **Allow** and **Deny** buttons work and grey out after one click. **Stop** cancels a long mock
+  script (one step per `delay`).
+- [ ] **Undo last agent turn** is greyed out with a tooltip reason when there's nothing to undo, and works after a turn
+  that spawned something. After a manual edit made after the turn, it refuses.
+- [ ] Enter sends and Shift+Enter adds a new line. The transcript scrolls to the end. A long transcript (200 rows) stays
+  responsive.
+- [ ] Stop runner, then close the editor: no `uv` or `python` process is left behind (Task Manager).
+
+**c. Real providers (optional, costs money or needs a local model):**
+- [ ] `anthropic`: set `ANTHROPIC_API_KEY`, `cd Python; uv sync --extra anthropic`, start the editor from that shell.
+  Ask for "add a point light above the selected actor". Expect streamed text, a `scene_compose` row, and a
+  `viewport_capture` the model comments on.
+- [ ] `openai`: `llama-server --jinja -m <model with tool calling> --port 8080`, provider `openai`. Same request.
+- [ ] `claude_code`: `claude` logged in, provider `claude_code`. Expect tool rows from `mcp__unreal__*`. A destructive
+  request ("delete /Game/Foo") raises a confirmation through `--permission-prompt-tool`. A second message continues the
+  same conversation.
+- [ ] Epic native: enable Experimental → Model Context Protocol, add `--native-mcp` to Extra Runner Args, and use
+  `claude_code`. The runner log shows `unreal-native` connected, and native tools can be called.
+
+**d. Claude Code agent pack:**
+```powershell
+claude plugin validate .            # from the repo root
+claude --plugin-dir .               # then, inside: /mcp, /agents, /unrealmcp:unreal-status
+```
+- [ ] `/mcp` shows `plugin:unrealmcp:unreal` connected (and `unreal-native` connected if Epic's plugin is on, failed
+  otherwise).
+- [ ] `/agents` lists the 7 `unrealmcp:unreal-*` subagents.
+- [ ] `/unrealmcp:unreal-status` reports the project, level and recent warnings.
+- [ ] `/unrealmcp:unreal-screenshot` returns a capture and a critique.
+- [ ] `/unrealmcp:unreal-playtest walk forward 2s and jump` runs `pie_test` with input steps and prints a results table.
+- [ ] Ask "use the unreal-verifier agent to check that the level has a PlayerStart and a light". The subagent runs with only
+  its listed tools.
+- [ ] Resources: in any MCP client, `unreal://project`, `unreal://level/summary` and `unreal://selection` return live
+  JSON. The prompts `unreal-status` … `unreal-bench` are listed.
+
+## 11. Finish and report
 ```powershell
 cd ..; scripts\ue_windows.ps1 quit
 ```
@@ -128,5 +196,6 @@ Paste back:
 - the smoke output;
 - both bench scoreboards;
 - the step 6 results (the input effect, the frame_stats JSON, the Live Coding result);
+- the step 10 results (the agent_panel_live.py output, and any failed checkbox);
 - the package time and launcher path;
 - anything surprising in `editor.log`.
