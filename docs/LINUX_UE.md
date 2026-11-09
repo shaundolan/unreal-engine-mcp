@@ -26,7 +26,10 @@ Notes:
   targets SM5 as well as SM6, so the editor falls back to SM5 instead of exiting with "Vulkan device could not be created".
 - **Close the editor over MCP** before rebuilding the plugin (no hot reload on Linux):
   `execute_python("import unreal; unreal.SystemLibrary.quit_editor()")`.
-- **Run automation offscreen** (`scripts/ue_linux.sh launch`, which adds `-RenderOffscreen`). With a visible window, a stale Vulkan
+- **Run automation offscreen and unattended** (`scripts/ue_linux.sh launch` adds `-RenderOffscreen -unattended`;
+  extra flags go in `UE_EXTRA_ARGS`). Nobody can answer a modal dialog in an offscreen editor, and without
+  `-unattended` a crash opens the CrashReportClient window on the desktop (`ue_linux.sh close-crash-reporter` closes one
+  left by this project's editor). With a visible window, a stale Vulkan
   swapchain ("AcquireNextImage() failed due to the outdated swapchain") can deadlock the editor's RHI, render and game threads.
   This is an engine bug in 5.8.4 Linux. `launch-gui` is for watching only.
 - **Packaging** works here: `package_project()` produced a Linux build (BUILD SUCCESSFUL, 1.2 GB) that boots headless.

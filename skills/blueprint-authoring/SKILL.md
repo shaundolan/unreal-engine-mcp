@@ -44,7 +44,8 @@ bp_apply(blueprint="/Game/Game/BP_Coin", create_parent="Actor", operations=[
 ## Node kinds
 `event` (BeginPlay, Tick, ActorBeginOverlap, AnyDamage, EndPlay; widgets: Construct; BT tasks: ExecuteAI) ·
 `custom_event` (+inputs) · `component_event` (OnComponentBeginOverlap, OnComponentHit, ...) · `call_function` ·
-`get_var` / `set_var` · `branch` · `sequence` · `cast` · `self` · `macro` (DoOnce, Gate, ForLoop, ForEachLoop, IsValid) ·
+`get_var` / `set_var` (inherited variables work with or without `"class"`: the Blueprint's own parent class is
+accepted) · `key_event` (`"key":"E"`, outputs `pressed` / `released`: a key binding without Tick polling) · `branch` · `sequence` · `cast` · `self` · `macro` (DoOnce, Gate, ForLoop, ForEachLoop, IsValid) ·
 `spawn_actor` · `node` with any K2Node class, e.g. `K2Node_CreateWidget` with `pins: {"Class": "/Game/UI/WBP_HUD.WBP_HUD_C"}`.
 
 Array functions (`Array_Length`, `Array_Add`, `Array_Contains`, ...) and `ForEachLoop` start out as wildcards. They take their
