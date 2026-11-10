@@ -26,24 +26,24 @@
 
 namespace
 {
-const FLinearColor ColUser(0.30f, 0.55f, 0.95f);
-const FLinearColor ColOk(0.35f, 0.80f, 0.40f);
-const FLinearColor ColErr(0.95f, 0.35f, 0.30f);
-const FLinearColor ColWarn(0.95f, 0.75f, 0.25f);
-const FLinearColor ColDim(0.60f, 0.60f, 0.60f);
+const FLinearColor AgentPanelUIColUser(0.30f, 0.55f, 0.95f);
+const FLinearColor AgentPanelUIColOk(0.35f, 0.80f, 0.40f);
+const FLinearColor AgentPanelUIColErr(0.95f, 0.35f, 0.30f);
+const FLinearColor AgentPanelUIColWarn(0.95f, 0.75f, 0.25f);
+const FLinearColor AgentPanelUIColDim(0.60f, 0.60f, 0.60f);
 
-FSlateFontInfo Font(const TCHAR* Style, int32 Size = 9)
+FSlateFontInfo AgentPanelUIFont(const TCHAR* Style, int32 Size = 9)
 {
 	return FCoreStyle::GetDefaultFontStyle(Style, Size);
 }
 
-TSharedRef<SWidget> Mono(const FString& Text)
+TSharedRef<SWidget> AgentPanelUIMono(const FString& Text)
 {
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
 		.Padding(4)
 		[
-			SNew(STextBlock).Text(FText::FromString(Text)).Font(Font(TEXT("Mono"), 8)).AutoWrapText(true)
+			SNew(STextBlock).Text(FText::FromString(Text)).Font(AgentPanelUIFont(TEXT("Mono"), 8)).AutoWrapText(true)
 		];
 }
 }
@@ -94,9 +94,9 @@ void SMCPAgentPanel::Construct(const FArguments&)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth()
-			[ SNew(STextBlock).Text(this, &SMCPAgentPanel::StatusText).ColorAndOpacity(this, &SMCPAgentPanel::StatusColor).Font(Font(TEXT("Bold"))) ]
+			[ SNew(STextBlock).Text(this, &SMCPAgentPanel::StatusText).ColorAndOpacity(this, &SMCPAgentPanel::StatusColor).Font(AgentPanelUIFont(TEXT("Bold"))) ]
 			+ SHorizontalBox::Slot().FillWidth(1).Padding(12, 0, 0, 0)
-			[ SNew(STextBlock).Text(this, &SMCPAgentPanel::HintText).ColorAndOpacity(ColDim).AutoWrapText(true) ]
+			[ SNew(STextBlock).Text(this, &SMCPAgentPanel::HintText).ColorAndOpacity(AgentPanelUIColDim).AutoWrapText(true) ]
 		]
 		+ SVerticalBox::Slot().AutoHeight()[ SNew(SSeparator) ]
 		// transcript
@@ -246,7 +246,7 @@ void SMCPAgentPanel::Rebuild()
 	{
 		Rows->AddSlot().AutoHeight().Padding(8)
 		[
-			SNew(STextBlock).ColorAndOpacity(ColDim).AutoWrapText(true)
+			SNew(STextBlock).ColorAndOpacity(AgentPanelUIColDim).AutoWrapText(true)
 			.Text(LOCTEXT("Empty", "Start the runner, pick a provider and ask for something, e.g. \"add a warm point light above the selected actor\". "
 				"Each tool call shows up here with its arguments and result. Destructive calls ask you first."))
 		];
@@ -271,7 +271,7 @@ TSharedRef<SWidget> SMCPAgentPanel::MakeRow(const TSharedPtr<FMCPChatItem>& Item
 		return SNew(SBorder).BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder")).Padding(6)
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Text(LOCTEXT("You", "You")).Font(Font(TEXT("Bold"))).ColorAndOpacity(ColUser) ]
+				+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Text(LOCTEXT("You", "You")).Font(AgentPanelUIFont(TEXT("Bold"))).ColorAndOpacity(AgentPanelUIColUser) ]
 				+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Text(FText::FromString(Item->Text)).AutoWrapText(true) ]
 			];
 	case EKind::Assistant:
@@ -283,14 +283,14 @@ TSharedRef<SWidget> SMCPAgentPanel::MakeRow(const TSharedPtr<FMCPChatItem>& Item
 	case EKind::Tool:
 	{
 		TSharedRef<SVerticalBox> Body = SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Text(LOCTEXT("Args", "Arguments")).Font(Font(TEXT("Bold"), 8)) ]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 4)[ Mono(Item->ArgsJson) ]
-			+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Text(LOCTEXT("Result", "Result")).Font(Font(TEXT("Bold"), 8)) ]
+			+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Text(LOCTEXT("Args", "Arguments")).Font(AgentPanelUIFont(TEXT("Bold"), 8)) ]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 4)[ AgentPanelUIMono(Item->ArgsJson) ]
+			+ SVerticalBox::Slot().AutoHeight()[ SNew(STextBlock).Text(LOCTEXT("Result", "Result")).Font(AgentPanelUIFont(TEXT("Bold"), 8)) ]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0, 2, 0, 0)
 			[
 				SNew(SBorder).BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder")).Padding(4)
 				[
-					SNew(STextBlock).Font(Font(TEXT("Mono"), 8)).AutoWrapText(true)
+					SNew(STextBlock).Font(AgentPanelUIFont(TEXT("Mono"), 8)).AutoWrapText(true)
 					.Text_Lambda([Item]()
 					{
 						if (!Item->bDone)
@@ -314,15 +314,15 @@ TSharedRef<SWidget> SMCPAgentPanel::MakeRow(const TSharedPtr<FMCPChatItem>& Item
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 6, 0)
 				[
-					SNew(STextBlock).Font(Font(TEXT("Bold")))
+					SNew(STextBlock).Font(AgentPanelUIFont(TEXT("Bold")))
 					.Text_Lambda([Item]() { return FText::FromString(!Item->bDone ? TEXT("...") : Item->bDenied ? TEXT("declined") : Item->bOk ? TEXT("ok") : TEXT("error")); })
-					.ColorAndOpacity_Lambda([Item]() { return FSlateColor(!Item->bDone ? ColWarn : Item->bOk ? ColOk : ColErr); })
+					.ColorAndOpacity_Lambda([Item]() { return FSlateColor(!Item->bDone ? AgentPanelUIColWarn : Item->bOk ? AgentPanelUIColOk : AgentPanelUIColErr); })
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 6, 0)
-				[ SNew(STextBlock).Text(FText::FromString(Item->ToolName)).Font(Font(TEXT("Mono"), 9)) ]
+				[ SNew(STextBlock).Text(FText::FromString(Item->ToolName)).Font(AgentPanelUIFont(TEXT("Mono"), 9)) ]
 				+ SHorizontalBox::Slot().FillWidth(1)
 				[
-					SNew(STextBlock).ColorAndOpacity(ColDim).Clipping(EWidgetClipping::ClipToBounds)
+					SNew(STextBlock).ColorAndOpacity(AgentPanelUIColDim).Clipping(EWidgetClipping::ClipToBounds)
 					.Text_Lambda([Item]()
 					{
 						if (!Item->bDone)
@@ -337,17 +337,17 @@ TSharedRef<SWidget> SMCPAgentPanel::MakeRow(const TSharedPtr<FMCPChatItem>& Item
 			.BodyContent()[ Body ];
 	}
 	case EKind::Confirm:
-		return SNew(SBorder).BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder")).BorderBackgroundColor(ColWarn).Padding(6)
+		return SNew(SBorder).BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder")).BorderBackgroundColor(AgentPanelUIColWarn).Padding(6)
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight()
-				[ SNew(STextBlock).Font(Font(TEXT("Bold"))).ColorAndOpacity(ColWarn).AutoWrapText(true)
+				[ SNew(STextBlock).Font(AgentPanelUIFont(TEXT("Bold"))).ColorAndOpacity(AgentPanelUIColWarn).AutoWrapText(true)
 					.Text(FText::Format(LOCTEXT("ConfirmTitle", "Confirm {0}: {1}"), FText::FromString(Item->ToolName), FText::FromString(Item->Text))) ]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0, 4)
 				[
 					SNew(SExpandableArea).InitiallyCollapsed(true)
 					.HeaderContent()[ SNew(STextBlock).Text(LOCTEXT("ConfirmArgs", "Arguments")) ]
-					.BodyContent()[ Mono(Item->ArgsJson) ]
+					.BodyContent()[ AgentPanelUIMono(Item->ArgsJson) ]
 				]
 				+ SVerticalBox::Slot().AutoHeight()
 				[
@@ -359,14 +359,14 @@ TSharedRef<SWidget> SMCPAgentPanel::MakeRow(const TSharedPtr<FMCPChatItem>& Item
 					[ SNew(SButton).Text(LOCTEXT("Deny", "Deny")).IsEnabled_Lambda([Item]() { return !Item->bDone; })
 						.OnClicked_Lambda([Item]() { FMCPAgentClient::Get().AnswerConfirm(Item->ConfirmId, false); return FReply::Handled(); }) ]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-					[ SNew(STextBlock).ColorAndOpacity(ColDim)
+					[ SNew(STextBlock).ColorAndOpacity(AgentPanelUIColDim)
 						.Text_Lambda([Item]() { return !Item->bDone ? FText::GetEmpty() : Item->bOk ? LOCTEXT("Allowed", "allowed") : LOCTEXT("Denied", "denied"); }) ]
 				]
 			];
 	case EKind::Error:
-		return SNew(SBox).Padding(FMargin(6, 1))[ SNew(STextBlock).Text(FText::FromString(Item->Text)).ColorAndOpacity(ColErr).AutoWrapText(true) ];
+		return SNew(SBox).Padding(FMargin(6, 1))[ SNew(STextBlock).Text(FText::FromString(Item->Text)).ColorAndOpacity(AgentPanelUIColErr).AutoWrapText(true) ];
 	default:
-		return SNew(SBox).Padding(FMargin(6, 1))[ SNew(STextBlock).Text(FText::FromString(Item->Text)).ColorAndOpacity(ColDim).Font(Font(TEXT("Italic"))).AutoWrapText(true) ];
+		return SNew(SBox).Padding(FMargin(6, 1))[ SNew(STextBlock).Text(FText::FromString(Item->Text)).ColorAndOpacity(AgentPanelUIColDim).Font(AgentPanelUIFont(TEXT("Italic"))).AutoWrapText(true) ];
 	}
 }
 
@@ -445,13 +445,13 @@ FSlateColor SMCPAgentPanel::StatusColor() const
 	const FMCPAgentClient& C = FMCPAgentClient::Get();
 	if (!C.IsConnected())
 	{
-		return C.GetStatusState() == TEXT("error") ? ColErr : ColDim;
+		return C.GetStatusState() == TEXT("error") ? AgentPanelUIColErr : AgentPanelUIColDim;
 	}
 	if (C.IsTurnRunning())
 	{
-		return ColWarn;
+		return AgentPanelUIColWarn;
 	}
-	return C.GetStatusState() == TEXT("error") ? ColErr : ColOk;
+	return C.GetStatusState() == TEXT("error") ? AgentPanelUIColErr : AgentPanelUIColOk;
 }
 
 FText SMCPAgentPanel::HintText() const

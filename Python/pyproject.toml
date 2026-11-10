@@ -50,6 +50,8 @@ extend-exclude = ["unreal_mcp_server_advanced.py", "helpers", "tests/fixtures"]
 [tool.ruff.lint.per-file-ignores]
 # Editor-side scripts run inside Unreal with ARGS and _common helpers injected.
 "unreal_mcp/editor_scripts/*.py" = ["F821", "E501", "B023"]
+# Blender-side scripts run inside `blender -b` after the prelude (bpy, ARGS and the helpers are injected).
+"unreal_mcp/blender_scripts/*.py" = ["F821", "E501", "B023"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

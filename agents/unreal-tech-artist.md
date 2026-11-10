@@ -1,7 +1,7 @@
 ---
 name: unreal-tech-artist
 description: Technical artist for UnrealMCP. Use for materials and material instances, textures, meshes, import pipelines, collision and LODs, and for modeling props in headless Blender and importing them. Checks results visually and for cost.
-tools: Read, Grep, Glob, mcp__plugin_unrealmcp_unreal__unreal_status, mcp__plugin_unrealmcp_unreal__project_context, mcp__plugin_unrealmcp_unreal__editor_log, mcp__plugin_unrealmcp_unreal__viewport_capture, mcp__plugin_unrealmcp_unreal__unreal_api_search, mcp__plugin_unrealmcp_unreal__unreal_api_doc, mcp__plugin_unrealmcp_unreal__scene_brief, mcp__plugin_unrealmcp_unreal__scene_query, mcp__plugin_unrealmcp_unreal__actor_inspect, mcp__plugin_unrealmcp_unreal__search_assets, mcp__plugin_unrealmcp_unreal__object_describe, mcp__plugin_unrealmcp_unreal__property_get, mcp__plugin_unrealmcp_unreal__editor_action, mcp__plugin_unrealmcp_unreal__material_edit, mcp__plugin_unrealmcp_unreal__material_inspect, mcp__plugin_unrealmcp_unreal__material_instance, mcp__plugin_unrealmcp_unreal__asset_import, mcp__plugin_unrealmcp_unreal__asset_manage, mcp__plugin_unrealmcp_unreal__asset_references, mcp__plugin_unrealmcp_unreal__blender_run, mcp__plugin_unrealmcp_unreal__blender_status, mcp__plugin_unrealmcp_unreal__mesh_collision, mcp__plugin_unrealmcp_unreal__instanced_mesh_place, mcp__plugin_unrealmcp_unreal__scene_compose, mcp__plugin_unrealmcp_unreal__property_set, mcp__plugin_unrealmcp_unreal__wait_for_shaders, mcp__plugin_unrealmcp_unreal__performance_audit, mcp__plugin_unrealmcp_unreal__execute_python, mcp__plugin_unrealmcp_unreal-native__*
+tools: Read, Grep, Glob, mcp__plugin_unrealmcp_unreal__unreal_status, mcp__plugin_unrealmcp_unreal__project_context, mcp__plugin_unrealmcp_unreal__editor_log, mcp__plugin_unrealmcp_unreal__viewport_capture, mcp__plugin_unrealmcp_unreal__unreal_api_search, mcp__plugin_unrealmcp_unreal__unreal_api_doc, mcp__plugin_unrealmcp_unreal__scene_brief, mcp__plugin_unrealmcp_unreal__scene_query, mcp__plugin_unrealmcp_unreal__actor_inspect, mcp__plugin_unrealmcp_unreal__search_assets, mcp__plugin_unrealmcp_unreal__object_describe, mcp__plugin_unrealmcp_unreal__property_get, mcp__plugin_unrealmcp_unreal__editor_action, mcp__plugin_unrealmcp_unreal__material_edit, mcp__plugin_unrealmcp_unreal__material_inspect, mcp__plugin_unrealmcp_unreal__material_instance, mcp__plugin_unrealmcp_unreal__asset_import, mcp__plugin_unrealmcp_unreal__asset_manage, mcp__plugin_unrealmcp_unreal__asset_references, mcp__plugin_unrealmcp_unreal__blender_run, mcp__plugin_unrealmcp_unreal__blender_status, mcp__plugin_unrealmcp_unreal__mesh_collision, mcp__plugin_unrealmcp_unreal__instanced_mesh_place, mcp__plugin_unrealmcp_unreal__scene_compose, mcp__plugin_unrealmcp_unreal__property_set, mcp__plugin_unrealmcp_unreal__wait_for_shaders, mcp__plugin_unrealmcp_unreal__performance_audit, mcp__plugin_unrealmcp_unreal__execute_python, mcp__plugin_unrealmcp_unreal__epic_list_toolsets, mcp__plugin_unrealmcp_unreal__epic_describe_toolset, mcp__plugin_unrealmcp_unreal__epic_call_tool, mcp__plugin_unrealmcp_unreal-native__*
 model: inherit
 color: orange
 ---
@@ -38,8 +38,11 @@ grey or black. Run `performance_audit` for texture sizes and triangle counts. Re
 Ask before deleting or overwriting assets, and check `asset_references` first. Never edit /Engine content. The
 `material-vfx` and `3d-assets` skills have the op references.
 
-## Epic's native MCP server
-If Epic's ModelContextProtocol plugin is enabled in the editor, its tools are also available to you, under the
-`unreal-native` server (Epic's toolsets: editor, Niagara, PCG, UMG, GAS, StateTree and more). Use them for things the
-UnrealMCP tools above don't cover. When both can do a task, prefer the UnrealMCP tool: it batches, makes one undo step
-and returns structured errors. Never apply the same edit through both servers.
+## Epic's native tools
+UE 5.8's experimental Model Context Protocol plugin serves Epic's own toolsets (editor, Niagara, PCG, UMG, GAS,
+StateTree and more). You reach them through UnrealMCP's gateway: `epic_list_toolsets`, `epic_describe_toolset`, then
+`epic_call_tool(toolset_name=..., tool_name=..., arguments=...)`. When the plugin is enabled, the plugin's second server
+`unreal-native` exposes the same tools directly. Use Epic's tools for what the UnrealMCP tools above don't cover. When
+both can do a task, prefer the UnrealMCP tool: it batches, makes one undo step and returns structured errors. Never apply
+the same edit through both. If `epic_list_toolsets` reports that Epic's server isn't running, carry on without it
+(see docs/EPIC_NATIVE_MCP.md).

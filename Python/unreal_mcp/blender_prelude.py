@@ -187,9 +187,9 @@ def export(name, fmt="fbx", objs=None):
     return str(path)
 
 
-def preview(name="preview", resolution=512, objs=None):
+def preview(name="preview", resolution=512, objs=None, color_type="MATERIAL"):
     """Render a 3/4 view PNG of the objects (Workbench, falls back to Cycles CPU) so the agent can
-    look at the model before importing. Returns the PNG path."""
+    look at the model before importing. color_type="TEXTURE" shows image textures. Returns the PNG path."""
     from mathutils import Vector
     scene = bpy.context.scene
     b = bounds(objs)
@@ -210,7 +210,7 @@ def preview(name="preview", resolution=512, objs=None):
     try:
         scene.render.engine = "BLENDER_WORKBENCH"
         scene.display.shading.light = "STUDIO"
-        scene.display.shading.color_type = "MATERIAL"
+        scene.display.shading.color_type = color_type
         bpy.ops.render.render(write_still=True)
     except Exception:
         scene.render.engine = "CYCLES"

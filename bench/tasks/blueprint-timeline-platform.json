@@ -1,0 +1,261 @@
+{
+  "id": "blueprint-timeline-platform",
+  "domain": "blueprints",
+  "title": "Timeline-driven moving platform",
+  "prompt": "Create an Actor Blueprint {root}/BP_Platform (a cube mesh root, movable) that on BeginPlay remembers its start location and plays a 2-second Timeline named Lift with a float track Alpha going from 0 at t=0 to 1 at t=2. On every timeline update it moves to the lerp between the start location and 300 units above it, using Alpha. Place one at (0,300,100).",
+  "requires": [
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -800,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Platform"
+        },
+        "name": "Lift timeline with Alpha 0->1 over 2s",
+        "expect": "r['success'] and r['status'] in ('ok', 'ok_with_warnings') and any(t['name'] == 'Lift' and abs(t['length'] - 2) < 0.01 and any(k['name'] == 'Alpha' and k['type'] == 'float' and len(k['keys']) >= 2 and abs(k['keys'][0][1]) < 1e-3 and abs(k['keys'][-1][1] - 1) < 1e-3 and abs(k['keys'][-1][0] - 2) < 1e-3 for k in t['tracks']) for t in r['timelines'])"
+      },
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Platform"
+        },
+        "name": "timeline Update drives the location",
+        "expect": "r['success'] and any(n['kind'] == 'timeline' and n['name'] == 'Lift' and any(p['name'] == 'Update' and p.get('links') for p in n['pins']) and any(p['name'] == 'Play' and p.get('links') for p in n['pins']) for n in [n for g in r['graphs'] for n in g['nodes']])"
+      }
+    ],
+    "pie": {
+      "duration_s": 3,
+      "assertions": [
+        {
+          "type": "python",
+          "name": "platform rose ~300",
+          "expr": "[a for a in actors if a.get_class().get_name() == 'BP_Platform_C'][0].get_actor_location().z > 350"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Platform",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_variable",
+            "name": "Start",
+            "type": "vector"
+          },
+          {
+            "op": "add_component",
+            "name": "Mesh",
+            "class": "StaticMeshComponent",
+            "as_root": true,
+            "properties": {
+              "StaticMesh": "/Engine/BasicShapes/Cube.Cube",
+              "Mobility": "Movable",
+              "RelativeScale3D": [
+                2,
+                2,
+                0.2
+              ]
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "here",
+            "kind": "call_function",
+            "function": "GetActorLocation"
+          },
+          {
+            "op": "add_node",
+            "id": "save",
+            "kind": "set_var",
+            "variable": "Start"
+          },
+          {
+            "op": "add_node",
+            "id": "lift",
+            "kind": "timeline",
+            "name": "Lift",
+            "length": 2,
+            "tracks": [
+              {
+                "name": "Alpha",
+                "type": "float",
+                "keys": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "op": "add_node",
+            "id": "start",
+            "kind": "get_var",
+            "variable": "Start"
+          },
+          {
+            "op": "+",
+            "id": "up",
+            "kind": "operator",
+            "type": "vector"
+          },
+          {
+            "op": "add_node",
+            "id": "lerp",
+            "kind": "call_function",
+            "function": "VLerp",
+            "class": "KismetMathLibrary"
+          },
+          {
+            "op": "add_node",
+            "id": "move",
+            "kind": "call_function",
+            "function": "SetActorLocation"
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "save.exec"
+          },
+          {
+            "op": "connect",
+            "from": "here.ReturnValue",
+            "to": "save.Start"
+          },
+          {
+            "op": "connect",
+            "from": "save.then",
+            "to": "lift.Play"
+          },
+          {
+            "op": "connect",
+            "from": "start.Start",
+            "to": "up.A"
+          },
+          {
+            "op": "set_pins",
+            "node": "up",
+            "pins": {
+              "B": [
+                0,
+                0,
+                300
+              ]
+            }
+          },
+          {
+            "op": "connect",
+            "from": "start.Start",
+            "to": "lerp.A"
+          },
+          {
+            "op": "connect",
+            "from": "up.ReturnValue",
+            "to": "lerp.B"
+          },
+          {
+            "op": "connect",
+            "from": "lift.Alpha",
+            "to": "lerp.Alpha"
+          },
+          {
+            "op": "connect",
+            "from": "lift.Update",
+            "to": "move.exec"
+          },
+          {
+            "op": "connect",
+            "from": "lerp.ReturnValue",
+            "to": "move.NewLocation"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Platform.BP_Platform",
+            "label": "Platform",
+            "location": [
+              0,
+              300,
+              100
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -60,10 +60,13 @@ so it survives plugin updates. The first start takes a little longer while uv in
 
 ## Targeting our server, Epic's, or both
 
-- **Ours only** (the default when Epic's plugin is off): `unreal-native` fails to connect and nothing uses it.
-- **Both:** enable *Model Context Protocol* in the editor (Edit → Plugins, Experimental). The subagents have both servers
-  in their tool lists (`mcp__plugin_unrealmcp_unreal__<tool>` and `mcp__plugin_unrealmcp_unreal-native__*`) and are told
-  to prefer UnrealMCP's batched, undoable tools when both can do a task.
+- **Ours only** (the default when Epic's plugin is off): `unreal-native` fails to connect, and the `epic_*` gateway
+  tools report that Epic's server isn't running.
+- **Both:** enable *Model Context Protocol* in the editor (Edit → Plugins, Experimental). The subagents can then reach
+  Epic's tools two ways: through our gateway (`epic_list_toolsets`, `epic_describe_toolset`, `epic_call_tool`; see
+  [EPIC_NATIVE_MCP.md](EPIC_NATIVE_MCP.md)), and directly through `mcp__plugin_unrealmcp_unreal-native__*`. They are told
+  to prefer UnrealMCP's batched, undoable tools when both can do a task. With the `UnrealMCPToolsets` plugin also on,
+  Epic's server serves UnrealMCP tools too.
 - **Epic's only:** disable our server in `/mcp`, or run Epic's alone with
   `claude mcp add --transport http unreal-native http://127.0.0.1:8000/mcp`. The subagents' prompts mention UnrealMCP tools
   by name, so they work best with ours present.

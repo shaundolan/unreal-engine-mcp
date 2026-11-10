@@ -24,15 +24,30 @@ def register(mcp, get_conn):
                                              "since_seq": since_seq, "category": category})
 
     @mcp.tool()
-    def viewport_capture(max_width: int = 1280, source: str = "auto") -> Any:
+    def viewport_capture(max_width: int = 1280, source: str = "auto", width: int = 0, height: int = 0) -> Any:
         """Screenshot and return it as an image, so you can visually verify your work.
         source: "auto" = what the player sees while PIE runs, else the level viewport;
-        "game" = the PIE viewport only; "editor" = the level viewport. max_width downsizes."""
-        reply = call(get_conn, "viewport_capture", {"max_width": max_width, "source": source})
+        "pie" (or "game") = the PIE viewport only; "editor" = the level viewport. max_width downsizes.
+        width/height (PIE only): render the PIE viewport at exactly this size first (it stays that
+        size for the session). Use it in offscreen editors, where the PIE window size is unreliable;
+        HighResShot / take_high_res_screenshot capture the editor view there, not the game."""
+        reply = capture_png(get_conn, max_width, source, width, height)
         if not reply.get("success"):
             return reply
-        try:
-            data = base64.b64decode(reply["data_base64"])
-        except (KeyError, ValueError) as e:
-            return {"success": False, "error": f"bad capture payload: {e}"}
-        return Image(data=data, format="png")
+        return Image(data=reply["png"], format="png")
+
+
+def capture_png(get_conn, max_width: int = 1280, source: str = "auto", width: int = 0,
+                height: int = 0) -> dict[str, Any]:
+    """viewport_capture -> {success, png (bytes), width, height}."""
+    params: dict[str, Any] = {"max_width": max(max_width, width) if width else max_width, "source": source}
+    if width and height:
+        params.update(width=width, height=height)
+    reply = call(get_conn, "viewport_capture", params)
+    if not reply.get("success"):
+        return reply
+    try:
+        png = base64.b64decode(reply["data_base64"])
+    except (KeyError, ValueError) as e:
+        return {"success": False, "error": f"bad capture payload: {e}"}
+    return {"success": True, "png": png, "width": reply.get("width"), "height": reply.get("height")}

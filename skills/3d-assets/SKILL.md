@@ -43,4 +43,5 @@ Arrays: `modifier(plank, "ARRAY", count=6, relative_offset_displace=(1.05, 0, 0)
 Raw geometry: `mesh_from_data("SM_Ramp", verts, faces)`.
 
 ## Limits
-No skeletal rigs or animation export recipes yet. Static meshes only.
+`blender_run` makes static meshes. For organic shapes, creatures and characters, generate them instead
+(`mesh_generate`), and rig characters with `auto_rig` (skill 3d-generation).

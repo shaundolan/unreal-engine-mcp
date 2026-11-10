@@ -9,17 +9,17 @@
 
 namespace
 {
-UTransactor* Trans()
+UTransactor* AgentTurnsTrans()
 {
 	return GEditor ? GEditor->Trans.Get() : nullptr;
 }
 
-int32 ActiveCount(const UTransactor* T)
+int32 AgentTurnsActiveCount(const UTransactor* T)
 {
 	return T ? T->GetQueueLength() - T->GetUndoCount() : 0;
 }
 
-FGuid IdAt(const UTransactor* T, int32 Index)
+FGuid AgentTurnsIdAt(const UTransactor* T, int32 Index)
 {
 	if (!T || Index < 0 || Index >= T->GetQueueLength())
 	{
@@ -29,20 +29,20 @@ FGuid IdAt(const UTransactor* T, int32 Index)
 	return Tr ? Tr->GetContext().TransactionId : FGuid();
 }
 
-FString TitleAt(const UTransactor* T, int32 Index)
+FString AgentTurnsTitleAt(const UTransactor* T, int32 Index)
 {
 	const FTransaction* Tr = (T && Index >= 0 && Index < T->GetQueueLength()) ? T->GetTransaction(Index) : nullptr;
 	return Tr ? Tr->GetContext().Title.ToString() : FString();
 }
 
-TSharedPtr<FJsonObject> Ok()
+TSharedPtr<FJsonObject> AgentTurnsOk()
 {
 	TSharedPtr<FJsonObject> O = MakeShared<FJsonObject>();
 	O->SetBoolField(TEXT("success"), true);
 	return O;
 }
 
-TArray<TSharedPtr<FJsonValue>> Strings(const TArray<FString>& In)
+TArray<TSharedPtr<FJsonValue>> AgentTurnsStrings(const TArray<FString>& In)
 {
 	TArray<TSharedPtr<FJsonValue>> Out;
 	for (const FString& S : In)
@@ -61,7 +61,7 @@ FMCPAgentTurns& FMCPAgentTurns::Get()
 
 TSharedPtr<FJsonObject> FMCPAgentTurns::Begin(int32 Turn)
 {
-	UTransactor* T = Trans();
+	UTransactor* T = AgentTurnsTrans();
 	if (!T)
 	{
 		return MCPError(TEXT("no editor transaction buffer"));
@@ -69,9 +69,9 @@ TSharedPtr<FJsonObject> FMCPAgentTurns::Begin(int32 Turn)
 	Record = FRecord();
 	Record.Turn = Turn;
 	Record.bOpen = true;
-	Record.StartActive = ActiveCount(T);
-	Record.StartTop = IdAt(T, Record.StartActive - 1);
-	TSharedPtr<FJsonObject> O = Ok();
+	Record.StartActive = AgentTurnsActiveCount(T);
+	Record.StartTop = AgentTurnsIdAt(T, Record.StartActive - 1);
+	TSharedPtr<FJsonObject> O = AgentTurnsOk();
 	O->SetNumberField(TEXT("turn"), Turn);
 	O->SetNumberField(TEXT("active_transactions"), Record.StartActive);
 	return O;
@@ -79,7 +79,7 @@ TSharedPtr<FJsonObject> FMCPAgentTurns::Begin(int32 Turn)
 
 TSharedPtr<FJsonObject> FMCPAgentTurns::End(int32 Turn)
 {
-	UTransactor* T = Trans();
+	UTransactor* T = AgentTurnsTrans();
 	if (!T)
 	{
 		return MCPError(TEXT("no editor transaction buffer"));
@@ -89,9 +89,9 @@ TSharedPtr<FJsonObject> FMCPAgentTurns::End(int32 Turn)
 		return MCPError(FString::Printf(TEXT("turn %d was not begun"), Turn));
 	}
 	Record.bOpen = false;
-	const int32 Active = ActiveCount(T);
+	const int32 Active = AgentTurnsActiveCount(T);
 	// The buffer was reset (map switch) or rewound below the starting point: the turn's steps can't be identified.
-	if (Active < Record.StartActive || IdAt(T, Record.StartActive - 1) != Record.StartTop)
+	if (Active < Record.StartActive || AgentTurnsIdAt(T, Record.StartActive - 1) != Record.StartTop)
 	{
 		Record.bReset = true;
 	}
@@ -99,22 +99,22 @@ TSharedPtr<FJsonObject> FMCPAgentTurns::End(int32 Turn)
 	{
 		for (int32 i = Record.StartActive; i < Active; ++i)
 		{
-			Record.Ids.Add(IdAt(T, i));
-			Record.Titles.Add(TitleAt(T, i));
+			Record.Ids.Add(AgentTurnsIdAt(T, i));
+			Record.Titles.Add(AgentTurnsTitleAt(T, i));
 		}
 	}
-	TSharedPtr<FJsonObject> O = Ok();
+	TSharedPtr<FJsonObject> O = AgentTurnsOk();
 	O->SetNumberField(TEXT("turn"), Turn);
 	O->SetNumberField(TEXT("steps"), Record.Ids.Num());
 	O->SetBoolField(TEXT("undo_history_reset"), Record.bReset);
-	O->SetArrayField(TEXT("titles"), Strings(Record.Titles));
+	O->SetArrayField(TEXT("titles"), AgentTurnsStrings(Record.Titles));
 	return O;
 }
 
 int32 FMCPAgentTurns::UndoableSteps(FString* Why) const
 {
 	auto Fail = [Why](const TCHAR* Reason) { if (Why) { *Why = Reason; } return 0; };
-	const UTransactor* T = Trans();
+	const UTransactor* T = AgentTurnsTrans();
 	if (!T || Record.Turn == 0)
 	{
 		return Fail(TEXT("no agent turn yet"));
@@ -139,7 +139,7 @@ int32 FMCPAgentTurns::UndoableSteps(FString* Why) const
 	{
 		return Fail(TEXT("stop Play In Editor first"));
 	}
-	const int32 Active = ActiveCount(T);
+	const int32 Active = AgentTurnsActiveCount(T);
 	const int32 N = Record.Ids.Num();
 	if (Active < N)
 	{
@@ -147,7 +147,7 @@ int32 FMCPAgentTurns::UndoableSteps(FString* Why) const
 	}
 	for (int32 i = 0; i < N; ++i)
 	{
-		if (IdAt(T, Active - N + i) != Record.Ids[i])
+		if (AgentTurnsIdAt(T, Active - N + i) != Record.Ids[i])
 		{
 			return Fail(TEXT("something else was done or undone after the agent turn; use Edit > Undo History instead"));
 		}
@@ -177,10 +177,10 @@ TSharedPtr<FJsonObject> FMCPAgentTurns::UndoLast()
 		++Undone;
 	}
 	Record.bUndone = true;
-	TSharedPtr<FJsonObject> O = Undone == N ? Ok() : MCPError(FString::Printf(TEXT("undid %d of %d steps"), Undone, N));
+	TSharedPtr<FJsonObject> O = Undone == N ? AgentTurnsOk() : MCPError(FString::Printf(TEXT("undid %d of %d steps"), Undone, N));
 	O->SetNumberField(TEXT("turn"), Record.Turn);
 	O->SetNumberField(TEXT("undone"), Undone);
-	O->SetArrayField(TEXT("titles"), Strings(Record.Titles));
+	O->SetArrayField(TEXT("titles"), AgentTurnsStrings(Record.Titles));
 	return O;
 }
 
@@ -188,12 +188,12 @@ TSharedPtr<FJsonObject> FMCPAgentTurns::Status() const
 {
 	FString Why;
 	const int32 N = UndoableSteps(&Why);
-	TSharedPtr<FJsonObject> O = Ok();
+	TSharedPtr<FJsonObject> O = AgentTurnsOk();
 	O->SetNumberField(TEXT("turn"), Record.Turn);
 	O->SetBoolField(TEXT("open"), Record.bOpen);
 	O->SetNumberField(TEXT("steps"), Record.Ids.Num());
 	O->SetNumberField(TEXT("undoable_steps"), N);
 	O->SetStringField(TEXT("not_undoable_because"), N ? FString() : Why);
-	O->SetArrayField(TEXT("titles"), Strings(Record.Titles));
+	O->SetArrayField(TEXT("titles"), AgentTurnsStrings(Record.Titles));
 	return O;
 }

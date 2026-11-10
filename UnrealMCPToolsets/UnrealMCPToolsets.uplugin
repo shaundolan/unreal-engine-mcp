@@ -1,0 +1,41 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.3.0",
+	"EngineVersion": "5.8.0",
+	"FriendlyName": "UnrealMCP Toolsets",
+	"Description": "Registers UnrealMCP tools (Blueprint/UMG/BT/AnimBP authoring, scene_compose, reflection, PIE input, frame stats) as Epic ToolsetRegistry toolsets, so they appear in the UE 5.8 native MCP server and AI Assistant. Same C++ handlers as the UnrealMCP TCP server.",
+	"Category": "Editor",
+	"CreatedBy": "Shaun Dolan",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": true,
+	"Installed": false,
+	"EnabledByDefault": false,
+	"Modules": [
+		{
+			"Name": "UnrealMCPToolsets",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "UnrealMCP",
+			"Enabled": true
+		},
+		{
+			"Name": "ToolsetRegistry",
+			"Enabled": true
+		}
+	]
+}

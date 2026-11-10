@@ -210,3 +210,26 @@ def enum_name(v):
     """unreal enum value -> 'INSTANT' (str() gives '<GameplayEffectDurationType.INSTANT: 0>' in the editor)."""
     m = re.search(r"\.([A-Z0-9_]+)", str(v))
     return m.group(1) if m else str(v)
+
+
+def mcp_lib():
+    """unreal.MCPScriptLibrary from the UnrealMCP plugin (C++ helpers for what Python cannot reach), or None when the
+    loaded plugin predates it."""
+    return getattr(unreal, "MCPScriptLibrary", None)
+
+
+def sanitize_asset_name(name):
+    """What the importer makes of a file stem (ObjectTools::SanitizeObjectName): invalid characters become _."""
+    return re.sub(r"[\s\"',.:|&!~@#(){}\[\]=;^%$`/\\*?<>+]", "_", str(name))
+
+
+def release_stale_path(path):
+    """A force-deleted asset can stay in memory (an async build, a render or undo reference keeps it) and still occupy
+    its path: importing or creating an asset there then fails ("bReplaceExisting is false, we are not overriding").
+    Move such leftovers into the transient package. Live assets are never touched. Returns "released:N" when
+    something was moved, else None."""
+    lib = mcp_lib()
+    if lib is None or unreal.EditorAssetLibrary.does_asset_exist(path):
+        return None
+    r = str(lib.release_stale_asset_path(path))
+    return r if r.startswith("released") else None

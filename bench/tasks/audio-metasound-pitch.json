@@ -1,0 +1,76 @@
+{
+  "id": "audio-metasound-pitch",
+  "domain": "audio",
+  "title": "Looping MetaSound tone with a Pitch input",
+  "prompt": "Create a looping (not one-shot) mono MetaSound Source {root}/MS_Tone with a Float input named Pitch (default 1). It plays a saw oscillator whose frequency is 110 Hz times Pitch, into the audio output, so gameplay can raise the pitch with Set Float Parameter.",
+  "requires": [
+    "command:metasound_apply"
+  ],
+  "setup": [],
+  "check": {
+    "tools": [
+      {
+        "tool": "metasound_export",
+        "args": {
+          "asset": "{root}/MS_Tone"
+        },
+        "name": "looping, Pitch float input",
+        "expect": "r['success'] and not r['one_shot'] and any(i['name'] == 'Pitch' and i['type'] == 'Float' for i in r['inputs'])"
+      },
+      {
+        "tool": "metasound_export",
+        "args": {
+          "asset": "{root}/MS_Tone"
+        },
+        "name": "Pitch -> ... -> Saw -> audio out",
+        "expect": "r['success'] and any(e['from'].split('.')[0] in [n['id'] for n in r['nodes'] if n['name'] == 'Pitch'] for e in r['edges']) and any('Saw' in n.get('class', '') for n in r['nodes']) and any('OutputFormat' in e['to'] or any(n['id'] == e['to'].split('.')[0] and n.get('kind') == 'Output' for n in r['nodes']) for e in r['edges'])"
+      }
+    ]
+  },
+  "solution": [
+    {
+      "tool": "metasound_apply",
+      "args": {
+        "asset": "{root}/MS_Tone",
+        "one_shot": false,
+        "operations": [
+          {
+            "op": "add_input",
+            "name": "Pitch",
+            "type": "Float",
+            "default": 1.0
+          },
+          {
+            "op": "add_node",
+            "id": "mul",
+            "class": "Multiply",
+            "variant": "Float",
+            "inputs": {
+              "AdditionalOperands": 110
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "osc",
+            "class": "Saw"
+          },
+          {
+            "op": "connect",
+            "from": "graph.Pitch",
+            "to": "mul.PrimaryOperand"
+          },
+          {
+            "op": "connect",
+            "from": "mul.Out",
+            "to": "osc.Frequency"
+          },
+          {
+            "op": "connect",
+            "from": "osc.Audio",
+            "to": "graph.Audio"
+          }
+        ]
+      }
+    }
+  ]
+}

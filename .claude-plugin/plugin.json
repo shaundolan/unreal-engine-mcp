@@ -19,7 +19,8 @@
         "UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv",
         "UNREAL_MCP_HOST": "${UNREAL_MCP_HOST:-127.0.0.1}",
         "UNREAL_MCP_PORT": "${UNREAL_MCP_PORT:-55557}",
-        "UNREAL_MCP_TOKEN": "${UNREAL_MCP_TOKEN:-}"
+        "UNREAL_MCP_TOKEN": "${UNREAL_MCP_TOKEN:-}",
+        "UNREAL_MCP_EPIC_URL": "${UNREAL_MCP_EPIC_URL:-http://127.0.0.1:8000/mcp}"
       }
     },
     "unreal-native": {

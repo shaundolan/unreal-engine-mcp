@@ -29,6 +29,10 @@ FlopperamUnrealMCP/Content/Collections/
 # Unreal Engine generated files (plugin level)
 FlopperamUnrealMCP/Plugins/UnrealMCP/Binaries/
 FlopperamUnrealMCP/Plugins/UnrealMCP/Intermediate/
+FlopperamUnrealMCP/Plugins/UnrealMCPToolsets/Binaries/
+FlopperamUnrealMCP/Plugins/UnrealMCPToolsets/Intermediate/
+UnrealMCPToolsets/Binaries/
+UnrealMCPToolsets/Intermediate/
 FlopperamUnrealMCP/FlopperamUnrealMCP.sln
 
 # Unreal Engine temporary and cache files

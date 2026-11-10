@@ -6,6 +6,7 @@
 #include "Dom/JsonValue.h"
 #include "Editor.h"
 #include "Engine/Level.h"
+#include "Engine/LevelStreaming.h"
 #include "Engine/World.h"
 #include "FileHelpers.h"
 #include "HAL/FileManager.h"
@@ -241,7 +242,8 @@ TSharedPtr<FJsonObject> FMCPLevelCommands::OpenLevel(const TSharedPtr<FJsonObjec
 	CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 
 	// A UWorld of the target that is already in memory but is not the editor world (a duplicate_asset copy, an asset
-	// loaded by load_asset, a map left over from NewLevel) makes MAP LOAD fatal with "World Memory Leaks". Unload it.
+	// loaded by load_asset, a map left over from NewLevel, or a sub-level streamed in by the current map) makes MAP
+	// LOAD fatal with "World Memory Leaks". Unload it.
 	if (UPackage* Existing = FindPackage(nullptr, *PackageName))
 	{
 		if (UWorld* Stale = UWorld::FindWorldInPackage(Existing); Stale && Stale != GEditor->GetEditorWorldContext().World())
@@ -251,16 +253,62 @@ TSharedPtr<FJsonObject> FMCPLevelCommands::OpenLevel(const TSharedPtr<FJsonObjec
 				return MCPError(FString::Printf(TEXT("%s is in memory with unsaved changes (not as the editor world); save it with "
 					"asset_manage save or pass discard_changes=true to drop them"), *PackageName));
 			}
+			// The current world streams the target in as a sub-level (a title / wrapper map): its streaming level
+			// keeps the package loaded, so it cannot be unloaded while that world is open. Leave the current world
+			// first (a blank untitled map, nothing is saved or modified), which unloads its streaming levels.
+			UWorld* EditorWorld = GEditor->GetEditorWorldContext().World();
+			bool bStreamedByCurrent = false;
+			if (EditorWorld)
+			{
+				for (ULevelStreaming* Streaming : EditorWorld->GetStreamingLevels())
+				{
+					if (Streaming && Streaming->GetWorldAssetPackageFName() == FName(*PackageName))
+					{
+						bStreamedByCurrent = true;
+						break;
+					}
+				}
+				bStreamedByCurrent |= Stale->PersistentLevel && Stale->PersistentLevel->OwningWorld == EditorWorld;
+			}
 			FText UnloadError;
-			UPackageTools::UnloadPackages({ Existing }, UnloadError, /*bUnloadDirtyPackages*/ true);
-			CollectPythonGarbage();
-			CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
-			UPackage* Still = FindPackage(nullptr, *PackageName);
-			if (Still && UWorld::FindWorldInPackage(Still))
+			auto TryUnload = [&]()
+			{
+				if (UPackage* Pkg = FindPackage(nullptr, *PackageName))
+				{
+					if (UWorld::FindWorldInPackage(Pkg))
+					{
+						UPackageTools::UnloadPackages({ Pkg }, UnloadError, /*bUnloadDirtyPackages*/ true);
+					}
+				}
+				CollectPythonGarbage();
+				CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+				UPackage* Still = FindPackage(nullptr, *PackageName);
+				return !(Still && UWorld::FindWorldInPackage(Still));
+			};
+			bool bUnloaded = false;
+			if (!bStreamedByCurrent)
+			{
+				bUnloaded = TryUnload();
+			}
+			if (!bUnloaded)
+			{
+				// Streamed in by the current map, or held by something the current world owns: switch away and retry.
+				const FString Leaving = EditorWorld ? EditorWorld->GetOutermost()->GetName() : FString();
+				if (!UEditorLoadingAndSavingUtils::NewBlankMap(/*bSaveExistingMap*/ false))
+				{
+					return MCPError(FString::Printf(TEXT("refusing to load %s: its world is loaded as a sub-level of %s and switching to a "
+						"blank map to unload it failed"), *PackageName, *Leaving));
+				}
+				Out->SetStringField(TEXT("left_world"), Leaving);
+				Out->SetBoolField(TEXT("unloaded_streaming_levels"), bStreamedByCurrent);
+				bUnloaded = TryUnload();
+			}
+			if (!bUnloaded)
 			{
 				return MCPError(FString::Printf(TEXT("refusing to load %s: a standalone copy of its world is still in memory and could not be "
-					"unloaded (%s). Loading it would crash the editor with 'World Memory Leaks'. Drop Python references to it "
-					"and retry, or restart the editor."), *PackageName, *UnloadError.ToString()));
+					"unloaded%s. Loading it would crash the editor with 'World Memory Leaks'. Drop Python references to it "
+					"and retry, or restart the editor."), *PackageName,
+					UnloadError.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *UnloadError.ToString())));
 			}
 			Out->SetBoolField(TEXT("unloaded_stale_copy"), true);
 		}

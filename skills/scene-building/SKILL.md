@@ -45,7 +45,14 @@ Spawn `unreal.DirectionalLight`, `unreal.SkyLight`, `unreal.SkyAtmosphere`, `unr
 - `project_context` → `maps`, `current_level`. Switch maps with `level_open(path="/Game/Maps/Arena")` (`create=true` makes and saves a new one). Don't call `LevelEditorSubsystem.load_level` / `new_level` or load a `duplicate_asset` copy of a map from `execute_python`: a map whose world is already in memory crashes the editor ("World Memory Leaks"), and `level_open` unloads it first.
 - Save with `editor_action(action="save_all")`. Nothing is saved to disk until you do. It never prompts, saves maps too, and lists `failed` packages (for example read-only files); any failure makes `success` false.
 - Many copies of one mesh (trees, lamps, cars): `instanced_mesh_place` (one HISM component, bulk transforms, cull distance), not one actor each. Meshes without collision: `mesh_collision` (box / convex / complex_as_simple, collision profile).
-- PIE: `editor_action(action="pie_start")`, then poll `project_context().pie_running`, read `editor_log`, then `pie_stop`.
+- PIE: `editor_action(action="pie_start", width=1280, height=720)`, then poll `project_context().pie_running`, read `editor_log`, then `pie_stop`.
+  Give a size in an offscreen editor: its PIE window size is unreliable (it shrinks a little every session). Screenshot the game with
+  `viewport_capture(source="pie", width=1600, height=900)`: that renders a full frame at exactly that size. `HighResShot` and
+  `take_high_res_screenshot` capture the editor view there, not the game.
+- A title map that streams the gameplay map in as a sub-level is fine: `level_open` on the gameplay map leaves the title map
+  (via a blank map) so the streamed copy unloads, then opens it.
+- Re-importing after a delete: `asset_import` frees a path a force-deleted asset still occupies in memory (`released_stale`),
+  so delete + import at the same path works with `replace_existing=false`.
 
 ## Verify
 - `viewport_capture` after visual changes. To frame the subject first, use `editor_action(action="focus_actor", actor_name=...)`. After new materials or imports, call `wait_for_shaders` first; until the queue is empty the capture shows old shaders or placeholders.

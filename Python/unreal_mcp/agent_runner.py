@@ -300,6 +300,10 @@ class Session:
         native = f"mcp__{ClaudeCodeProvider.NATIVE}__"
         if tool_name.startswith(native):
             name = tool_name[len(native):]
+            if name in ("list_toolsets", "describe_toolset"):  # Epic's tool-search meta tools: read-only
+                return True, ""
+            if name == "call_tool":  # bEnableToolSearch (Epic's default): the real tool is an argument
+                name = str(args.get("tool_name", ""))
             reason = classify_native(name, args, self.confirm_mode)
             if not reason:
                 return True, ""
@@ -549,7 +553,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--openai-base-url", default=None)
     p.add_argument("--native-mcp", nargs="?", const="http://127.0.0.1:8000/mcp",
                    default=os.environ.get("UNREAL_NATIVE_MCP_URL") or None,
-                   help="Claude Code mode: also attach Epic's native MCP server (ModelContextProtocol plugin)")
+                   help="Epic's native MCP server (ModelContextProtocol plugin): enables the epic_* gateway tools for "
+                        "every provider and attaches the server directly in Claude Code mode")
     p.add_argument("--max-steps", type=int, default=40)
     p.add_argument("--agents-dir", type=Path, default=None)
     p.add_argument("--claude-code-builtin-tools", action="store_true",
@@ -558,6 +563,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--yes", action="store_true", help="--once: approve confirmation prompts (default deny)")
     args = p.parse_args(argv)
 
+    if args.native_mcp and not os.environ.get("UNREAL_MCP_EPIC_URL"):
+        os.environ["UNREAL_MCP_EPIC_URL"] = args.native_mcp  # tools/epic.py registers the gateway from this
     settings = Settings.from_env()
     if args.unreal_port:
         settings = Settings(**{**settings.__dict__, "port": args.unreal_port})

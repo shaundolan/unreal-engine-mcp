@@ -31,8 +31,10 @@ READ_ONLY = frozenset({
     "scene_assert", "search_assets", "asset_references", "material_inspect", "bp_export", "widget_export",
     "bt_export", "landscape_inspect", "foliage_inspect", "pcg_inspect", "spline_inspect", "anim_inspect",
     "animbp_export", "gas_inspect", "frame_stats", "performance_audit", "package_status", "blender_status",
-    "wait_for_shaders", "object_describe", "property_get",
+    "wait_for_shaders", "object_describe", "property_get", "epic_list_toolsets", "epic_describe_toolset",
+    "bp_explain", "bp_review",
 })
+EPIC_META = ("epic_list_toolsets", "epic_describe_toolset", "epic_call_tool")
 
 
 def _ops(args: dict[str, Any]) -> list[dict[str, Any]]:
@@ -45,6 +47,11 @@ def classify(tool: str, args: dict[str, Any] | None, mode: str = "destructive") 
     if mode == "off":
         return None
     args = args or {}
+    # The epic_* gateway (tools/epic.py) forwards to Epic's native tools: judge the Epic tool it names.
+    if tool == "epic_call_tool":
+        return classify_native(str(args.get("tool_name", "")), args.get("arguments"), mode)
+    if tool.startswith("epic_") and tool not in EPIC_META:  # UNREAL_MCP_EPIC_MODE=expand: epic_<Toolset>_<tool>
+        return classify_native(tool[len("epic_"):], args, mode)
     if mode == "all" and tool not in READ_ONLY:
         return f"{tool} changes the project (confirm-all mode)"
     reasons: list[str] = []

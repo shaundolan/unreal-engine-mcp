@@ -8,21 +8,21 @@
 
 namespace
 {
-FString Action(const TSharedPtr<FJsonObject>& P)
+FString AgentCmdAction(const TSharedPtr<FJsonObject>& P)
 {
 	FString A;
 	P->TryGetStringField(TEXT("action"), A);
 	return A;
 }
 
-TSharedPtr<FJsonObject> WithSuccess(bool bOk, const FString& Error)
+TSharedPtr<FJsonObject> AgentCmdWithSuccess(bool bOk, const FString& Error)
 {
 	return bOk ? FMCPAgentClient::Get().StatusJson() : MCPError(Error);
 }
 
-TSharedPtr<FJsonObject> AgentTurn(const TSharedPtr<FJsonObject>& P)
+TSharedPtr<FJsonObject> AgentCmdAgentTurn(const TSharedPtr<FJsonObject>& P)
 {
-	const FString A = Action(P);
+	const FString A = AgentCmdAction(P);
 	int32 Turn = 0;
 	P->TryGetNumberField(TEXT("turn"), Turn);
 	FMCPAgentTurns& T = FMCPAgentTurns::Get();
@@ -45,9 +45,9 @@ TSharedPtr<FJsonObject> AgentTurn(const TSharedPtr<FJsonObject>& P)
 	return MCPError(FString::Printf(TEXT("unknown agent_turn action '%s' (begin, end, undo, status)"), *A));
 }
 
-TSharedPtr<FJsonObject> AgentPanel(const TSharedPtr<FJsonObject>& P)
+TSharedPtr<FJsonObject> AgentCmdAgentPanel(const TSharedPtr<FJsonObject>& P)
 {
-	const FString A = Action(P);
+	const FString A = AgentCmdAction(P);
 	FMCPAgentClient& C = FMCPAgentClient::Get();
 	FString Err;
 	if (A == TEXT("status") || A.IsEmpty())
@@ -74,7 +74,7 @@ TSharedPtr<FJsonObject> AgentPanel(const TSharedPtr<FJsonObject>& P)
 	{
 		FString Extra;
 		P->TryGetStringField(TEXT("extra_args"), Extra);
-		return WithSuccess(C.StartRunner(Extra, Err), Err);
+		return AgentCmdWithSuccess(C.StartRunner(Extra, Err), Err);
 	}
 	if (A == TEXT("stop_runner"))
 	{
@@ -83,7 +83,7 @@ TSharedPtr<FJsonObject> AgentPanel(const TSharedPtr<FJsonObject>& P)
 	}
 	if (A == TEXT("connect"))
 	{
-		return WithSuccess(C.Connect(Err), Err);
+		return AgentCmdWithSuccess(C.Connect(Err), Err);
 	}
 	if (A == TEXT("disconnect"))
 	{
@@ -97,7 +97,7 @@ TSharedPtr<FJsonObject> AgentPanel(const TSharedPtr<FJsonObject>& P)
 		P->TryGetStringField(TEXT("provider"), Provider);
 		P->TryGetStringField(TEXT("model"), Model);
 		P->TryGetStringField(TEXT("specialist"), Specialist);
-		return WithSuccess(C.SendUserMessage(Text, Provider, Model, Specialist, Err, P->TryGetField(TEXT("mock_script"))), Err);
+		return AgentCmdWithSuccess(C.SendUserMessage(Text, Provider, Model, Specialist, Err, P->TryGetField(TEXT("mock_script"))), Err);
 	}
 	if (A == TEXT("stop"))
 	{
@@ -140,6 +140,6 @@ TSharedPtr<FJsonObject> AgentPanel(const TSharedPtr<FJsonObject>& P)
 
 void FMCPAgentCommands::Register(IMCPCommandRegistry& Registry)
 {
-	Registry.Register(TEXT("agent_turn"), &AgentTurn, false);
-	Registry.Register(TEXT("agent_panel"), &AgentPanel, false);
+	Registry.Register(TEXT("agent_turn"), &AgentCmdAgentTurn, false);
+	Registry.Register(TEXT("agent_panel"), &AgentCmdAgentPanel, false);
 }

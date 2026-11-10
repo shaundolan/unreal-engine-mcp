@@ -114,12 +114,19 @@ do, and denies Claude Code's own tools (Bash, Edit, ...) unless the runner was s
 ## Epic's native MCP server
 
 UE 5.8 ships an experimental **ModelContextProtocol** plugin: an HTTP MCP server inside the editor
-(`http://127.0.0.1:8000/mcp` by default) that serves the ToolsetRegistry toolsets. Start the runner with `--native-mcp
-[URL]` (or set `UNREAL_NATIVE_MCP_URL`) and Claude Code mode attaches it as a second server, `unreal-native`, next to
-ours. Native tool calls go through the same permission path; native tools whose names contain delete, remove, save,
-rename and similar words ask first in Destructive mode, and every native call asks in Strict and All. The in-process
-providers (Anthropic, OpenAI-compatible) only see UnrealMCP's tools for now. Exposing UnrealMCP tools as Epic toolsets
-(so they also show up in Epic's server and assistant) is a separate work item; see the ROADMAP.
+(`http://127.0.0.1:8000/mcp` by default) that serves the ToolsetRegistry toolsets. See [EPIC_NATIVE_MCP.md](EPIC_NATIVE_MCP.md)
+for the details. The panel works with it in two ways:
+
+- **Every provider** can reach it through UnrealMCP's `epic_*` gateway tools (`epic_list_toolsets`,
+  `epic_describe_toolset`, `epic_call_tool`), which are part of the tool set the runner loads in-process. They're
+  registered when `UNREAL_MCP_EPIC_URL` is set, and `--native-mcp` sets it for you. The specialists list them. `epic_call_tool` is judged by the Epic tool it names: in Destructive mode, Epic tools whose names contain
+  delete, remove, save, rename and similar words ask first. In Strict and All modes, every Epic call asks.
+- **Claude Code mode** can also attach Epic's server directly as a second server, `unreal-native`. Start the runner with
+  `--native-mcp [URL]` or set `UNREAL_NATIVE_MCP_URL`. Its calls go through the same permission path, including Epic's
+  `call_tool` meta tool, which is judged by its `tool_name` argument.
+
+The other direction, UnrealMCP's tools as Epic toolsets (the `UnrealMCPToolsets` plugin), lets Epic's server and Epic's
+assistant call our tools as well.
 
 ## Why not extend Epic's AI Assistant?
 
@@ -135,9 +142,9 @@ default, `NoRedist`). It was studied before building this panel:
   `main_url`) that points the browser at a different page. Using it would mean reimplementing Epic's private, undocumented
   JavaScript contract, which could change in any release, and the module is built with `WITH_AIASSISTANT_EPIC_INTERNAL`.
 
-So it can't take our providers cleanly, and this panel stays a native Slate tab. The two cooperate rather than compete.
-Once UnrealMCP's tools are registered as Epic toolsets (in progress separately), Epic's assistant and Epic's MCP server
-can call them too, and this panel can reach Epic's tools through `--native-mcp`.
+So it can't take our providers cleanly, and this panel stays a native Slate tab. The two cooperate rather than compete:
+with `UnrealMCPToolsets` enabled, Epic's assistant and Epic's MCP server can call UnrealMCP tools, and this panel reaches
+Epic's tools through the `epic_*` gateway (or `--native-mcp`).
 
 ## Runner reference
 

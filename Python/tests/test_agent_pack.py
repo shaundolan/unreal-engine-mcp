@@ -8,7 +8,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PREFIX = "mcp__plugin_unrealmcp_unreal__"
-UPCOMING = {"niagara_apply"}  # sibling branch
+# niagara_apply lands on a sibling branch; epic_* exist only when UNREAL_MCP_EPIC_URL is set
+UPCOMING = {"niagara_apply", "epic_list_toolsets", "epic_describe_toolset", "epic_call_tool"}
 
 
 def server_tools() -> set[str]:

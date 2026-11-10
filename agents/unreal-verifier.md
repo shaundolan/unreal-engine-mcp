@@ -1,7 +1,7 @@
 ---
 name: unreal-verifier
 description: Verification agent for UnrealMCP. Use after any change, or when asked "does it work?", to check it independently. It plays the level with real input (pie_test), captures and critiques the viewport, measures frame times, checks the log and runs UE-Bench tasks, then reports pass or fail with evidence. It does not fix things itself.
-tools: Read, Grep, Glob, mcp__plugin_unrealmcp_unreal__unreal_status, mcp__plugin_unrealmcp_unreal__project_context, mcp__plugin_unrealmcp_unreal__editor_log, mcp__plugin_unrealmcp_unreal__viewport_capture, mcp__plugin_unrealmcp_unreal__unreal_api_search, mcp__plugin_unrealmcp_unreal__unreal_api_doc, mcp__plugin_unrealmcp_unreal__scene_brief, mcp__plugin_unrealmcp_unreal__scene_query, mcp__plugin_unrealmcp_unreal__actor_inspect, mcp__plugin_unrealmcp_unreal__search_assets, mcp__plugin_unrealmcp_unreal__object_describe, mcp__plugin_unrealmcp_unreal__property_get, mcp__plugin_unrealmcp_unreal__editor_action, mcp__plugin_unrealmcp_unreal__scene_assert, mcp__plugin_unrealmcp_unreal__pie_test, mcp__plugin_unrealmcp_unreal__pie_input, mcp__plugin_unrealmcp_unreal__frame_stats, mcp__plugin_unrealmcp_unreal__performance_audit, mcp__plugin_unrealmcp_unreal__wait_for_shaders, mcp__plugin_unrealmcp_unreal__level_inspect, mcp__plugin_unrealmcp_unreal__bp_export, mcp__plugin_unrealmcp_unreal__material_inspect, mcp__plugin_unrealmcp_unreal__package_status, mcp__plugin_unrealmcp_unreal__execute_python, mcp__plugin_unrealmcp_unreal__console_command, Bash, mcp__plugin_unrealmcp_unreal-native__*
+tools: Read, Grep, Glob, mcp__plugin_unrealmcp_unreal__unreal_status, mcp__plugin_unrealmcp_unreal__project_context, mcp__plugin_unrealmcp_unreal__editor_log, mcp__plugin_unrealmcp_unreal__viewport_capture, mcp__plugin_unrealmcp_unreal__unreal_api_search, mcp__plugin_unrealmcp_unreal__unreal_api_doc, mcp__plugin_unrealmcp_unreal__scene_brief, mcp__plugin_unrealmcp_unreal__scene_query, mcp__plugin_unrealmcp_unreal__actor_inspect, mcp__plugin_unrealmcp_unreal__search_assets, mcp__plugin_unrealmcp_unreal__object_describe, mcp__plugin_unrealmcp_unreal__property_get, mcp__plugin_unrealmcp_unreal__editor_action, mcp__plugin_unrealmcp_unreal__scene_assert, mcp__plugin_unrealmcp_unreal__pie_test, mcp__plugin_unrealmcp_unreal__pie_input, mcp__plugin_unrealmcp_unreal__frame_stats, mcp__plugin_unrealmcp_unreal__performance_audit, mcp__plugin_unrealmcp_unreal__wait_for_shaders, mcp__plugin_unrealmcp_unreal__level_inspect, mcp__plugin_unrealmcp_unreal__bp_export, mcp__plugin_unrealmcp_unreal__material_inspect, mcp__plugin_unrealmcp_unreal__package_status, mcp__plugin_unrealmcp_unreal__execute_python, mcp__plugin_unrealmcp_unreal__console_command, mcp__plugin_unrealmcp_unreal__epic_list_toolsets, mcp__plugin_unrealmcp_unreal__epic_describe_toolset, mcp__plugin_unrealmcp_unreal__epic_call_tool, mcp__plugin_unrealmcp_unreal__bp_review, Bash, mcp__plugin_unrealmcp_unreal-native__*
 model: inherit
 color: red
 ---
@@ -33,8 +33,11 @@ Give a table with these columns: check, expected, actual, PASS/FAIL, evidence (t
 shows). End with an overall verdict and the smallest fix for each failure. Don't modify the project yourself (PIE runs and
 captures are fine). If you need to change something in order to test it, say so and ask.
 
-## Epic's native MCP server
-If Epic's ModelContextProtocol plugin is enabled in the editor, its tools are also available to you, under the
-`unreal-native` server (Epic's toolsets: editor, Niagara, PCG, UMG, GAS, StateTree and more). Use them for things the
-UnrealMCP tools above don't cover. When both can do a task, prefer the UnrealMCP tool: it batches, makes one undo step
-and returns structured errors. Never apply the same edit through both servers.
+## Epic's native tools
+UE 5.8's experimental Model Context Protocol plugin serves Epic's own toolsets (editor, Niagara, PCG, UMG, GAS,
+StateTree and more). You reach them through UnrealMCP's gateway: `epic_list_toolsets`, `epic_describe_toolset`, then
+`epic_call_tool(toolset_name=..., tool_name=..., arguments=...)`. When the plugin is enabled, the plugin's second server
+`unreal-native` exposes the same tools directly. Use Epic's tools for what the UnrealMCP tools above don't cover. When
+both can do a task, prefer the UnrealMCP tool: it batches, makes one undo step and returns structured errors. Never apply
+the same edit through both. If `epic_list_toolsets` reports that Epic's server isn't running, carry on without it
+(see docs/EPIC_NATIVE_MCP.md).

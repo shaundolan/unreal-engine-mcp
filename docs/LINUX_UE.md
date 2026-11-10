@@ -37,3 +37,34 @@ Notes:
 - **A known 5.8.4 engine ensure** (`FAppTime ... IsInGameThread()` from `UpdateReflectionSceneData`) appears once per
   session. It's an engine bug, harmless; dismiss it.
 - Rendering uses about 2–4 GB of VRAM for the sample and bench levels. Free the GPU of other models first.
+- **PIE in an offscreen editor.** When a PIE session ends, the editor saves the PIE window's client size as the next
+  window size (`LevelEditorPlaySettings` `NewWindowWidth/Height` in `Saved/Config/.../EditorPerProjectUserSettings.ini`).
+  The title bar is subtracted every time, so each session's window is shorter than the last: 720, 686, 680, ... down
+  to 1190x18. `pie_start` repairs a saved size below 160x120 and puts the saved size back after its own sessions.
+  `pie_start(width, height)` (and `pie_test`, default 1280x720) pins the PIE viewport to an exact render size whatever
+  the window does. Screenshots of the game: `viewport_capture(source="pie", width=1600, height=900)` or a pie_test
+  `{"capture": "name"}` step. `HighResShot` / `take_high_res_screenshot` capture the editor view there, not PIE.
+
+## A hung editor (editor_unresponsive)
+5.8.4 Vulkan can hang with the RHI thread spinning at 100% and the game thread frozen. We saw it once, during a
+material rebuild in an offscreen editor. The plugin's socket threads keep running, so MCP reports the hang instead of
+blocking:
+- `editor_health` is answered off the game thread. It reports `responsive`, `reason`, `pid`,
+  `game_thread_tick_age_s`, `busy_command` / `busy_for_s` and `blocked_by` (modal dialog, slow task).
+- A queued command that cannot start because the game thread has not serviced the queue for `UNREAL_MCP_WATCHDOG_S`
+  seconds (default 60) fails at once with `editor_unresponsive: ...`, plus a `hint` and the `health` snapshot. It is
+  cancelled, so it never runs late. A command that is already running is only declared stuck once it is past its own
+  `timeout_s` plus the watchdog time: imports and compiles may legitimately hold the game thread. A hang inside a long
+  command therefore surfaces at that command's timeout, and every command after it fails fast.
+- If the Python side gets no reply at all, it probes `editor_health` on a second connection and returns
+  `editor_unresponsive` (with the hint) instead of a bare timeout.
+
+Recovery: poll `editor_health` for a minute (a long shader compile or a GC can look like a stall). If it stays
+unresponsive, kill that editor and relaunch:
+```bash
+UNREAL_MCP_PORT=55561 scripts/ue_linux.sh kill     # SIGTERM, then SIGKILL, only the editor this script started on this port
+UNREAL_MCP_PORT=55561 scripts/ue_linux.sh launch
+```
+`kill` never touches other editors (other ports, other projects). An editor started some other way: check the `pid`
+from `editor_health` with `ps -o pid,args -p <pid>`, then `kill -9 <pid>`. Never `pkill UnrealEditor`. Everything
+since the last `save_all` is lost.

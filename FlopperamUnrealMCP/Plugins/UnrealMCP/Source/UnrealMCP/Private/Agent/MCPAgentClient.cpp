@@ -27,9 +27,9 @@
 
 namespace
 {
-TSharedPtr<FMCPAgentClient> GInstance;
+TSharedPtr<FMCPAgentClient> AgentClientGInstance;
 
-FString ToJson(const TSharedPtr<FJsonObject>& Obj, bool bPretty)
+FString AgentClientToJson(const TSharedPtr<FJsonObject>& Obj, bool bPretty)
 {
 	FString Out;
 	if (bPretty)
@@ -46,7 +46,7 @@ FString ToJson(const TSharedPtr<FJsonObject>& Obj, bool bPretty)
 	return Out;
 }
 
-FString ValueToPrettyJson(const TSharedPtr<FJsonValue>& Value)
+FString AgentClientValueToPrettyJson(const TSharedPtr<FJsonValue>& Value)
 {
 	if (!Value.IsValid())
 	{
@@ -54,7 +54,7 @@ FString ValueToPrettyJson(const TSharedPtr<FJsonValue>& Value)
 	}
 	if (Value->Type == EJson::Object)
 	{
-		return ToJson(Value->AsObject(), true);
+		return AgentClientToJson(Value->AsObject(), true);
 	}
 	FString Out;
 	TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
@@ -62,14 +62,14 @@ FString ValueToPrettyJson(const TSharedPtr<FJsonValue>& Value)
 	return Out;
 }
 
-int32 EditorPort()
+int32 AgentClientEditorPort()
 {
 	const FString Env = FPlatformMisc::GetEnvironmentVariable(TEXT("UNREAL_MCP_PORT"));
 	const int32 P = Env.IsEmpty() ? 55557 : FCString::Atoi(*Env);
 	return (P > 0 && P < 65536) ? P : 55557;
 }
 
-FString FindExecutable(const FString& Name)
+FString AgentClientFindExecutable(const FString& Name)
 {
 	if (Name.IsEmpty())
 	{
@@ -108,7 +108,7 @@ FString FindExecutable(const FString& Name)
 	return FString();
 }
 
-bool IsBusyState(const FString& S)
+bool AgentClientIsBusyState(const FString& S)
 {
 	return S == TEXT("thinking") || S == TEXT("running_tool") || S == TEXT("waiting_confirm");
 }
@@ -116,23 +116,23 @@ bool IsBusyState(const FString& S)
 
 FMCPAgentClient& FMCPAgentClient::Get()
 {
-	if (!GInstance.IsValid())
+	if (!AgentClientGInstance.IsValid())
 	{
-		GInstance = MakeShared<FMCPAgentClient>();
-		GInstance->TickHandle = FTSTicker::GetCoreTicker().AddTicker(
-			FTickerDelegate::CreateRaw(GInstance.Get(), &FMCPAgentClient::Tick), 0.25f);
+		AgentClientGInstance = MakeShared<FMCPAgentClient>();
+		AgentClientGInstance->TickHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateRaw(AgentClientGInstance.Get(), &FMCPAgentClient::Tick), 0.25f);
 	}
-	return *GInstance;
+	return *AgentClientGInstance;
 }
 
 void FMCPAgentClient::Shutdown()
 {
-	if (GInstance.IsValid())
+	if (AgentClientGInstance.IsValid())
 	{
-		GInstance->StopRunner();
-		GInstance->Disconnect();
-		FTSTicker::GetCoreTicker().RemoveTicker(GInstance->TickHandle);
-		GInstance.Reset();
+		AgentClientGInstance->StopRunner();
+		AgentClientGInstance->Disconnect();
+		FTSTicker::GetCoreTicker().RemoveTicker(AgentClientGInstance->TickHandle);
+		AgentClientGInstance.Reset();
 	}
 }
 
@@ -216,7 +216,7 @@ bool FMCPAgentClient::StartRunner(const FString& ExtraArgs, FString& OutError)
 		AddNotice(OutError, true);
 		return false;
 	}
-	const FString Uv = FindExecutable(S->UvExecutable);
+	const FString Uv = AgentClientFindExecutable(S->UvExecutable);
 	if (Uv.IsEmpty())
 	{
 		OutError = FString::Printf(TEXT("'%s' not found on PATH. Install uv (https://docs.astral.sh/uv/) or set 'Uv Executable' in Editor Preferences > Plugins > UnrealMCP Agent."), *S->UvExecutable);
@@ -227,7 +227,7 @@ bool FMCPAgentClient::StartRunner(const FString& ExtraArgs, FString& OutError)
 	const FString Provider = S->DefaultProvider.IsEmpty() ? TEXT("anthropic") : S->DefaultProvider;
 	const FString Args = FString::Printf(
 		TEXT("--directory \"%s\" run --quiet python -m unreal_mcp.agent_runner --port %d --unreal-port %d --provider %s --confirm %s %s %s"),
-		*PythonDir, S->RunnerPort, EditorPort(), *Provider, *UMCPAgentSettings::ConfirmModeName(S->ConfirmMode),
+		*PythonDir, S->RunnerPort, AgentClientEditorPort(), *Provider, *UMCPAgentSettings::ConfirmModeName(S->ConfirmMode),
 		*S->ExtraRunnerArgs, *ExtraArgs);
 	if (PipeRead || PipeWrite)
 	{
@@ -433,7 +433,7 @@ bool FMCPAgentClient::SendJson(const TSharedPtr<FJsonObject>& Object)
 	{
 		return false;
 	}
-	Socket->Send(ToJson(Object, false));
+	Socket->Send(AgentClientToJson(Object, false));
 	return true;
 }
 
@@ -673,7 +673,7 @@ void FMCPAgentClient::HandleEvent(const TSharedPtr<FJsonObject>& E)
 		{
 			bTurnRunning = false;
 		}
-		else if (IsBusyState(StatusState))
+		else if (AgentClientIsBusyState(StatusState))
 		{
 			bTurnRunning = true;
 		}
@@ -707,7 +707,7 @@ void FMCPAgentClient::HandleEvent(const TSharedPtr<FJsonObject>& E)
 		Item->Turn = Turn;
 		E->TryGetStringField(TEXT("id"), Item->ToolId);
 		Item->ToolName = E->GetStringField(TEXT("name"));
-		Item->ArgsJson = ValueToPrettyJson(E->TryGetField(TEXT("args")));
+		Item->ArgsJson = AgentClientValueToPrettyJson(E->TryGetField(TEXT("args")));
 		AddItem(Item);
 	}
 	else if (Type == TEXT("tool_result"))
@@ -741,7 +741,7 @@ void FMCPAgentClient::HandleEvent(const TSharedPtr<FJsonObject>& E)
 		Item->ConfirmId = E->GetStringField(TEXT("id"));
 		Item->ToolName = E->GetStringField(TEXT("tool"));
 		Item->Text = E->GetStringField(TEXT("reason"));
-		Item->ArgsJson = ValueToPrettyJson(E->TryGetField(TEXT("args")));
+		Item->ArgsJson = AgentClientValueToPrettyJson(E->TryGetField(TEXT("args")));
 		AddItem(Item);
 	}
 	else if (Type == TEXT("notice"))

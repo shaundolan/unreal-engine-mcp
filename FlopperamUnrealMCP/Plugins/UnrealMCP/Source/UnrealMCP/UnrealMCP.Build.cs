@@ -72,7 +72,13 @@ public class UnrealMCP : ModuleRules
 				"AnimGraphRuntime",
 				"AnimationBlueprintLibrary", // anim_asset_apply: notifies
 				"GameplayTags",        // gameplay_tags
-				"LevelEditor",         // level_open: ULevelEditorSubsystem::NewLevel
+				"LevelEditor",         // level_open: ULevelEditorSubsystem::NewLevel; pie_start mode=viewport
+				"MaterialEditor",      // UMCPScriptLibrary: material outputs Python cannot reach (ClearCoat, PixelDepthOffset, ...)
+				"MetasoundEngine",     // metasound_apply: UMetaSoundBuilderSubsystem
+				"MetasoundFrontend",   // metasound_export / metasound_nodes: document + node registry
+				"MetasoundGraphCore",
+				"MetasoundEditor",     // BuildToAsset / FindOrBeginBuilding
+				"AudioExtensions",
 				"WebSockets",          // agent panel <-> agent runner
 				"ContentBrowser",      // agent panel: Content Browser selection as context
 				"ContentBrowserData",  // FContentBrowserItemPath (current folder)

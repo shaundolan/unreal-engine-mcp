@@ -29,6 +29,8 @@ from unreal_mcp.config import Settings
 from unreal_mcp.connection import UnrealConnection
 
 REPO = Path(__file__).resolve().parents[2]
+# niagara_apply lands on a sibling branch; the epic_* gateway exists only when UNREAL_MCP_EPIC_URL is set
+OPTIONAL_TOOLS = {"niagara_apply", "epic_list_toolsets", "epic_describe_toolset", "epic_call_tool"}
 
 
 def run(coro):
@@ -294,7 +296,7 @@ def test_specialists_parse_and_tool_subsets(runner):
         s = specs[name]
         assert s["description"] and len(s["prompt"]) > 200, name
         assert s["tools"], name
-        unknown = set(s["tools"]) - all_tools - {"niagara_apply"}  # niagara_apply lands on a sibling branch
+        unknown = set(s["tools"]) - all_tools - OPTIONAL_TOOLS
         assert not unknown, (name, unknown)
     bp = run(runner.tool_specs(specs["unreal-blueprint"]["tools"]))
     assert {"bp_export", "bp_apply"} <= {t.name for t in bp} and len(bp) < len(all_tools)
@@ -582,6 +584,12 @@ def test_native_tool_classification():
     assert classify_native("DeleteAssets", {}) and classify_native("SaveLevel", {})
     assert classify_native("GetSelectedActors", {}) is None
     assert classify_native("GetSelectedActors", {}, "strict") and classify_native("DeleteAssets", {}, "off") is None
+    # through our epic_* gateway
+    assert classify("epic_call_tool", {"toolset_name": "EditorToolset.Assets", "tool_name": "DeleteAssets"})
+    assert classify("epic_call_tool", {"toolset_name": "EditorToolset.EditorAppToolset",
+                                       "tool_name": "IsPIERunning"}) is None
+    assert classify("epic_list_toolsets", {}, "all") is None
+    assert classify("epic_EditorToolset_DeleteAssets", {})
 
 
 def test_skill_and_command_resources(fake, editor):
