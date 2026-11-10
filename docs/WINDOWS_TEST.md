@@ -110,7 +110,38 @@ Expect 4/4 passed, then 0/3 for the baseline. `unreal_status` should list `animb
 `anim_asset_apply`, `anim_asset_export`, `gameplay_tags`. Also open `/Game/UEBench/anim-locomotion-abp/ABP_Hero` in
 the editor and check the state machine looks sane (nodes laid out, no orphan pins).
 
-## 8b. Niagara authoring (branch feat/niagara-authoring)
+## 8b. Blueprints complete, data types, audio (branch feat/bp-complete)
+New C++: `MCPBlueprintAuthoring.cpp` (new bp_apply ops and node kinds), `MCPDataTypeAuthoring.cpp`, `MCPAudioAuthoring.cpp`.
+New module deps: MetasoundEngine, MetasoundFrontend, MetasoundGraphCore, MetasoundEditor, AudioExtensions. The plugin now depends on
+the `Metasound` plugin (on by default). Rebuild (step 1) with 0 warnings, then:
+```powershell
+python scripts\install_mannequin.py --first-person --engine "C:\Program Files\Epic Games\UE_5.8"   # editor closed
+cd Python
+uv run python -m unreal_mcp.bench run --agent solution --filter "blueprint-*"
+uv run python -m unreal_mcp.bench run --agent solution --filter "data-*"
+uv run python -m unreal_mcp.bench run --agent solution --filter "audio-*"
+uv run python -m unreal_mcp.bench run --agent none --filter "blueprint-*"
+```
+Expect `blueprint-interface-interact`, `blueprint-dispatcher-door`, `blueprint-timeline-platform`, `blueprint-review-fix`,
+`data-item-table` and `audio-metasound-pitch` to pass (plus the older blueprint tasks), and all of them to fail on the baseline.
+`unreal_status` lists `data_types`, `data_types_export`, `metasound_apply`, `metasound_export`, `metasound_nodes`,
+`sound_cue_apply`. If a task fails, the reply names the op and pin. Note what you changed so it can go back into the task.
+
+Also check these by hand (each is one tool call):
+- [ ] `bp_apply` on a fresh Actor BP with `{"kind":"operator","op":"*","type":"float"}`, `{"kind":"select","options":3,"index_type":"int","type":"float"}`,
+      `{"kind":"switch","on":"string","cases":["A","B"]}`, `{"kind":"format_text","format":"{Name} has {HP}"}`,
+      `{"kind":"make_struct","struct":"Vector"}`, `{"kind":"ai_move_to"}` and an `add_macro` + `{"kind":"macro"}` use. It compiles.
+      `bp_export` shows them with kinds operator/select/switch/format_text/call_function/async_action/macro.
+- [ ] `add_local_variable` in a pure function, plus get_var/set_var inside it: it compiles, and `bp_export` shows `local_variables` and `"local": true`.
+- [ ] `data_types` struct edit: add a member to `/Game/UEBench/data-item-table/S_Item` and rerun `data_table` read. The existing rows keep their values.
+- [ ] `data_types` `curve` (float/vector/color) and `curve_table` round-trip through `data_types_export`.
+- [ ] `bp_review("/Game/FirstPerson/Blueprints/BP_FirstPersonCharacter")` and `bp_explain` on the template character (bench numbers below).
+      Paste the `markdown` and the findings. Expect the IA_Move / IA_Look / IA_Jump input events as entry points, with no errors.
+- [ ] `metasound_nodes("filter")` returns classes with pins. Build the skill's engine-loop recipe (`skills/audio/SKILL.md`) and check
+      `metasound_export` shows the RPM edge. Play it in PIE on an AudioComponent and call Set Float Parameter RPM: the pitch rises (needs audio out).
+- [ ] `sound_cue_apply` with 2+ imported waves, `pitch_range` [0.9,1.1]: open the cue; you see Random → Modulator → Output.
+
+## 8c. Niagara authoring (branch feat/niagara-authoring)
 New C++ in `MCPNiagaraAuthoring.cpp` (commands `niagara_export`, `niagara_apply`, `niagara_particles`), new deps
 `Niagara`, `NiagaraCore`, `NiagaraEditor`, and the plugin now depends on the Niagara plugin. Rebuild (step 2), expect
 **0 warnings** (Linux: 0). Launch, then `unreal_status` must list the three commands.
@@ -176,6 +207,93 @@ $env:UNREAL_MCP_BIND = "0.0.0.0"; $env:UNREAL_MCP_TOKEN = "<random-secret>"; scr
 - [ ] A wrong token gets `unauthorized`.
 - [ ] `0.0.0.0` without a token falls back to `127.0.0.1` (Output Log error). Allow port 55557 in Windows Firewall.
 
+## 10b. Epic native MCP server + UnrealMCPToolsets (branch feat/native-mcp)
+This has only been built and unit-tested. **It has never run live**, so this is its first real check. Background is in
+[EPIC_NATIVE_MCP.md](EPIC_NATIVE_MCP.md).
+
+The sample project now enables these plugins: ModelContextProtocol, ToolsetRegistry, EditorToolset, UMGToolSet, GameplayTagsToolset and
+UnrealMCPToolsets. Both plugins get synced by `sync_plugin.ps1`.
+```powershell
+scripts\ue_windows.ps1 build                         # expect build ok; MSVC builds UnrealMCPToolsets too
+$env:UE_EXTRA_ARGS = "-ModelContextProtocolStartServer -ModelContextProtocolPort=8568"
+scripts\ue_windows.ps1 launch
+cd Python; uv run python ..\scripts\epic_mcp_smoke.py --url http://127.0.0.1:8568/mcp; cd ..
+```
+- [ ] `editor.log` contains `UnrealMCPToolsets: registered 8 toolsets (24 tools) with the ToolsetRegistry`,
+      `Starting MCP server on port 8568` and `Tool search enabled: registered 3 meta-tools (...)`.
+- [ ] The smoke script exits 0 and prints the following:
+  - `tools/list: 3 tools (tool_search)` and `ours: [...]` with 8 `UnrealMCP.*` toolsets.
+  - Our tools: `ok UnrealMCP.Editor.project_context`, `ok UnrealMCP.Scene.scene_brief`, `ok UnrealMCP.Play.frame_stats` (frame_ms present)
+    and `ok UnrealMCP.Blueprint.bp_export -> error: ...` (an expected error).
+  - Epic's tools: `ok ...EditorAppToolset.IsPIERunning` and `ok ...SceneTools.get_current_level`.
+- [ ] Eager mode: `scripts\ue_windows.ps1 quit`, then add
+      `-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bEnableToolSearch=False`
+      to `UE_EXTRA_ARGS` and relaunch. The smoke script should print `tools/list: ~308 tools (eager)` and list all 24
+      `UnrealMCP.<Toolset>.<tool>` names.
+- [ ] Gateway: with the editor still up, run
+      `$env:UNREAL_MCP_PORT=55557; $env:UNREAL_MCP_EPIC_URL="http://127.0.0.1:8568/mcp"` and start an agent session
+      (`claude mcp add unreal -e ... -- uv --directory <repo>\Python run unreal_mcp_server_advanced.py`). Then:
+  - `epic_list_toolsets` lists Epic's toolsets and ours.
+  - `epic_call_tool(toolset_name="EditorToolset.EditorAppToolset", tool_name="CaptureViewport")` returns an **image** the model can see.
+  - Claude Code direct: `claude mcp add --transport http unreal-native http://127.0.0.1:8568/mcp`, then `/mcp` shows
+    `list_toolsets`, `describe_toolset` and `call_tool`.
+- [ ] Report: the smoke output from both modes, any `LogToolsetRegistry` or `LogModelContextProtocol` warnings, and
+      whether `bp_apply` through `call_tool` creates and compiles a Blueprint. For example: `toolset_name=UnrealMCP.Blueprint`,
+      `tool_name=bp_apply`, `arguments={"blueprint":"/Game/Native/BP_T","create_parent":"Actor","operations":[{"op":"add_variable","name":"Score","type":"int"}]}`.
+      Expected: `success: true` and `compile` status ok.
+## 9b. Local 3D generation on the 4090 (branch feat/gen3d)
+The generation server runs on this box and uses the GPU. The MCP server and the editor can be here or on Linux.
+
+Licences:
+- `triposr` (MIT) and `flux-schnell` (Apache-2.0) are commercial-safe.
+- Hunyuan3D 2.1 is **not licensed in the EU/UK**. See `servers/gen3d/README.md`, and skip it if you are there.
+
+1. Prerequisites: Python 3.11, plus the CUDA Toolkit 12.4 and the VS 2022 C++ build tools (already installed in step
+   0).
+2. Install TripoSR and the server dependencies:
+   ```powershell
+   cd C:\gen3d; py -3.11 -m venv venv; .\venv\Scripts\Activate.ps1
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+   pip install -r <repo>\servers\gen3d\requirements.txt
+   git clone https://github.com/VAST-AI-Research/TripoSR.git; pip install -r TripoSR\requirements.txt
+   $env:TRIPOSR_DIR = "C:\gen3d\TripoSR"
+   huggingface-cli login     # accept the FLUX.1-schnell terms on huggingface.co first
+   ```
+3. Start it. The first job downloads about 2 GB of TripoSR weights and about 33 GB of FLUX weights.
+   ```powershell
+   $env:GEN3D_TOKEN = "<random-secret>"
+   python <repo>\servers\gen3d\gen3d_server.py --backend triposr --t2i flux-schnell --host 0.0.0.0 --preload
+   ```
+   Note the peak VRAM in Task Manager. Expect about 6 GB for TripoSR and about 13 GB for FLUX with CPU offload.
+4. Point the MCP server at it.
+   - Same box: the defaults work.
+   - Another box: set `UNREAL_MCP_GEN3D_URL=http://<ip>:8765` and `UNREAL_MCP_GEN3D_TOKEN`, and allow TCP 8765 in
+     Windows Firewall (Private profile).
+5. Check:
+   - [ ] `gen3d_status` shows `triposr`, `MIT`, the GPU and its free VRAM.
+   - [ ] Run `mesh_generate(prompt="a wooden barrel with iron hoops", height_cm=90, out_name="SM_Barrel",
+     destination="/Game/Generated")`.
+     - Expect `success`, `size_cm[2]` ≈ 90 and a textured barrel in the viewport.
+     - Note `generation_s` and the total time.
+   - [ ] Run `mesh_generate(image_path="<repo>/bench/assets/character_tpose.png", subject="character",
+     height_cm=180, out_name="SM_Hero", collision="none", lods=0)`, then
+     `auto_rig(mesh="/Game/Generated/SM_Hero", place_actor="Hero")`.
+     - Needs the Mannequin first: `python scripts\install_mannequin.py`.
+     - Expect the IK Rig chains to include Spine, LeftArm and RightLeg.
+     - Expect `MF_Unarmed_Walk_Fwd_Hero` in `/Game/Characters/Generated/Anims`.
+     - Linux reference (mock backend, live 5.8.4): the IK Rig had 11 chains (Spine, Neck, Head, Left/Right
+       Leg, Foot, Clavicle, Arm). The skeleton root was clean (scale 1) because the rig ships as GLB.
+     - On D3D12, check that the root bone's local scale is 1. It shows on the skeleton's reference pose:
+       `skeleton.get_reference_pose().get_ref_bone_pose('root')`.
+   - [ ] PIE: Hero walks in place with the Mannequin walk. Take a `viewport_capture` of it, and add a light first:
+     a new level is black.
+     - Note whether it walks forwards, backwards or sideways.
+     - If not forwards, re-run `auto_rig` with `rotate=[0,0,180]` or `[0,0,90]` and report which worked.
+   - [ ] Bench: `uv run python -m unreal_mcp.bench run --agent solution --filter "gen3d-*"` passes 2/2.
+   - [ ] Optional: try other backends and record VRAM and quality for each.
+     - `--backend sf3d`: only for revenue under US$1M.
+     - `--backend hunyuan3d` with `backend_params={"texture": false}`: only outside the EU/UK.
+
 ## 10. Finish and report
 ```powershell
 cd ..; scripts\ue_windows.ps1 quit
@@ -187,4 +305,5 @@ Paste back:
 - both bench scoreboards;
 - the step 6 results (the input effect, the frame_stats JSON, the Live Coding result);
 - the package time and launcher path;
+- the gen3d results from step 9b: timings, VRAM, walk direction, and the bench result (2/2);
 - anything surprising in `editor.log`.

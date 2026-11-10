@@ -24,15 +24,15 @@ If a tool returns "cannot reach Unreal", the editor isn't running or the plugin 
 ## Tool layers (most specific first, most general last)
 | Layer | Tools | Use for |
 |---|---|---|
-| Domain | `scene_brief`, `scene_query`, `actor_inspect`, `scene_compose`, `level_inspect`, `scene_assert`, `bp_export`, `bp_apply`, `widget_export`, `widget_apply`, `bt_export`, `bt_build`, `search_assets`, `asset_references`, `asset_manage`, `asset_import`, `instanced_mesh_place`, `mesh_collision`, `material_inspect`, `material_edit`, `material_instance`, `niagara_edit`, `sequence_edit`, `data_table`, `enhanced_input`, `game_setup`, `cpp_source`, `live_coding_compile`, `performance_audit`, `blender_run`, `blender_status`, `landscape_edit`, `landscape_inspect`, `foliage_scatter`, `foliage_inspect`, `pcg_graph`, `pcg_inspect`, `spline_edit`, `spline_inspect` (see skill world-building) | Batched, one-call workflows: prefer these |
-| Verification | `pie_test` | Proving gameplay works at runtime |
+| Domain | `scene_brief`, `scene_query`, `actor_inspect`, `scene_compose`, `level_inspect`, `scene_assert`, `bp_export`, `bp_apply`, `widget_export`, `widget_apply`, `bt_export`, `bt_build`, `search_assets`, `asset_references`, `asset_manage`, `asset_import`, `instanced_mesh_place`, `mesh_collision`, `material_inspect`, `material_edit`, `material_instance`, `niagara_edit`, `sequence_edit`, `data_table`, `enhanced_input`, `game_setup`, `cpp_source`, `live_coding_compile`, `performance_audit`, `blender_run`, `blender_status`, `landscape_edit`, `landscape_inspect`, `foliage_scatter`, `foliage_inspect`, `pcg_graph`, `pcg_inspect`, `spline_edit`, `spline_inspect` (see skill world-building), `mesh_generate`, `mesh_postprocess`, `gen3d_status`, `auto_rig` | Batched, one-call workflows: prefer these |
+| Verification | `pie_test`, `pie_input`, `spawn_in_pie`, `pie_possess`, `frame_stats` | Proving gameplay works at runtime |
 | Dedicated | `create_blueprint`, `add_node`, `connect_nodes`, `create_variable`, `create_function`, `spawn_physics_blueprint_actor`, `apply_material_to_actor`, `set_actor_transform`, ... | Blueprint graphs and common actor work, all battle-tested |
 | World building | `create_town`, `create_castle_fortress`, `construct_house`, `create_maze`, `create_tower`, ... | Fast procedural structures out of basic shapes |
 | Reflection | `object_describe`, `property_get`, `property_set`, `function_call` | Reading or writing **any** property and calling **any** UFUNCTION on any object or actor, with no dedicated tool needed |
 | Universal | `execute_python` | Anything the `unreal` Python module can do: materials, assets, import, sequencer, Niagara placement, editor utilities |
 | Knowledge | `unreal_api_search`, `unreal_api_doc` | Exact Python API names and signatures, offline. Look things up before writing `execute_python` code. |
 | Observation | `editor_log`, `viewport_capture`, `console_command` | Seeing what happened: errors, visuals, stats |
-| Editor | `editor_action` (undo/redo/save_all/open_asset/load_level/select_actors/focus_actor/pie_start/pie_stop), `level_open` (safe map switch / create), `wait_for_shaders` | Session control |
+| Editor | `editor_health` (answers even when the editor is hung), `editor_action` (undo/redo/save_all/open_asset/load_level/select_actors/focus_actor/pie_start/pie_stop), `level_open` (safe map switch / create), `wait_for_shaders` | Session control |
 
 ## The loop
 1. **Observe**: `get_actors_in_level` / `find_actors_by_name` / `object_describe` / `project_context`. Note `editor_log` → `last_seq`.

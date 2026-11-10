@@ -8,6 +8,8 @@
 # Offscreen launches also pass -unattended: nobody can answer a modal dialog there, and on a crash the
 # CrashReportClient window would otherwise pop up on the desktop. UE_EXTRA_ARGS (e.g. "-nosound") are appended.
 #   scripts/ue_linux.sh quit       close the editor over MCP (falls back to SIGTERM of the editor this script started)
+#   scripts/ue_linux.sh kill       SIGTERM, then SIGKILL, the editor this script started on this port (a hung editor:
+#                                  MCP commands fail with editor_unresponsive; see docs/LINUX_UE.md)
 #   scripts/ue_linux.sh rebuild    quit + build + launch
 #   scripts/ue_linux.sh close-crash-reporter   close a CrashReportClient left by a crashed editor of this project
 # UE_PROJECT selects another .uproject (default: the sample project). UE_ROOT defaults to ~/Downloads/Linux_Unreal_Engine_5.8.4;
@@ -122,12 +124,34 @@ do_launch() {
   echo "editor did not answer within 15 min"; return 1
 }
 
+# A hung editor (e.g. the 5.8.4 Vulkan RHI-thread spin: 100% CPU, game thread frozen, MCP commands fail with
+# editor_unresponsive) does not answer quit and may ignore SIGTERM. SIGKILL only the PID this script started on this
+# port, never other editors.
+do_kill() {
+  local pid
+  pid="$(our_pid)"
+  if [ -z "$pid" ]; then
+    echo "no editor started by this script on port $PORT (pid file: $PID_FILE)"
+    echo "if editor_health named a pid, check it is yours (ps -o pid,args -p <pid>) and run: kill -9 <pid>"
+    return 1
+  fi
+  echo "killing editor $pid (port $PORT)"
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+  if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null || true; sleep 2; fi
+  if kill -0 "$pid" 2>/dev/null; then echo "editor $pid survived SIGKILL"; return 1; fi
+  rm -f "$PID_FILE"
+  close_crash_reporter
+  echo "editor killed; relaunch with: UNREAL_MCP_PORT=$PORT $0 launch"
+}
+
 case "${1:-}" in
   build) do_build ;;
   launch) do_launch ;;
   launch-gui) do_launch gui ;;
   quit) do_quit ;;
+  kill) do_kill ;;
   close-crash-reporter) close_crash_reporter ;;
   rebuild) do_quit && do_build && do_launch ;;
-  *) echo "usage: $0 build|launch|launch-gui|quit|rebuild|close-crash-reporter"; exit 2 ;;
+  *) echo "usage: $0 build|launch|launch-gui|quit|kill|rebuild|close-crash-reporter"; exit 2 ;;
 esac

@@ -29,11 +29,19 @@ else:
             _params[str(_n)] = {"type": _kind}
     _out["expression_count"] = _mel.get_num_material_expressions(_m)
     _inputs = {}
-    for _prop in ("MP_BASE_COLOR", "MP_METALLIC", "MP_SPECULAR", "MP_ROUGHNESS", "MP_EMISSIVE_COLOR",
-                  "MP_OPACITY", "MP_OPACITY_MASK", "MP_NORMAL", "MP_AMBIENT_OCCLUSION", "MP_WORLD_POSITION_OFFSET"):
-        _node = _mel.get_material_property_input_node(_m, getattr(unreal.MaterialProperty, _prop))
-        if _node is not None:
-            _inputs[_prop] = class_name_of(_node)
+    if mcp_lib() is not None:
+        # Every output, including the ones Python cannot see (ClearCoat = CustomData0, PixelDepthOffset, ...).
+        for _line in mcp_lib().get_connected_material_outputs(_m):
+            _o, _ename = (str(_line).split("\t") + [""])[:2]
+            _key = "MP_" + re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", _o).upper()  # CustomData0 -> MP_CUSTOM_DATA0
+            _inputs[_key] = re.sub(r"_\d+$", "", _ename)  # MaterialExpressionMultiply_0 -> its class name
+        _out["substrate"] = bool(mcp_lib().is_substrate_enabled())
+    else:
+        for _prop in ("MP_BASE_COLOR", "MP_METALLIC", "MP_SPECULAR", "MP_ROUGHNESS", "MP_EMISSIVE_COLOR",
+                      "MP_OPACITY", "MP_OPACITY_MASK", "MP_NORMAL", "MP_AMBIENT_OCCLUSION", "MP_WORLD_POSITION_OFFSET"):
+            _node = _mel.get_material_property_input_node(_m, getattr(unreal.MaterialProperty, _prop))
+            if _node is not None:
+                _inputs[_prop] = class_name_of(_node)
     _out["connected_outputs"] = _inputs
     for _k in ("blend_mode", "shading_model", "two_sided", "material_domain"):
         try:

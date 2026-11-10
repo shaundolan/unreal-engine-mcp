@@ -66,14 +66,30 @@ def register(mcp, get_conn):
         return call(get_conn, "project_context")
 
     @mcp.tool()
+    def editor_health() -> dict[str, Any]:
+        """Is the editor servicing MCP commands? Answered by the plugin's socket thread, so it works even
+        when the game thread is stuck (where every other command would wait). Returns responsive, reason,
+        pid, game_thread_tick_age_s, queue_service_age_s, busy_command / busy_for_s (a command running now),
+        blocked_by (modal dialog, slow task). A command that cannot run fails fast with
+        editor_unresponsive and a recovery hint (kill + relaunch: see docs/LINUX_UE.md)."""
+        health = get_conn().probe_health()
+        if health is None:
+            return {"success": False, "error": "the editor did not answer editor_health (not running, wrong port, "
+                    "or a plugin older than editor_health: try unreal_status)"}
+        return {"success": True, **health}
+
+    @mcp.tool()
     def editor_action(action: str, asset_path: str = "", level_path: str = "",
                       actor_names: list[str] | None = None, actor_name: str = "",
-                      count: int = 1, discard_changes: bool = False) -> dict[str, Any]:
+                      count: int = 1, discard_changes: bool = False, width: int = 0, height: int = 0,
+                      mode: str = "new_window") -> dict[str, Any]:
         """Perform an editor action.
 
         action: one of undo, redo (count = number of steps), save_all, open_asset (asset_path),
                 load_level (level_path, e.g. "/Game/Maps/Arena"), select_actors (actor_names),
                 focus_actor (actor_name), pie_start, pie_stop.
+        pie_start: width/height render PIE at exactly that size (do this in offscreen editors, whose
+        PIE window size is unreliable); mode "new_window" (default) or "viewport" (the level viewport).
         save_all never prompts (no checkout / make-writable dialogs), saves maps too (also a map
         made with new_level that was never written) and returns saved_packages, failed
         [{package, error}] and skipped (untitled /Temp maps); any failure makes success false.
@@ -83,10 +99,13 @@ def register(mcp, get_conn):
         """
         if action not in EDITOR_ACTIONS:
             return {"success": False, "error": f"unknown action {action!r}; expected one of {EDITOR_ACTIONS}"}
-        r = call(get_conn, "editor_action", {
+        params: dict[str, Any] = {
             "action": action, "asset_path": asset_path, "level_path": level_path,
             "actor_names": actor_names or [], "actor_name": actor_name, "count": count,
-            "discard_changes": discard_changes}, timeout=600 if action in ("save_all", "load_level") else None)
+            "discard_changes": discard_changes}
+        if action == "pie_start":
+            params.update(mode=mode, **({"width": width, "height": height} if width and height else {}))
+        r = call(get_conn, "editor_action", params, timeout=600 if action in ("save_all", "load_level") else None)
         return _save_result(r) if action == "save_all" else r
 
     @mcp.tool()
@@ -101,7 +120,10 @@ def register(mcp, get_conn):
         Before switching it drops Python references and collects garbage, and if the target's
         world is already in memory as a standalone copy (made by duplicate_asset, load_asset or an
         earlier new_level) it unloads that copy first: loading over it fatals the editor with
-        "World Memory Leaks". Returns current_level, created, unloaded_stale_copy.
+        "World Memory Leaks". When the current map streams the target in as a sub-level (a title or
+        wrapper map), it first switches to a blank map so the streaming level unloads, collects
+        garbage and then loads the target (left_world names the map it left).
+        Returns current_level, created, unloaded_stale_copy.
         """
         return call(get_conn, "level_open", {"path": path, "create": create, "save_current": save_current,
                                              "discard_changes": discard_changes}, timeout=600)

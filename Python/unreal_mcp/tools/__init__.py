@@ -15,6 +15,8 @@ from mcp.server.fastmcp import FastMCP
 
 from ..connection import UnrealConnection
 
+ERROR_DETAIL_KEYS = ("editor_unresponsive", "hint", "health")
+
 
 def call(get_conn: Callable[[], UnrealConnection], command: str,
          params: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
@@ -24,7 +26,10 @@ def call(get_conn: Callable[[], UnrealConnection], command: str,
     """
     reply = get_conn().send_command(command, params or {}, timeout=timeout)
     if reply.get("status") == "error":
-        return {"success": False, "error": reply.get("error", "Unknown error")}
+        out = {"success": False, "error": reply.get("error", "Unknown error")}
+        # editor_unresponsive (watchdog): keep the recovery hint and the health snapshot for the agent.
+        out.update({k: reply[k] for k in ERROR_DETAIL_KEYS if k in reply})
+        return out
     result = reply.get("result", reply)
     if isinstance(result, dict):
         out = {k: v for k, v in result.items() if k != "success"}

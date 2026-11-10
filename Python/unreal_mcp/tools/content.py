@@ -38,11 +38,12 @@ def register(mcp, get_conn):
 
     @mcp.tool()
     def data_table(path: str, action: str = "read", rows: dict[str, dict[str, Any]] | None = None,
-                   struct: str = "") -> dict[str, Any]:
+                   struct: str = "", csv: str = "", mode: str = "replace") -> dict[str, Any]:
         """Read or write a DataTable.
         action="read": rows as {RowName: {Column: value-as-string}}.
-        action="write": REPLACES all rows with `rows` ({"Sword": {"Damage": 10, "Name": "Sword"}});
-        creates the table if missing (needs struct, e.g. "/Game/Data/S_Item.S_Item").
-        Field names must match the row struct's."""
+        action="write": rows {"Sword": {"Damage": 10, "Name": "Sword"}} and/or csv ("Name,Damage\nSword,10",
+        first column = row name). mode="replace" (default) replaces all rows; "merge" keeps the others.
+        Creates the table if missing (needs struct, e.g. "/Game/Data/S_Item"; make one with data_types).
+        Field names must match the row struct's (user structs: the member names you gave them)."""
         return run_editor_script(get_conn, "data_table", {
-            "path": path, "action": action, "rows": rows or {}, "struct": struct})
+            "path": path, "action": action, "rows": rows or {}, "struct": struct, "csv": csv, "mode": mode})

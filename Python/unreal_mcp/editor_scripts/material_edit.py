@@ -13,8 +13,11 @@ if _m is None:
     if not ARGS.get("create"):
         raise LookupError(f"material {_path!r} not found (pass create=true to make it)")
     _pkg, _name = _path.rsplit("/", 1)
+    release_stale_path(_path)  # a force-deleted material left in memory would make create_asset fail
     _m = unreal.AssetToolsHelpers.get_asset_tools().create_asset(_name.split(".")[0], _pkg, unreal.Material,
                                                                   unreal.MaterialFactoryNew())
+    if _m is None:
+        raise RuntimeError(f"could not create material {_path!r} (see editor_log)")
 
 _PROPS = {"basecolor": "MP_BASE_COLOR", "metallic": "MP_METALLIC", "specular": "MP_SPECULAR",
           "roughness": "MP_ROUGHNESS", "emissive": "MP_EMISSIVE_COLOR", "emissivecolor": "MP_EMISSIVE_COLOR",
@@ -26,6 +29,7 @@ _PROPS = {"basecolor": "MP_BASE_COLOR", "metallic": "MP_METALLIC", "specular": "
           "pixeldepthoffset": "MP_PIXEL_DEPTH_OFFSET", "shadingmodel": "MP_SHADING_MODEL",
           "customdata0": "MP_CUSTOM_DATA0", "clearcoat": "MP_CUSTOM_DATA0",
           "customdata1": "MP_CUSTOM_DATA1", "clearcoatroughness": "MP_CUSTOM_DATA1",
+          "frontmaterial": "MP_FRONT_MATERIAL", "substrate": "MP_FRONT_MATERIAL",
           "materialattributes": "MP_MATERIAL_ATTRIBUTES"}
 
 # Engine textures matching each sampler type: a parameter with no texture compiles against DefaultTexture (sRGB
@@ -49,14 +53,43 @@ def _norm(s):
 
 
 def _prop(name):
+    """The Python MaterialProperty for an output name, or None when Python cannot see it: UE marks CustomData0/1
+    (ClearCoat, ClearCoatRoughness), PixelDepthOffset, ShadingModel, Displacement, SurfaceThickness and
+    CustomizedUVs as hidden enum entries, so they are missing from unreal.MaterialProperty."""
     key = name if name.startswith("MP_") else _PROPS.get(_norm(name))
     if key is None:  # CamelCase -> MP_CAMEL_CASE for anything not aliased
         key = "MP_" + re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).upper()
-    if not hasattr(unreal.MaterialProperty, key):
-        raise ValueError(f"unknown material output {name!r} (BaseColor, Metallic, Specular, Roughness, EmissiveColor, "
-                         f"Opacity, OpacityMask, Normal, AmbientOcclusion, WorldPositionOffset, SubsurfaceColor, "
-                         f"Refraction, PixelDepthOffset, ...)")
-    return getattr(unreal.MaterialProperty, key)
+    return getattr(unreal.MaterialProperty, key, None)
+
+
+# Outputs UE hides from Python's MaterialProperty (normalized names, aliases included).
+_HIDDEN = {"customdata0", "customdata1", "clearcoat", "clearcoatroughness", "pixeldepthoffset", "pdo", "shadingmodel",
+           "displacement", "surfacethickness", "frontmaterial", "substrate",
+           *(f"customizeduv{i}" for i in range(8)), *(f"customizeduvs{i}" for i in range(8))}
+
+_OUTPUTS_HELP = ("BaseColor, Metallic, Specular, Roughness, Anisotropy, EmissiveColor, Opacity, OpacityMask, Normal, "
+                 "Tangent, WorldPositionOffset, SubsurfaceColor, ClearCoat, ClearCoatRoughness, AmbientOcclusion, "
+                 "Refraction, PixelDepthOffset, ShadingModel, Displacement, SurfaceThickness, CustomizedUV0..7, "
+                 "FrontMaterial (Substrate), MaterialAttributes")
+
+
+def _connect_output(src, out, name):
+    prop = _prop(name)
+    if prop is not None:
+        if not _mel.connect_material_property(src, out, prop):
+            raise RuntimeError(f"connect to material output {name!r} failed (outputs {list(_mel.get_material_expression_output_names(src))})")
+        return
+    lib = mcp_lib()
+    if lib is None:
+        key = _norm(name[3:] if name.upper().startswith("MP_") else name)
+        if key not in _HIDDEN:
+            raise ValueError(f"unknown material output {name!r} ({_OUTPUTS_HELP})")
+        raise ValueError(f"material output {name!r} is hidden from Python (UMETA(Hidden)); ClearCoat and the other "
+                         "hidden outputs need the UnrealMCP plugin's MCPScriptLibrary: update the plugin, or route it "
+                         "through MakeMaterialAttributes")
+    err = str(lib.connect_material_output(src, out, name))
+    if err:
+        raise RuntimeError(err)
 
 
 def _expr_class(name):
@@ -190,8 +223,7 @@ with unreal.ScopedEditorTransaction("MCP material_edit"):
                 _outs = list(_mel.get_material_expression_output_names(_src))
                 _o = _op.get("from_output", "")
                 _o = _pin(_outs, _o, "output") if _outs and _o else (_o or "")
-                if not _mel.connect_material_property(_src, _o, _prop(_op["property"])):
-                    raise RuntimeError(f"connect to material output failed (outputs {_outs})")
+                _connect_output(_src, _o, _op["property"])
                 _results.append({"index": _i, "ok": True})
             else:
                 raise ValueError(f"unknown op {_kind!r}; expected add, connect, output")

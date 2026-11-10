@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.unrealengine.com/"><img src="https://img.shields.io/badge/Unreal%20Engine-5.5%2B-orange.svg" alt="Unreal Engine 5.5+" /></a>
+  <a href="https://www.unrealengine.com/"><img src="https://img.shields.io/badge/Unreal%20Engine-5.8%2B-orange.svg" alt="Unreal Engine 5.8+" /></a>
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT" />
 </p>
 
@@ -24,18 +24,20 @@
 |---|---|
 | **Universal** | `execute_python`: run any Unreal Python in the editor and get back the result, stdout and traceback |
 | **Reflection** | `object_describe`, `property_get`, `property_set`, `function_call`: read or write any UPROPERTY and call any UFUNCTION on any object or actor (undoable) |
-| **Observation** | `viewport_capture` (returns an image the model can see), `editor_log` (Output Log tail with filters and a cursor), `console_command` |
-| **Editor** | `unreal_status`, `project_context`, `editor_action` (undo/redo, save all without prompts, open asset, load level, select, focus, PIE start/stop), `level_open` (switch or create maps safely), `wait_for_shaders` (block until the shader queue is empty) |
+| **Observation** | `viewport_capture` (returns an image the model can see; the PIE view at an exact width x height, offscreen too), `editor_log` (Output Log tail with filters and a cursor), `console_command` |
+| **Editor** | `unreal_status`, `project_context`, `editor_health` (answers even when the game thread is hung; stuck commands fail fast with `editor_unresponsive` and a recovery hint), `editor_action` (undo/redo, save all without prompts, open asset, load level, select, focus, PIE start/stop at a fixed size), `level_open` (switch or create maps safely, also out of a map that streams the target in), `wait_for_shaders` (block until the shader queue is empty) |
 | **API knowledge (offline)** | `unreal_api_search`, `unreal_api_doc`, `unreal_api_build_index`: full-text index of the whole `unreal` Python API, built from your engine's own stub |
 | **Scene & level** | `scene_brief`, `scene_query` (class/label/tag/folder/sphere/box), `actor_inspect`, `scene_compose` (batched spawn/modify/delete with grid/circle/line patterns, one undo step), `level_inspect`, `scene_assert` (verify the level and assets against assertions) |
 | **Assets** | `search_assets`, `asset_references` (dependencies/referencers, transitive), `asset_manage` (duplicate/rename/delete/save/folders/properties), `asset_import` (FBX/glTF/OBJ/textures/audio, from the editor's disk or the MCP machine: direct paths on one box, chunked upload to a remote editor), `instanced_mesh_place` (HISM/ISM in bulk), `mesh_collision` (box/convex/complex-as-simple, collision profile) |
 | **3D modeling (Blender)** | `blender_run` (headless Blender on the MCP machine: bpy + helpers for primitives, bevels, materials, UVs, pivots, FBX/GLB export, preview render returned as an image, then auto-import into Unreal), `blender_status` |
-| **Materials** | `material_inspect`, `material_edit` (build a whole expression graph in one call), `material_instance` |
+| **3D generation & rigging (local, free)** | `mesh_generate` (text or image → 3D on your own GPU through [`servers/gen3d`](servers/gen3d/): TripoSR, Stable Fast 3D, Hunyuan3D 2.1, TRELLIS.2; then Blender cleanup, decimation, UVs, PBR bake, real-world scale, pivot, and import with LODs and collision; each result carries the model's licence), `mesh_postprocess` (the same pipeline for any GLB/OBJ/FBX), `auto_rig` (armature fit with UE5 Mannequin bone names + automatic weights, then IK Rig + retargeter so the Mannequin animations play on it), `gen3d_status` |
+| **Materials** | `material_inspect`, `material_edit` (build a whole expression graph in one call; every material output, including ClearCoat and the others Python can't reach), `material_instance` |
 | **VFX (Niagara)** | `niagara_export` / `niagara_apply` (whole systems as JSON: emitters, every stage's module stack, inputs as constants, links, dynamic inputs and curves, renderers with bindings and materials, User parameters, event handlers; batched ops applied atomically, compiled with structured errors, rolled back on failure; dry run), `niagara_particles` (live particle counts and particle bounds, also as `pie_test` assertions), `niagara_edit` (place systems, set User parameters). Recipe library: `skill://vfx` |
-| **Cinematics, data** | `sequence_edit` (Level Sequences: cameras, bindings, transform keys, camera cuts), `data_table` (read / write rows) |
-| **Blueprints, UI, AI** | `bp_export` / `bp_apply` (whole Blueprints as a JSON graph spec: variables, components, functions, nodes, pins and links, applied atomically and compiled with structured errors; dry run), `widget_export` / `widget_apply` (UMG widget trees with canvas anchors and slots), `bt_export` / `bt_build` (Blackboard keys and Behavior Trees from one nested spec) |
+| **Cinematics, data** | `sequence_edit` (Level Sequences: cameras, bindings, transform keys, camera cuts), `data_table` (read / write rows, JSON or CSV), `data_types` / `data_types_export` (user structs and enums, DataTables, DataAssets, curves, curve tables) |
+| **Audio** | `metasound_apply` / `metasound_export` (MetaSound sources through the MetaSound Builder API: oscillators, filters, envelopes, Wave Player, math, triggers, exposed inputs), `metasound_nodes` (search the node registry), `sound_cue_apply` (random/mix/modulate/loop SoundCues) |
+| **Blueprints, UI, AI** | `bp_export` / `bp_apply` (whole Blueprints as a JSON graph spec: variables, components, functions, interfaces, event dispatchers, timelines, macros, local variables, promotable operators, select/switch, structs, nodes, pins and links, applied atomically and compiled with structured errors; dry run), `bp_explain` / `bp_review` (entry points, execution flow, dependencies; lint for unwired execs, unused variables, Tick cost, casts in Tick, missing IsValid, infinite loops), `widget_export` / `widget_apply` (UMG widget trees with canvas anchors and slots), `bt_export` / `bt_build` (Blackboard keys and Behavior Trees from one nested spec) |
 | **Gameplay & code** | `enhanced_input` (actions + mapping contexts with modifiers), `game_setup` (level/project game mode, default maps), `cpp_source` (read/write project C++, sandboxed to Source/Plugins/Config), `live_coding_compile` (compile and get parsed errors back), `performance_audit`, `package_project` / `package_status` (background UAT BuildCookRun to a standalone build) |
-| **Runtime verification** | `pie_test`: play the level in PIE, drive it with real key / Enhanced Input action presses, holds, axes and mouse look, measure frame/game/GPU times, then assert on actors, properties, distances, Python expressions and the log (e.g. "no errors", "player health ≥ 100"). `pie_input` and `frame_stats` work in a running PIE session too |
+| **Runtime verification** | `pie_test`: play the level in PIE, drive it with real key / Enhanced Input action presses, holds, axes and mouse look, measure frame/game/GPU times, then assert on actors, properties, distances, Python expressions and the log (e.g. "no errors", "player health ≥ 100"). Steps can also spawn any actor with properties set before BeginPlay, possess a pawn and capture PNG frames. `pie_input`, `frame_stats`, `spawn_in_pie` and `pie_possess` work in a running PIE session too |
 | **Blueprint graphs** | `add_node` (23+ node types), `connect_nodes`, `delete_node`, `set_node_property`, `add_event_node`, `create_variable`, `set_blueprint_variable_properties`, `create_function`, `add_function_input/output`, `rename_function`, `delete_function` |
 | **Blueprint assets** | `create_blueprint`, `add_component_to_blueprint`, `set_static_mesh_properties`, `set_physics_properties`, `compile_blueprint`, `read_blueprint_content`, `analyze_blueprint_graph`, `get_blueprint_variable_details`, `get_blueprint_function_details` |
 | **Actors & materials** | `get_actors_in_level`, `find_actors_by_name`, `set_actor_transform`, `delete_actor`, `spawn_physics_blueprint_actor`, `get_available_materials`, `apply_material_to_actor/blueprint`, `set_mesh_material_color`, `get_actor_material_info` |
@@ -91,10 +93,19 @@ Against a real editor: `uv run python ../scripts/smoke.py`. Build and test steps
 
 Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## Epic's native MCP server (UE 5.8)
+UE 5.8 ships an experimental in-editor MCP server (`ModelContextProtocol`) with ~870 toolset tools. UnrealMCP works with it
+in both directions:
+- the optional `UnrealMCPToolsets` plugin registers our authoring, verification and scene tools as Epic toolsets, reusing
+  the same C++ handlers;
+- `UNREAL_MCP_EPIC_URL` lets this server proxy Epic's tools as `epic_*`.
+
+See [docs/EPIC_NATIVE_MCP.md](docs/EPIC_NATIVE_MCP.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE). Original work © Flopperam and contributors; fork modifications © Shaun Dolan.
 
 ## UE-Bench
-34 scripted editor tasks with automatic checkers. They cover scene, assets, materials, VFX (Niagara), cinematics, input, performance,
+42 scripted editor tasks with automatic checkers. They cover scene, assets, materials, VFX (Niagara), cinematics, input, performance, data, audio,
 Blender modeling, Blueprints, UI, AI, world building and PIE gameplay (a coin collected by walking into it, a guard walking its Behavior Tree route, and a full "prompt to playable" coin arena with score, HUD and a chasing enemy). Each checker is proven against a reference solution and against near-miss solutions. See [bench/README.md](bench/README.md).

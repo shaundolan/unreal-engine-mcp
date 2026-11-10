@@ -22,6 +22,10 @@ for _i, _op in enumerate(ARGS.get("operations") or []):
             if not _eal.delete_asset(_op["path"]):
                 raise RuntimeError("delete failed (still referenced?)")
             _r = {"deleted": _op["path"]}
+            # A force-deleted object can linger in memory and block a later import / create at the same path.
+            _rel = release_stale_path(_op["path"])
+            if _rel:
+                _r["released_stale"] = _rel
         elif _kind == "save":
             _r = {"saved": bool(_eal.save_asset(_op["path"], only_if_is_dirty=False))}
         elif _kind == "save_all_dirty":

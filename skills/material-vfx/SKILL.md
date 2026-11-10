@@ -32,7 +32,12 @@ Details that bite:
 - Pins match loosely: Noise's position input is named "World Position", so `"to_input":"Position"` works. A bad
   pin name lists the available ones.
 - More outputs: `SubsurfaceColor` (with `shading_model` MSM_SUBSURFACE / MSM_PREINTEGRATED_SKIN), `Refraction`,
-  `PixelDepthOffset`, `Anisotropy`, `Tangent`.
+  `PixelDepthOffset`, `Anisotropy`, `Tangent`, `ShadingModel`, `Displacement`, `SurfaceThickness`, `CustomizedUV0`..`7`,
+  `FrontMaterial` (Substrate, when `r.Substrate` is on; `material_inspect` reports `substrate`).
+- Clear coat (car paint, lacquer): `settings={"shading_model":"MSM_CLEAR_COAT"}`, then
+  `{"op":"output","from":"cc","property":"ClearCoat"}` and `"ClearCoatRoughness"` (UE calls them CustomData0 / 1).
+  Python cannot see these or the other hidden outputs (PixelDepthOffset, ShadingModel, ...). `material_edit` connects them
+  through the plugin, so there's no need to route them through MakeMaterialAttributes.
 - Custom (HLSL) nodes: `"properties":{"code":"...","output_type":"CMOT_FLOAT3","inputs":["UV0",{"input_name":"Night"}],
   "additional_outputs":[{"output_name":"Win","output_type":"float1"}]}`, then connect to `to_input:"UV0"` and from
   `from_output:"Win"`.
