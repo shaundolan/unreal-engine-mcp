@@ -2,6 +2,10 @@
 #include "IPythonScriptPlugin.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
+#include "Misc/Paths.h"
 
 bool FEpicUnrealMCPPythonCommands::IsPythonAvailable()
 {
@@ -54,12 +58,31 @@ static TSharedPtr<FJsonObject> HandleExecutePython(const TSharedPtr<FJsonObject>
 	{
 		Command.ExecutionMode = EPythonCommandExecutionMode::EvaluateStatement;
 	}
-	else
+	FString TempScript;
+	if (Mode != TEXT("statement") && Mode != TEXT("eval"))
 	{
-		Command.ExecutionMode = EPythonCommandExecutionMode::ExecuteFile; // multi-statement literal script
+		// Multi-statement script. ExecuteFile guesses whether its input is literal code or a path to a .py file,
+		// and any script that merely mentions ".py" (even in a comment) gets treated as a path ("Could not load
+		// Python file"). Write the script to its own temp file and execute that path, so there is nothing to guess.
+		Command.ExecutionMode = EPythonCommandExecutionMode::ExecuteFile;
+		const FString Dir = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("UnrealMCP/python"));
+		IFileManager::Get().MakeDirectory(*Dir, /*Tree*/ true);
+		TempScript = Dir / FString::Printf(TEXT("mcp_%s.py"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+		if (FFileHelper::SaveStringToFile(Code, *TempScript, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+		{
+			Command.Command = FString::Printf(TEXT("\"%s\""), *TempScript);
+		}
+		else
+		{
+			TempScript.Reset(); // fall back to the literal script
+		}
 	}
 
 	const bool bOk = Python->ExecPythonCommandEx(Command);
+	if (!TempScript.IsEmpty())
+	{
+		IFileManager::Get().Delete(*TempScript, /*RequireExists*/ false, /*EvenReadOnly*/ true, /*Quiet*/ true);
+	}
 
 	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
 	Out->SetBoolField(TEXT("python_ok"), bOk);
