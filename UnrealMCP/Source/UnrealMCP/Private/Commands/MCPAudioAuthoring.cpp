@@ -35,7 +35,7 @@ FString Str(const TSharedPtr<FJsonObject>& O, const TCHAR* F)
 	return V;
 }
 
-FString Norm(const FString& S)
+FString AudioNorm(const FString& S)
 {
 	return S.Replace(TEXT(" "), TEXT("")).Replace(TEXT("_"), TEXT("")).Replace(TEXT("."), TEXT("")).ToLower();
 }
@@ -79,13 +79,13 @@ bool ResolveNodeClass(const FString& Want, const FString& Variant, FMetasoundFro
 	for (const FMetaSoundClassInfo& C : All)
 	{
 		const FString Full = ClassString(C.ClassName);
-		if (Norm(Full) == Norm(Want))
+		if (AudioNorm(Full) == AudioNorm(Want))
 		{
 			Out = C.ClassName;
 			OutMajor = C.Version.Major;
 			return true;
 		}
-		if (Norm(C.ClassName.Name.ToString()) == Norm(Want)) Matches.Add(&C);
+		if (AudioNorm(C.ClassName.Name.ToString()) == AudioNorm(Want)) Matches.Add(&C);
 	}
 	if (Matches.Num() == 0)
 	{
@@ -241,7 +241,7 @@ FName DataTypeName(const FString& In)
 /** Graph input / output whose name matches: exact, its last dotted part ("UE.Source.OnPlay" <- "OnPlay"), or an alias. */
 bool MatchGraphMember(const TArray<FName>& Names, const FString& Want, FName& Out, FString& Err, const TCHAR* What)
 {
-	FString W = Norm(Want);
+	FString W = AudioNorm(Want);
 	if (W == TEXT("play")) W = TEXT("onplay");
 	if (W == TEXT("finished")) W = TEXT("onfinished");
 	const bool bLeft = W == TEXT("left") || W == TEXT("outleft") || W == TEXT("audio0") || W == TEXT("audioleft");
@@ -253,7 +253,7 @@ bool MatchGraphMember(const TArray<FName>& Names, const FString& Want, FName& Ou
 		const FString S = N.ToString();
 		FString Last = S;
 		S.Split(TEXT("."), nullptr, &Last, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
-		if (Norm(S) == W || Norm(Last) == W) { Out = N; return true; }
+		if (AudioNorm(S) == W || AudioNorm(Last) == W) { Out = N; return true; }
 		if (bLeft && S.EndsWith(TEXT("Audio:0"))) Hits.Add(N);
 		else if (bRight && S.EndsWith(TEXT("Audio:1"))) Hits.Add(N);
 		else if (bAudio && S.Contains(TEXT("OutputFormat"))) Hits.Add(N);
@@ -287,7 +287,7 @@ bool ResolvePin(FMSContext& Ctx, const FMetaSoundNodeHandle& Node, const FString
 	auto Try = [&](FName N, FName T)
 	{
 		Names.Add(N.ToString());
-		if (Norm(N.ToString()) == Norm(Want)) { OutName = N; OutType = T; return true; }
+		if (AudioNorm(N.ToString()) == AudioNorm(Want)) { OutName = N; OutType = T; return true; }
 		return false;
 	};
 	if (bInput)

@@ -73,7 +73,7 @@ TSharedPtr<FJsonObject> Obj(const TSharedPtr<FJsonObject>& O, const TCHAR* F)
 }
 
 /** Lower-case, alphanumerics only: "Spawn Rate" == "SpawnRate" == "spawn_rate". */
-FString Norm(const FString& In)
+FString NiaNorm(const FString& In)
 {
 	FString Out;
 	for (TCHAR C : In)
@@ -226,7 +226,7 @@ FString TypeName(const FNiagaraTypeDefinition& T)
 
 bool ParseTypeName(const FString& InName, FNiagaraTypeDefinition& Out)
 {
-	const FString N = Norm(InName);
+	const FString N = NiaNorm(InName);
 	if (N == TEXT("float")) Out = FNiagaraTypeDefinition::GetFloatDef();
 	else if (N == TEXT("int") || N == TEXT("int32") || N == TEXT("integer")) Out = FNiagaraTypeDefinition::GetIntDef();
 	else if (N == TEXT("bool") || N == TEXT("boolean")) Out = FNiagaraTypeDefinition::GetBoolDef();
@@ -340,10 +340,10 @@ bool JsonToValue(const FNiagaraTypeDefinition& Type, const TSharedPtr<FJsonValue
 		if (V.IsValid() && V->Type == EJson::Number) Value = (int64)V->AsNumber();
 		else if (V.IsValid() && V->Type == EJson::String && E)
 		{
-			const FString Want = Norm(V->AsString());
+			const FString Want = NiaNorm(V->AsString());
 			for (int32 I = 0; I < E->NumEnums() - 1; ++I)
 			{
-				if (Norm(E->GetNameStringByIndex(I)) == Want || Norm(E->GetDisplayNameTextByIndex(I).ToString()) == Want)
+				if (NiaNorm(E->GetNameStringByIndex(I)) == Want || NiaNorm(E->GetDisplayNameTextByIndex(I).ToString()) == Want)
 				{
 					Value = E->GetValueByIndex(I);
 					break;
@@ -444,11 +444,11 @@ TSharedPtr<FJsonObject> ChangedProperties(const UStruct* Struct, const void* Con
 FProperty* FindPropNormalized(const UStruct* Struct, const FString& Name)
 {
 	if (FProperty* P = Struct->FindPropertyByName(FName(*Name))) return P;
-	const FString N = Norm(Name);
+	const FString N = NiaNorm(Name);
 	for (TFieldIterator<FProperty> It(Struct); It; ++It)
 	{
-		if (Norm(It->GetName()) == N || Norm(It->GetDisplayNameText().ToString()) == N) return *It;
-		if (It->GetName().StartsWith(TEXT("b")) && Norm(It->GetName().Mid(1)) == N) return *It;
+		if (NiaNorm(It->GetName()) == N || NiaNorm(It->GetDisplayNameText().ToString()) == N) return *It;
+		if (It->GetName().StartsWith(TEXT("b")) && NiaNorm(It->GetName().Mid(1)) == N) return *It;
 	}
 	return nullptr;
 }
@@ -528,7 +528,7 @@ bool ApplyCurve(UObject* DI, const TSharedPtr<FJsonValue>& Spec, FString& Err)
 			FStructProperty* Found = nullptr;
 			for (FStructProperty* P : Curves)
 			{
-				if (Norm(P->GetName()) == Norm(Pair.Key) || Norm(P->GetName()) == Norm(Pair.Key + TEXT("Curve"))) Found = P;
+				if (NiaNorm(P->GetName()) == NiaNorm(Pair.Key) || NiaNorm(P->GetName()) == NiaNorm(Pair.Key + TEXT("Curve"))) Found = P;
 			}
 			if (!Found || Pair.Value->Type != EJson::Array)
 			{
@@ -612,7 +612,7 @@ struct FCtx
 		}
 		for (const TSharedRef<FNiagaraEmitterHandleViewModel>& H : VM->GetEmitterHandleViewModels())
 		{
-			if (Norm(H->GetName().ToString()) == Norm(Name)) return H;
+			if (NiaNorm(H->GetName().ToString()) == NiaNorm(Name)) return H;
 		}
 		Err = FString::Printf(TEXT("emitter '%s' not found (emitters: %s)"), *Name, Names.Num() ? *FString::Join(Names, TEXT(", ")) : TEXT("none"));
 		return nullptr;
@@ -622,7 +622,7 @@ struct FCtx
 	{
 		for (FNiagaraEmitterHandle& H : System->GetEmitterHandles())
 		{
-			if (H.GetName().ToString().Equals(Name, ESearchCase::IgnoreCase) || Norm(H.GetName().ToString()) == Norm(Name)) return &H;
+			if (H.GetName().ToString().Equals(Name, ESearchCase::IgnoreCase) || NiaNorm(H.GetName().ToString()) == NiaNorm(Name)) return &H;
 		}
 		return nullptr;
 	}
@@ -742,19 +742,19 @@ bool StageMatches(const FStageRef& S, const FString& Want)
 	const FString W = Want.ToLower().Replace(TEXT(" "), TEXT("_"));
 	if (S.Key.Equals(W, ESearchCase::IgnoreCase)) return true;
 	const UEnum* UsageEnum = StaticEnum<ENiagaraScriptUsage>();
-	if (UsageEnum && Norm(UsageEnum->GetNameStringByValue((int64)S.Usage)) == Norm(Want)) return true;
+	if (UsageEnum && NiaNorm(UsageEnum->GetNameStringByValue((int64)S.Usage)) == NiaNorm(Want)) return true;
 	if (S.Usage == ENiagaraScriptUsage::ParticleEventScript && S.Info.IsValid())
 	{
 		// "event:DeathEvent" or "event:<source emitter>"
 		if (W.StartsWith(TEXT("event:")))
 		{
-			const FString Tail = Norm(Want.Mid(6));
-			return Norm(Str(S.Info, TEXT("event_name"))) == Tail || Norm(Str(S.Info, TEXT("source_emitter"))) == Tail;
+			const FString Tail = NiaNorm(Want.Mid(6));
+			return NiaNorm(Str(S.Info, TEXT("event_name"))) == Tail || NiaNorm(Str(S.Info, TEXT("source_emitter"))) == Tail;
 		}
 	}
 	if (S.Key.StartsWith(TEXT("simulation_stage:")) && (W.StartsWith(TEXT("sim:")) || W.StartsWith(TEXT("simulation_stage:"))))
 	{
-		return Norm(S.Key.Mid(17)) == Norm(Want.Mid(Want.Find(TEXT(":")) + 1));
+		return NiaNorm(S.Key.Mid(17)) == NiaNorm(Want.Mid(Want.Find(TEXT(":")) + 1));
 	}
 	return false;
 }
@@ -812,14 +812,14 @@ UNiagaraStackFunctionInput* FindInput(UNiagaraStackEntry* Parent, const FString&
 {
 	TArray<UNiagaraStackFunctionInput*> Inputs;
 	CollectInputs(Parent, Inputs);
-	const FString N = Norm(Name);
+	const FString N = NiaNorm(Name);
 	UNiagaraStackFunctionInput* Hidden = nullptr;
 	for (int32 Pass = 0; Pass < 2; ++Pass)
 	{
 		for (UNiagaraStackFunctionInput* I : Inputs)
 		{
 			const bool bMatch = Pass == 0 ? InputName(I).Equals(Name, ESearchCase::IgnoreCase)
-				: (Norm(InputName(I)) == N || Norm(I->GetDisplayName().ToString()) == N);
+				: (NiaNorm(InputName(I)) == N || NiaNorm(I->GetDisplayName().ToString()) == N);
 			if (!bMatch) continue;
 			if (InputVisible(I)) return I;
 			if (!Hidden) Hidden = I;
@@ -862,7 +862,7 @@ TSharedPtr<FJsonObject> ExportInput(UNiagaraStackFunctionInput* I, bool bInclude
 	TSharedPtr<FJsonObject> J = MakeShared<FJsonObject>();
 	J->SetStringField(TEXT("name"), InputName(I));
 	const FString Display = I->GetDisplayName().ToString();
-	if (Norm(Display) != Norm(InputName(I))) J->SetStringField(TEXT("display"), Display);
+	if (NiaNorm(Display) != NiaNorm(InputName(I))) J->SetStringField(TEXT("display"), Display);
 	const FNiagaraTypeDefinition& Type = I->GetInputType();
 	J->SetStringField(TEXT("type"), TypeName(Type));
 	if (UEnum* En = Type.GetEnum())
@@ -1116,7 +1116,7 @@ TSharedPtr<FJsonObject> ExportSystem(FCtx& Ctx, bool bIncludeHidden, bool bOnlyM
 	for (const TSharedRef<FNiagaraEmitterHandleViewModel>& EVM : Ctx.VM->GetEmitterHandleViewModels())
 	{
 		const int32 This = Index++;
-		if (OnlyEmitters.Num() && !OnlyEmitters.ContainsByPredicate([&](const FString& N) { return Norm(N) == Norm(EVM->GetName().ToString()); }))
+		if (OnlyEmitters.Num() && !OnlyEmitters.ContainsByPredicate([&](const FString& N) { return NiaNorm(N) == NiaNorm(EVM->GetName().ToString()); }))
 		{
 			continue;
 		}
@@ -1219,11 +1219,11 @@ UNiagaraScript* FindScript(const FString& NameOrPath, ENiagaraScriptUsage Usage,
 	IAssetRegistry& AR = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
 	TArray<FAssetData> Assets;
 	AR.GetAssetsByClass(UNiagaraScript::StaticClass()->GetClassPathName(), Assets);
-	const FString Want = Norm(NameOrPath);
+	const FString Want = NiaNorm(NameOrPath);
 	TArray<FAssetData> Hits;
 	for (const FAssetData& A : Assets)
 	{
-		if (Norm(A.AssetName.ToString()) != Want) continue;
+		if (NiaNorm(A.AssetName.ToString()) != Want) continue;
 		Hits.Add(A);
 	}
 	// Prefer /Niagara content, then newest version folders (V3 > V2 > none), then the requested usage.
@@ -1270,7 +1270,7 @@ UNiagaraEmitter* FindEmitterAsset(const FString& NameOrPath, FString& Err)
 	AR.GetAssetsByClass(UNiagaraEmitter::StaticClass()->GetClassPathName(), Assets);
 	for (const FAssetData& A : Assets)
 	{
-		if (Norm(A.AssetName.ToString()) == Norm(NameOrPath)) return Cast<UNiagaraEmitter>(A.GetAsset());
+		if (NiaNorm(A.AssetName.ToString()) == NiaNorm(NameOrPath)) return Cast<UNiagaraEmitter>(A.GetAsset());
 	}
 	Err = FString::Printf(TEXT("no emitter or emitter template named '%s' (templates: Fountain, OmnidirectionalBurst, DirectionalBurst, "
 		"SimpleSpriteBurst, ConfettiBurst, UpwardMeshBurst, LocationBasedRibbon, StaticBeam, DynamicBeam, HangingParticulates, "
@@ -1280,7 +1280,7 @@ UNiagaraEmitter* FindEmitterAsset(const FString& NameOrPath, FString& Err)
 
 UClass* RendererClass(const FString& Type)
 {
-	const FString T = Norm(Type);
+	const FString T = NiaNorm(Type);
 	if (T == TEXT("sprite")) return UNiagaraSpriteRendererProperties::StaticClass();
 	if (T == TEXT("mesh")) return UNiagaraMeshRendererProperties::StaticClass();
 	if (T == TEXT("ribbon")) return UNiagaraRibbonRendererProperties::StaticClass();
@@ -1373,8 +1373,8 @@ UNiagaraStackModuleItem* ResolveModule(FCtx& Ctx, const FModuleRef& Ref, FString
 			UNiagaraScript* Script = M->GetModuleNode().FunctionScript;
 			bool bHit = false;
 			if (Pass == 0) bHit = N.Equals(Ref.Module, ESearchCase::IgnoreCase);
-			else if (Pass == 1) bHit = Norm(N) == Norm(Ref.Module) || Norm(M->GetDisplayName().ToString()) == Norm(Ref.Module);
-			else bHit = Script && (Norm(Script->GetName()) == Norm(Ref.Module) || Script->GetPathName().StartsWith(Ref.Module));
+			else if (Pass == 1) bHit = NiaNorm(N) == NiaNorm(Ref.Module) || NiaNorm(M->GetDisplayName().ToString()) == NiaNorm(Ref.Module);
+			else bHit = Script && (NiaNorm(Script->GetName()) == NiaNorm(Ref.Module) || Script->GetPathName().StartsWith(Ref.Module));
 			if (bHit) return M;
 			if (Pass == 0) Names.Add(N);
 		}
@@ -1484,7 +1484,7 @@ FString PickChild(FCtx& Ctx, const FModuleRef& Ref, const TArray<FString>& Path,
 	{
 		for (UNiagaraStackFunctionInput* C : Children)
 		{
-			if (InputVisible(C) && Norm(InputName(C)).Contains(Norm(H))) return InputName(C);
+			if (InputVisible(C) && NiaNorm(InputName(C)).Contains(NiaNorm(H))) return InputName(C);
 		}
 	}
 	int32 Seen = 0;
@@ -2018,7 +2018,7 @@ bool OpMoveEmitter(FCtx& Ctx, const TSharedPtr<FJsonObject>& Op, FString& Err)
 {
 	const FString Name = Str(Op, TEXT("emitter"));
 	TArray<FNiagaraEmitterHandle>& Handles = Ctx.System->GetEmitterHandles();
-	const int32 From = Handles.IndexOfByPredicate([&](const FNiagaraEmitterHandle& H) { return Norm(H.GetName().ToString()) == Norm(Name); });
+	const int32 From = Handles.IndexOfByPredicate([&](const FNiagaraEmitterHandle& H) { return NiaNorm(H.GetName().ToString()) == NiaNorm(Name); });
 	if (From == INDEX_NONE)
 	{
 		Ctx.EmitterVM(Name, Err);
@@ -2181,7 +2181,7 @@ bool OpRenderer(FCtx& Ctx, const FString& Kind, const TSharedPtr<FJsonObject>& O
 			for (TFieldIterator<FStructProperty> It(R->GetClass()); It; ++It)
 			{
 				if (It->Struct && It->Struct->GetName() == TEXT("NiagaraVariableAttributeBinding") &&
-					(Norm(It->GetName()) == Norm(Pair.Key) || Norm(It->GetName()) == Norm(Pair.Key + TEXT("Binding"))))
+					(NiaNorm(It->GetName()) == NiaNorm(Pair.Key) || NiaNorm(It->GetName()) == NiaNorm(Pair.Key + TEXT("Binding"))))
 				{
 					BP = *It;
 				}
@@ -2308,7 +2308,7 @@ bool OpAddEventHandler(FCtx& Ctx, const TSharedPtr<FJsonObject>& Op, TSharedPtr<
 	Props.SourceEmitterID = Source->GetId();
 	const FString Event = Str(Op, TEXT("event"));
 	Props.SourceEventName = FName(*(Event.IsEmpty() ? FString(TEXT("DeathEvent")) : Event));
-	const FString Mode = Norm(Str(Op, TEXT("mode")));
+	const FString Mode = NiaNorm(Str(Op, TEXT("mode")));
 	Props.ExecutionMode = Mode == TEXT("everyparticle") ? EScriptExecutionMode::EveryParticle
 		: Mode == TEXT("singleparticle") ? EScriptExecutionMode::SingleParticle : EScriptExecutionMode::SpawnedParticles;
 	double N = 0;
