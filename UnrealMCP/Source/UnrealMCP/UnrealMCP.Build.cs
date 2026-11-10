@@ -7,6 +7,9 @@ public class UnrealMCP : ModuleRules
 	public UnrealMCP(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
+		// Each command file keeps small file-local helpers (Str, Norm, ReadVector, ...). Parallel branches kept adding
+		// same-named ones that collide when unity builds concatenate files, so compile files separately.
+		bUseUnity = false;
 		
 		PublicDefinitions.Add("UNREALMCP_EXPORTS=1");
 
