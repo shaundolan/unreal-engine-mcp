@@ -1,0 +1,209 @@
+{
+  "id": "vfx-sparks-timer",
+  "domain": "vfx",
+  "title": "Sparks burst on a timer",
+  "prompt": "Create the Niagara system {root}/NS_Sparks with one CPU emitter named Sparks that bursts at least 30 bright sparks at once, repeating every second or faster, forever. Sparks fly out, fall under gravity and die within 0.6 s, so the emitter is empty between bursts. Place it at [0, 0, 150] as an actor labelled Sparks.",
+  "requires": [
+    "command:niagara_apply",
+    "command:niagara_export",
+    "command:niagara_particles"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -900,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Sparks"
+        },
+        "name": "one burst emitter, >= 30 per burst",
+        "expect": "r['success'] and [e['name'] for e in r['emitters']] == ['Sparks'] and (nia_value(nia_input(r, 'Sparks', 'emitter_update', 'SpawnBurst', 'Spawn Count')) or 0) >= 30"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Sparks"
+        },
+        "name": "repeats every <= 1 s",
+        "expect": "r['success'] and 0 < (nia_value(nia_input(r, 'Sparks', 'emitter_update', 'EmitterState', 'Loop Duration')) or 99) <= 1.0"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Sparks"
+        },
+        "name": "gravity, lifetime <= 0.6 s",
+        "expect": "r['success'] and nia_has(r, 'Sparks', 'particle_update', 'GravityForce') and 0 < (nia_lifetime(r, 'Sparks') or 99) <= 0.6"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "niagara",
+          "name": "bursts >= 30",
+          "actor": "Sparks",
+          "samples": 16,
+          "interval_s": 0.2,
+          "emitter": "Sparks",
+          "op": ">=",
+          "value": 30
+        },
+        {
+          "type": "niagara",
+          "name": "several separate bursts",
+          "actor": "Sparks",
+          "samples": 16,
+          "interval_s": 0.2,
+          "emitter": "Sparks",
+          "stat": "runs",
+          "op": ">=",
+          "value": 2
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "niagara_apply",
+      "args": {
+        "system": "{root}/NS_Sparks",
+        "create_from": "empty",
+        "operations": [
+          {
+            "op": "add_emitter",
+            "name": "Sparks",
+            "from": "OmnidirectionalBurst"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Sparks",
+            "stage": "emitter_update",
+            "module": "EmitterState",
+            "inputs": {
+              "Loop Behavior": "Infinite",
+              "Loop Duration": 1.0
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Sparks",
+            "stage": "emitter_update",
+            "module": "SpawnBurst_Instantaneous",
+            "inputs": {
+              "Spawn Count": 60
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Sparks",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 0.25,
+              "Lifetime Max": 0.5,
+              "Color": [
+                6,
+                3,
+                0.8,
+                1
+              ],
+              "Uniform Sprite Size Min": 1.5,
+              "Uniform Sprite Size Max": 3
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Sparks",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  300,
+                  700
+                ]
+              }
+            }
+          },
+          {
+            "op": "set_renderer",
+            "emitter": "Sparks",
+            "renderer": "sprite",
+            "properties": {
+              "Alignment": "VelocityAligned"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "niagara_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "system": "{root}/NS_Sparks",
+            "label": "Sparks",
+            "location": [
+              0,
+              0,
+              150
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

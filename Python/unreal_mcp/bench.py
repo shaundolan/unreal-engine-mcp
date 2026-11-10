@@ -10,8 +10,9 @@ prove every checker passes on a correct solution and fails on an untouched level
     python -m unreal_mcp.bench run --agent none                # baseline: everything should fail
     python -m unreal_mcp.bench run --agent cmd --agent-cmd 'claude -p --mcp-config mcp.json {prompt}'
 
-Placeholders {root} (the task's /Game/UEBench/<id> folder), {level} (fresh level path) and {id}
-are substituted in prompts, setup, checks and solutions.
+Placeholders {root} (the task's /Game/UEBench/<id> folder), {level} (fresh level path), {id} and {bench}
+(the bench/ folder on the MCP server machine, for input files in bench/assets) are substituted in prompts,
+setup, checks and solutions.
 """
 
 from __future__ import annotations
@@ -131,6 +132,7 @@ def _walk(node: Any):
 def _tool_checks(tools, checks: list[dict[str, Any]]) -> dict[str, Any]:
     """{"tool": name, "args": {...}, "expect": "<python expr over r>", "name": ...}: evaluated here,
     on the tool's JSON result (task files are ours, so eval of their expressions is fine)."""
+    from .tools import niagara as nia
     results = []
     for i, c in enumerate(checks):
         rec: dict[str, Any] = {"index": i, "type": "tool", "name": c.get("name") or c["tool"]}
@@ -140,7 +142,10 @@ def _tool_checks(tools, checks: list[dict[str, Any]]) -> dict[str, Any]:
             rec["passed"] = bool(eval(c["expect"], {  # noqa: S307
                 "__builtins__": {}, "r": r, "walk": _walk, "any": any, "all": all, "len": len, "abs": abs,
                 "round": round, "sorted": sorted, "set": set, "str": str, "list": list, "min": min, "max": max,
-                "next": next}))
+                "next": next, "float": float, "isinstance": isinstance,
+                "nia_emitter": nia.nia_emitter, "nia_modules": nia.nia_modules,
+                "nia_has": nia.nia_has, "nia_input": nia.nia_input, "nia_value": nia.nia_value,
+                "nia_lifetime": nia.nia_lifetime}))
         except Exception as e:
             rec.update(passed=False, error=f"{type(e).__name__}: {e}")
         if not rec["passed"]:
@@ -212,6 +217,14 @@ def requirement_missing(task: Task, tools: dict[str, Any] | None = None) -> str 
                 return (f"missing asset {what} (python scripts/install_mannequin.py copies the template Mannequin)"
                         if kind == "asset" else f"unreal.{what} not available (enable its plugin)")
             continue
+        if req == "gen3d":
+            from .gen3d import Gen3DError
+            from .tools.gen3d import client
+            try:
+                client().info()
+            except Gen3DError as e:
+                return f"gen3d server not available ({e}); start servers/gen3d/gen3d_server.py"
+            continue
         if req == "blender":
             from .config import Settings
             from .tools.blender import resolve_blender
@@ -264,7 +277,8 @@ def run_task(tools, task: Task, agent: str = "solution", agent_cmd: str = "",
     reset = call_tool(tools, "execute_python", {"code": reset_code(task)})
     if not reset.get("success"):
         return {**rec, "status": "error", "stage": "reset", "error": reset.get("traceback") or reset.get("error")}
-    values = {"root": task.root, "level": reset["result"]["level"], "id": task.id}
+    values = {"root": task.root, "level": reset["result"]["level"], "id": task.id,
+              "bench": DEFAULT_TASKS_DIR.parent.as_posix()}
     setup = run_steps(tools, substitute(task.setup, values))
     if not all(s["ok"] for s in setup):
         return {**rec, "status": "error", "stage": "setup", "setup": setup}

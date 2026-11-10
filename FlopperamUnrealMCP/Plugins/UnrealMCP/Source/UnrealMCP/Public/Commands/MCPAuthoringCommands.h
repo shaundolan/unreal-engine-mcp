@@ -14,6 +14,9 @@
  *   animbp_export / animbp_apply  Animation Blueprints: state machines, states, transitions + bp_apply ops
  *   anim_asset_apply              Montages (segments, slots, sections) and named notifies
  *   gameplay_tags                 Gameplay tag table (DefaultGameplayTags.ini)
+ *   data_types / data_types_export  User-defined structs and enums, curves, curve tables
+ *   metasound_apply / _export / _nodes, sound_cue_apply  Audio graphs
+ *   niagara_export / niagara_apply  Niagara systems: emitters, stage module stacks, inputs, renderers, user params
  */
 class UNREALMCP_API FMCPBlueprintAuthoring
 {
@@ -39,7 +42,27 @@ public:
 	static void Register(IMCPCommandRegistry& Registry);
 };
 
+class UNREALMCP_API FMCPNiagaraAuthoring
+{
+public:
+	static void Register(IMCPCommandRegistry& Registry);
+};
+
 class UNREALMCP_API FMCPGameplayTagCommands
+{
+public:
+	static void Register(IMCPCommandRegistry& Registry);
+};
+
+/** data_types / data_types_export: user structs, enums, curves, curve tables (DataTables and DataAssets go through Python). */
+class UNREALMCP_API FMCPDataTypeAuthoring
+{
+public:
+	static void Register(IMCPCommandRegistry& Registry);
+};
+
+/** metasound_apply / metasound_export / metasound_nodes: MetaSound sources via the MetaSound Builder API; sound_cue_apply. */
+class UNREALMCP_API FMCPAudioAuthoring
 {
 public:
 	static void Register(IMCPCommandRegistry& Registry);
@@ -59,6 +82,17 @@ namespace MCPAuthoring
 	/** JSON value -> Unreal text form ("true", "5", "1,2,3" for vectors, plain strings). */
 	UNREALMCP_API FString JsonToDefaultString(const TSharedPtr<FJsonValue>& Value);
 	UNREALMCP_API TSharedPtr<FJsonValue> StringArray(const TArray<FString>& Items);
+	/** A class by name, class path, or Blueprint asset path (-> its generated class). */
+	UNREALMCP_API UClass* ResolveClassOrBlueprint(const FString& NameOrPath);
+	/** A struct / enum by asset path ("/Game/Data/S_Item"), object path or bare name. */
+	UNREALMCP_API UScriptStruct* FindStruct(const FString& NameOrPath);
+	UNREALMCP_API UEnum* FindEnum(const FString& NameOrPath);
+	/** An enum entry's internal name from its name, display name ("Gold" -> "NewEnumerator2") or value; In unchanged if no match. */
+	UNREALMCP_API FString EnumEntryName(const UEnum* Enum, const FString& In);
+	/** bp_apply type strings: bool int float string name text vector rotator transform linearcolor object:<C> class:<C>
+	 *  interface:<I> struct:<S> enum:<E> exec, [] suffix for arrays. */
+	UNREALMCP_API bool ParsePinTypeSpec(const FString& Spec, FEdGraphPinType& Out, FString& Err);
+	UNREALMCP_API FString DescribePinTypeSpec(const FEdGraphPinType& Type);
 	/** Compile and return {status, ok, errors[], warnings[]} from the compiler log. */
 	UNREALMCP_API TSharedPtr<FJsonObject> CompileBlueprintWithResults(class UBlueprint* Blueprint);
 	UNREALMCP_API FString BlueprintStatusName(enum EBlueprintStatus Status);

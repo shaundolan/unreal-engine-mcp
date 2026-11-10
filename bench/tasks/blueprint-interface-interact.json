@@ -1,0 +1,267 @@
+{
+  "id": "blueprint-interface-interact",
+  "domain": "blueprints",
+  "title": "Interface-based interact system",
+  "prompt": "Build an interact system with a Blueprint Interface. Create {root}/BPI_Interact with a function Interact that takes an Instigator (Actor reference) and returns nothing. Create an Actor Blueprint {root}/BP_Lamp that implements BPI_Interact, has a PointLight component named Light, and on Interact toggles the light's visibility and prints 'Lamp toggled by interface'. Create an Actor Blueprint {root}/BP_Caller that on BeginPlay finds the lamp (Get Actor Of Class) and sends it the Interact interface message (not a cast). Place one of each in the level, which already has a floor and a PlayerStart.",
+  "requires": [
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -800,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BPI_Interact"
+        },
+        "name": "interface with Interact(Instigator)",
+        "expect": "r['success'] and r['blueprint_type'] == 'interface' and any(g['name'] == 'Interact' and any(i['name'] == 'Instigator' and i['type'].startswith('object') for i in g.get('inputs', [])) for g in r['graphs'])"
+      },
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Lamp"
+        },
+        "name": "lamp implements it and handles Interact",
+        "expect": "r['success'] and r['status'] in ('ok', 'ok_with_warnings') and any(i.endswith('BPI_Interact_C') for i in r['interfaces']) and any(n['kind'] == 'event' and n['event'] == 'Interact' for n in [n for g in r['graphs'] for n in g['nodes']]) and any(c['class'] == 'PointLightComponent' for c in r['components'])"
+      },
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Caller"
+        },
+        "name": "caller sends an interface message, no cast",
+        "expect": "r['success'] and any(n['kind'] == 'interface_message' and n['function'] == 'Interact' for n in [n for g in r['graphs'] for n in g['nodes']]) and not any(n['kind'] == 'cast' for n in [n for g in r['graphs'] for n in g['nodes']])"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "log_contains",
+          "text": "Lamp toggled by interface",
+          "name": "interact reached the lamp"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BPI_Interact",
+        "create_parent": "Interface",
+        "operations": [
+          {
+            "op": "add_function",
+            "name": "Interact",
+            "inputs": [
+              {
+                "name": "Instigator",
+                "type": "object:Actor"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Lamp",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "implement_interface",
+            "interface": "{root}/BPI_Interact"
+          },
+          {
+            "op": "add_component",
+            "name": "Light",
+            "class": "PointLightComponent",
+            "properties": {
+              "Intensity": 5000
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "ev",
+            "kind": "event",
+            "event": "Interact"
+          },
+          {
+            "op": "add_node",
+            "id": "light",
+            "kind": "get_var",
+            "variable": "Light"
+          },
+          {
+            "op": "add_node",
+            "id": "toggle",
+            "kind": "call_function",
+            "function": "ToggleVisibility",
+            "class": "SceneComponent"
+          },
+          {
+            "op": "add_node",
+            "id": "print",
+            "kind": "call_function",
+            "function": "PrintString",
+            "pins": {
+              "InString": "Lamp toggled by interface"
+            }
+          },
+          {
+            "op": "connect",
+            "from": "ev.then",
+            "to": "toggle.exec"
+          },
+          {
+            "op": "connect",
+            "from": "light.Light",
+            "to": "toggle.self"
+          },
+          {
+            "op": "connect",
+            "from": "toggle.then",
+            "to": "print.exec"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Caller",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "find",
+            "kind": "call_function",
+            "function": "GetActorOfClass",
+            "pins": {
+              "ActorClass": "{root}/BP_Lamp.BP_Lamp_C"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "me",
+            "kind": "self"
+          },
+          {
+            "op": "add_node",
+            "id": "msg",
+            "kind": "interface_message",
+            "interface": "{root}/BPI_Interact",
+            "function": "Interact"
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "find.exec"
+          },
+          {
+            "op": "connect",
+            "from": "find.then",
+            "to": "msg.exec"
+          },
+          {
+            "op": "connect",
+            "from": "find.ReturnValue",
+            "to": "msg.self"
+          },
+          {
+            "op": "connect",
+            "from": "me.self",
+            "to": "msg.Instigator"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Lamp.BP_Lamp",
+            "label": "Lamp",
+            "location": [
+              300,
+              0,
+              150
+            ]
+          },
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Caller.BP_Caller",
+            "label": "Caller",
+            "location": [
+              0,
+              300,
+              50
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

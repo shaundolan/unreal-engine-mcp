@@ -1,0 +1,251 @@
+{
+  "id": "blueprint-review-fix",
+  "domain": "blueprints",
+  "title": "Review a messy Blueprint and fix what bp_review finds",
+  "prompt": "{root}/BP_Messy has problems (dead code, an unused variable, expensive work and a cast in Event Tick). Review it and fix every error and warning, keeping what it does on BeginPlay: print 'Messy ready'. A placed instance is in the level.",
+  "requires": [
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -800,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Messy",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_variable",
+            "name": "Unused",
+            "type": "float"
+          },
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "hello",
+            "kind": "call_function",
+            "function": "PrintString",
+            "pins": {
+              "InString": "Messy ready"
+            }
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "hello.exec"
+          },
+          {
+            "op": "add_node",
+            "id": "tick",
+            "kind": "event",
+            "event": "Tick"
+          },
+          {
+            "op": "add_node",
+            "id": "pawn",
+            "kind": "call_function",
+            "function": "GetPlayerPawn"
+          },
+          {
+            "op": "add_node",
+            "id": "cast",
+            "kind": "cast",
+            "class": "Character"
+          },
+          {
+            "op": "add_node",
+            "id": "all",
+            "kind": "call_function",
+            "function": "GetAllActorsOfClass",
+            "pins": {
+              "ActorClass": "Actor"
+            }
+          },
+          {
+            "op": "connect",
+            "from": "tick.then",
+            "to": "cast.exec"
+          },
+          {
+            "op": "connect",
+            "from": "pawn.ReturnValue",
+            "to": "cast.Object"
+          },
+          {
+            "op": "connect",
+            "from": "cast.then",
+            "to": "all.exec"
+          },
+          {
+            "op": "add_node",
+            "id": "orphan",
+            "kind": "call_function",
+            "function": "PrintString",
+            "pins": {
+              "InString": "never runs"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Messy.BP_Messy",
+            "label": "Messy",
+            "location": [
+              0,
+              0,
+              50
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "bp_review",
+        "args": {
+          "blueprint": "{root}/BP_Messy"
+        },
+        "name": "no errors or warnings",
+        "expect": "r['success'] and r['counts']['error'] == 0 and r['counts']['warning'] == 0"
+      },
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Messy"
+        },
+        "name": "BeginPlay still prints",
+        "expect": "r['success'] and any(n['kind'] == 'call_function' and n['function'] == 'PrintString' and any(p['name'] == 'InString' and p.get('default') == 'Messy ready' for p in n['pins']) and any(p['name'] == 'execute' and p.get('links') for p in n['pins']) for n in [n for g in r['graphs'] for n in g['nodes']])"
+      }
+    ],
+    "pie": {
+      "duration_s": 1,
+      "assertions": [
+        {
+          "type": "log_contains",
+          "text": "Messy ready"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "asset_manage",
+      "args": {
+        "operations": [
+          {
+            "op": "delete",
+            "path": "{root}/BP_Messy"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Messy",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "hello",
+            "kind": "call_function",
+            "function": "PrintString",
+            "pins": {
+              "InString": "Messy ready"
+            }
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "hello.exec"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Messy.BP_Messy",
+            "label": "Messy",
+            "location": [
+              0,
+              0,
+              50
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -166,6 +166,8 @@ function Invoke-Launch([bool]$Gui) {
         # a background editor throttles to a few fps ("Use Less CPU when in Background"), which slows pie_test
         "-ini:EditorPerProjectUserSettings:[/Script/UnrealEd.EditorPerformanceSettings]:bThrottleCPUWhenNotForeground=False")
     if (-not $Gui) { $editorArgs += "-RenderOffscreen"; $editorArgs += "-unattended" }  # no modal dialogs / crash-reporter window
+    # UE_EXTRA_ARGS, like on Linux, e.g. "-ModelContextProtocolStartServer -ModelContextProtocolPort=8568"
+    if ($env:UE_EXTRA_ARGS) { $editorArgs += ($env:UE_EXTRA_ARGS -split '\s+' | Where-Object { $_ }) }
     $env:UNREAL_MCP_PORT = "$Port"   # inherited by the editor: the plugin listens there
     $proc = Start-Process -FilePath $EditorExe -ArgumentList $editorArgs -PassThru
     Set-Content -Path $PidFile -Value $proc.Id

@@ -1,0 +1,15 @@
+{
+  "name": "unrealmcp",
+  "owner": {
+    "name": "Shaun Dolan",
+    "url": "https://github.com/shaundolan"
+  },
+  "description": "Local, open tooling for driving Unreal Engine from AI agents.",
+  "plugins": [
+    {
+      "name": "unrealmcp",
+      "source": "./",
+      "description": "UnrealMCP server + specialist subagents + /unreal-* commands + skills for a live Unreal Editor."
+    }
+  ]
+}

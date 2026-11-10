@@ -1,0 +1,265 @@
+{
+  "id": "data-item-table",
+  "domain": "data",
+  "title": "Struct + enum + DataTable item list read by a Blueprint",
+  "prompt": "Create a user-defined enum {root}/E_Rarity (Common, Rare, Epic), a struct {root}/S_Item with members Label (string), Damage (float) and Rarity (E_Rarity), and a DataTable {root}/DT_Items of S_Item rows: Sword (10, Rare), Axe (14, Common), Bow (7, Epic). Then make an Actor Blueprint {root}/BP_Shop that on BeginPlay reads the Axe row with Get Data Table Row and prints 'Axe damage ' followed by its Damage. Place one in the level.",
+  "requires": [
+    "command:data_types",
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -800,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "data_types_export",
+        "args": {
+          "asset": "{root}/E_Rarity"
+        },
+        "name": "enum entries",
+        "expect": "r['success'] and [e['display'] for e in r['entries']] == ['Common', 'Rare', 'Epic']"
+      },
+      {
+        "tool": "data_types_export",
+        "args": {
+          "asset": "{root}/S_Item"
+        },
+        "name": "struct members",
+        "expect": "r['success'] and [(m['name'], m['type'].split(':')[0]) for m in r['members']] == [('Label', 'string'), ('Damage', 'float'), ('Rarity', 'byte')] and r['members'][2]['type'].endswith('E_Rarity')"
+      },
+      {
+        "tool": "data_types_export",
+        "args": {
+          "asset": "{root}/DT_Items"
+        },
+        "name": "three rows with damage",
+        "expect": "r['success'] and r['row_struct'].endswith('S_Item') and sorted(x['Name'] for x in r['rows']) == ['Axe', 'Bow', 'Sword'] and {x['Name']: round(float([v for k, v in x.items() if k.startswith('Damage')][0])) for x in r['rows']} == {'Sword': 10, 'Axe': 14, 'Bow': 7}"
+      },
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Shop"
+        },
+        "name": "reads the table",
+        "expect": "r['success'] and r['status'] in ('ok', 'ok_with_warnings') and any(n['kind'] == 'get_data_table_row' and n.get('table', '').endswith('DT_Items') for n in [n for g in r['graphs'] for n in g['nodes']])"
+      }
+    ],
+    "pie": {
+      "duration_s": 1,
+      "assertions": [
+        {
+          "type": "log_contains",
+          "text": "Axe damage 14",
+          "name": "row read at runtime"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "data_types",
+      "args": {
+        "operations": [
+          {
+            "op": "enum",
+            "asset": "{root}/E_Rarity",
+            "entries": [
+              "Common",
+              "Rare",
+              "Epic"
+            ]
+          },
+          {
+            "op": "struct",
+            "asset": "{root}/S_Item",
+            "members": [
+              {
+                "name": "Label",
+                "type": "string"
+              },
+              {
+                "name": "Damage",
+                "type": "float"
+              },
+              {
+                "name": "Rarity",
+                "type": "enum:{root}/E_Rarity",
+                "default": "Common"
+              }
+            ]
+          },
+          {
+            "op": "data_table",
+            "asset": "{root}/DT_Items",
+            "struct": "{root}/S_Item",
+            "rows": {
+              "Sword": {
+                "Label": "Sword",
+                "Damage": 10,
+                "Rarity": "Rare"
+              },
+              "Axe": {
+                "Label": "Axe",
+                "Damage": 14,
+                "Rarity": "Common"
+              },
+              "Bow": {
+                "Label": "Bow",
+                "Damage": 7,
+                "Rarity": "Epic"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Shop",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "row",
+            "kind": "get_data_table_row",
+            "table": "{root}/DT_Items",
+            "row": "Axe"
+          },
+          {
+            "op": "add_node",
+            "id": "brk",
+            "kind": "break_struct",
+            "struct": "{root}/S_Item"
+          },
+          {
+            "op": "add_node",
+            "id": "str",
+            "kind": "call_function",
+            "function": "Conv_DoubleToString",
+            "class": "KismetStringLibrary"
+          },
+          {
+            "op": "add_node",
+            "id": "cat",
+            "kind": "call_function",
+            "function": "Concat_StrStr",
+            "pins": {
+              "A": "Axe damage "
+            },
+            "class": "KismetStringLibrary"
+          },
+          {
+            "op": "add_node",
+            "id": "print",
+            "kind": "call_function",
+            "function": "PrintString"
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "row.exec"
+          },
+          {
+            "op": "connect",
+            "from": "row.RowFound",
+            "to": "print.exec"
+          },
+          {
+            "op": "connect",
+            "from": "row.OutRow",
+            "to": "brk.S_Item"
+          },
+          {
+            "op": "connect",
+            "from": "brk.Damage",
+            "to": "str.InDouble"
+          },
+          {
+            "op": "connect",
+            "from": "str.ReturnValue",
+            "to": "cat.B"
+          },
+          {
+            "op": "connect",
+            "from": "cat.ReturnValue",
+            "to": "print.InString"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Shop.BP_Shop",
+            "label": "Shop",
+            "location": [
+              0,
+              0,
+              50
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

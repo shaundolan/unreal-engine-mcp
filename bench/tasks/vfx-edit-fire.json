@@ -1,0 +1,230 @@
+{
+  "id": "vfx-edit-fire",
+  "domain": "vfx",
+  "title": "Edit an existing fire: twice as tall and blue",
+  "prompt": "{root}/NS_Fire is an orange fire, placed as the actor Fire. Edit the system so the flame plume reaches twice as high (about double the rise speed times lifetime) and the flames are blue instead of orange. Keep it one emitter named Flames and keep it burning.",
+  "requires": [
+    "command:niagara_apply",
+    "command:niagara_export",
+    "command:niagara_particles"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -900,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tool": "niagara_apply",
+      "args": {
+        "system": "{root}/NS_Fire",
+        "create_from": "empty",
+        "operations": [
+          {
+            "op": "add_emitter",
+            "name": "Flames",
+            "from": "Fountain"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "emitter_update",
+            "module": "SpawnRate",
+            "inputs": {
+              "SpawnRate": 80
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 0.8,
+              "Lifetime Max": 1.0,
+              "Color": [
+                1.0,
+                0.35,
+                0.05,
+                1.0
+              ],
+              "Uniform Sprite Size Min": 20,
+              "Uniform Sprite Size Max": 35
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  120,
+                  200
+                ]
+              },
+              "Cone Angle": 10
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_update",
+            "module": "GravityForce",
+            "inputs": {
+              "Gravity": [
+                0,
+                0,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "niagara_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "system": "{root}/NS_Fire",
+            "label": "Fire",
+            "location": [
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Fire"
+        },
+        "name": "still one emitter named Flames",
+        "expect": "r['success'] and [e['name'] for e in r['emitters']] == ['Flames']"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Fire"
+        },
+        "name": "plume about twice as tall",
+        "expect": "r['success'] and (nia_value(nia_input(r, 'Flames', 'particle_spawn', 'AddVelocity', 'Velocity Speed')) or 0) * (nia_lifetime(r, 'Flames') or 0) >= 360 and (nia_value(nia_input(r, 'Flames', 'particle_spawn', 'AddVelocity', 'Velocity Speed')) or 0) * (nia_lifetime(r, 'Flames') or 0) <= 520"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Fire"
+        },
+        "name": "flames are blue",
+        "expect": "r['success'] and (lambda c: isinstance(c, list) and c[2] >= 0.5 and c[2] > c[0] and c[2] > c[1])(nia_value(nia_input(r, 'Flames', 'particle_spawn', 'InitializeParticle', 'Color')))"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "niagara",
+          "name": "still burning",
+          "actor": "Fire",
+          "samples": 12,
+          "interval_s": 0.2,
+          "emitter": "Flames",
+          "op": ">=",
+          "value": 20
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "niagara_apply",
+      "args": {
+        "system": "{root}/NS_Fire",
+        "operations": [
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  240,
+                  400
+                ]
+              }
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Color": [
+                0.1,
+                0.35,
+                1.0,
+                1.0
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

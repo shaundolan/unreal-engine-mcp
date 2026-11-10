@@ -1,0 +1,266 @@
+{
+  "id": "blueprint-dispatcher-door",
+  "domain": "blueprints",
+  "title": "Event dispatcher: switch opens a door",
+  "prompt": "Create an Actor Blueprint {root}/BP_Switch with an event dispatcher OnSwitched that it calls 0.5 seconds after BeginPlay. Create an Actor Blueprint {root}/BP_Door (a cube mesh as its root) that on BeginPlay finds the switch and binds its own custom event OpenDoor to the switch's OnSwitched; OpenDoor prints 'Door opened' and moves the door up 200 units. Place a switch at (0,-300,50) and a door at (300,0,100).",
+  "requires": [
+    "command:bp_apply"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -800,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Switch"
+        },
+        "name": "switch has OnSwitched and calls it",
+        "expect": "r['success'] and any(d['name'] == 'OnSwitched' for d in r['dispatchers']) and any(n['kind'] == 'call_dispatcher' and n['dispatcher'] == 'OnSwitched' for n in [n for g in r['graphs'] for n in g['nodes']])"
+      },
+      {
+        "tool": "bp_export",
+        "args": {
+          "blueprint": "{root}/BP_Door"
+        },
+        "name": "door binds to the switch's dispatcher",
+        "expect": "r['success'] and r['status'] in ('ok', 'ok_with_warnings') and any(n['kind'] == 'bind_dispatcher' and n['dispatcher'] == 'OnSwitched' and n.get('class', '').endswith('BP_Switch_C') for n in [n for g in r['graphs'] for n in g['nodes']])"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "log_contains",
+          "text": "Door opened",
+          "name": "dispatcher fired the door"
+        },
+        {
+          "type": "python",
+          "name": "door moved up",
+          "expr": "[a for a in actors if a.get_class().get_name() == 'BP_Door_C'][0].get_actor_location().z > 250"
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Switch",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_dispatcher",
+            "name": "OnSwitched"
+          },
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "wait",
+            "kind": "call_function",
+            "function": "Delay",
+            "pins": {
+              "Duration": 0.5
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "fire",
+            "kind": "call_dispatcher",
+            "dispatcher": "OnSwitched"
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "wait.exec"
+          },
+          {
+            "op": "connect",
+            "from": "wait.then",
+            "to": "fire.exec"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "bp_apply",
+      "args": {
+        "blueprint": "{root}/BP_Door",
+        "create_parent": "Actor",
+        "operations": [
+          {
+            "op": "add_component",
+            "name": "Mesh",
+            "class": "StaticMeshComponent",
+            "as_root": true,
+            "properties": {
+              "StaticMesh": "/Engine/BasicShapes/Cube.Cube",
+              "Mobility": "Movable"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "open",
+            "kind": "custom_event",
+            "name": "OpenDoor",
+            "dispatcher": "OnSwitched",
+            "class": "{root}/BP_Switch"
+          },
+          {
+            "op": "add_node",
+            "id": "print",
+            "kind": "call_function",
+            "function": "PrintString",
+            "pins": {
+              "InString": "Door opened"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "lift",
+            "kind": "call_function",
+            "function": "AddActorWorldOffset",
+            "pins": {
+              "DeltaLocation": [
+                0,
+                0,
+                200
+              ]
+            }
+          },
+          {
+            "op": "connect",
+            "from": "open.then",
+            "to": "print.exec"
+          },
+          {
+            "op": "connect",
+            "from": "print.then",
+            "to": "lift.exec"
+          },
+          {
+            "op": "add_node",
+            "id": "begin",
+            "kind": "event",
+            "event": "BeginPlay"
+          },
+          {
+            "op": "add_node",
+            "id": "find",
+            "kind": "call_function",
+            "function": "GetActorOfClass",
+            "pins": {
+              "ActorClass": "{root}/BP_Switch.BP_Switch_C"
+            }
+          },
+          {
+            "op": "add_node",
+            "id": "bind",
+            "kind": "bind_dispatcher",
+            "dispatcher": "OnSwitched",
+            "event": "open",
+            "class": "{root}/BP_Switch"
+          },
+          {
+            "op": "connect",
+            "from": "begin.then",
+            "to": "find.exec"
+          },
+          {
+            "op": "connect",
+            "from": "find.then",
+            "to": "bind.exec"
+          },
+          {
+            "op": "connect",
+            "from": "find.ReturnValue",
+            "to": "bind.self"
+          }
+        ]
+      }
+    },
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Switch.BP_Switch",
+            "label": "Switch",
+            "location": [
+              0,
+              -300,
+              50
+            ]
+          },
+          {
+            "op": "spawn",
+            "asset": "{root}/BP_Door.BP_Door",
+            "label": "Door",
+            "location": [
+              300,
+              0,
+              100
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

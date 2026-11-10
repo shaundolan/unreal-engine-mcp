@@ -1,0 +1,384 @@
+{
+  "id": "vfx-campfire",
+  "domain": "vfx",
+  "title": "Campfire with flames, embers and smoke",
+  "prompt": "Create the Niagara system {root}/NS_Campfire with three CPU emitters: Flames (short-lived orange sprites rising from a small area), Embers (few, tiny, bright particles that float up higher and live 1.5 s or longer) and Smoke (slow, large, dark gray sprites that live at least 3 s). Place it at the origin as an actor labelled Campfire.",
+  "requires": [
+    "command:niagara_apply",
+    "command:niagara_export",
+    "command:niagara_particles"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -900,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Campfire"
+        },
+        "name": "three emitters: Flames, Embers, Smoke",
+        "expect": "r['success'] and sorted(e['name'] for e in r['emitters']) == ['Embers', 'Flames', 'Smoke'] and all(e['sim_target'] == 'cpu' for e in r['emitters'])"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Campfire"
+        },
+        "name": "embers outlive flames, live >= 1.5 s",
+        "expect": "r['success'] and (nia_lifetime(r, 'Embers', 'min') or 0) >= 1.5 and (nia_lifetime(r, 'Embers') or 0) > (nia_lifetime(r, 'Flames') or 99)"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Campfire"
+        },
+        "name": "smoke is dark gray and lives >= 3 s",
+        "expect": "r['success'] and (nia_lifetime(r, 'Smoke', 'min') or 0) >= 3 and (lambda c: isinstance(c, list) and max(c[:3]) <= 0.5 and max(c[:3]) - min(c[:3]) <= 0.1)(nia_value(nia_input(r, 'Smoke', 'particle_spawn', 'InitializeParticle', 'Color')))"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Campfire"
+        },
+        "name": "flames are orange (red > green > blue)",
+        "expect": "r['success'] and (lambda c: isinstance(c, list) and c[0] > c[1] > c[2])(nia_value(nia_input(r, 'Flames', 'particle_spawn', 'InitializeParticle', 'Color')))"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "niagara",
+          "name": "flames burning",
+          "actor": "Campfire",
+          "samples": 12,
+          "interval_s": 0.2,
+          "emitter": "Flames",
+          "op": ">=",
+          "value": 20
+        },
+        {
+          "type": "niagara",
+          "name": "embers alive",
+          "actor": "Campfire",
+          "samples": 12,
+          "interval_s": 0.2,
+          "emitter": "Embers",
+          "op": ">=",
+          "value": 5
+        },
+        {
+          "type": "niagara",
+          "name": "smoke alive",
+          "actor": "Campfire",
+          "samples": 12,
+          "interval_s": 0.2,
+          "emitter": "Smoke",
+          "op": ">=",
+          "value": 5
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "niagara_apply",
+      "args": {
+        "system": "{root}/NS_Campfire",
+        "create_from": "empty",
+        "operations": [
+          {
+            "op": "add_emitter",
+            "name": "Flames",
+            "from": "Fountain"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "emitter_update",
+            "module": "SpawnRate",
+            "inputs": {
+              "SpawnRate": 120
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 0.5,
+              "Lifetime Max": 0.9,
+              "Color": [
+                1.0,
+                0.35,
+                0.05,
+                1.0
+              ],
+              "Uniform Sprite Size Min": 20,
+              "Uniform Sprite Size Max": 40
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_spawn",
+            "module": "ShapeLocation",
+            "inputs": {
+              "Sphere Radius": 25
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  80,
+                  160
+                ]
+              },
+              "Cone Angle": 12
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Flames",
+            "stage": "particle_update",
+            "module": "GravityForce",
+            "inputs": {
+              "Gravity": [
+                0,
+                0,
+                120
+              ]
+            }
+          },
+          {
+            "op": "add_renderer",
+            "emitter": "Flames",
+            "type": "light",
+            "properties": {
+              "RadiusScale": 1.5
+            }
+          },
+          {
+            "op": "add_emitter",
+            "name": "Embers",
+            "from": "Fountain"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Embers",
+            "stage": "emitter_update",
+            "module": "SpawnRate",
+            "inputs": {
+              "SpawnRate": 25
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Embers",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 1.5,
+              "Lifetime Max": 3.0,
+              "Color": [
+                4.0,
+                1.2,
+                0.2,
+                1.0
+              ],
+              "Uniform Sprite Size Min": 1.5,
+              "Uniform Sprite Size Max": 3
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Embers",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  150,
+                  350
+                ]
+              },
+              "Cone Angle": 25
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Embers",
+            "stage": "particle_update",
+            "module": "GravityForce",
+            "inputs": {
+              "Gravity": [
+                0,
+                0,
+                -60
+              ]
+            }
+          },
+          {
+            "op": "add_module",
+            "emitter": "Embers",
+            "stage": "particle_update",
+            "script": "CurlNoiseForce",
+            "index": 2,
+            "inputs": {
+              "Noise Strength": 200,
+              "Noise Frequency": 30
+            }
+          },
+          {
+            "op": "add_emitter",
+            "name": "Smoke",
+            "from": "Fountain"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Smoke",
+            "stage": "emitter_update",
+            "module": "SpawnRate",
+            "inputs": {
+              "SpawnRate": 12
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Smoke",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 3.0,
+              "Lifetime Max": 5.0,
+              "Color": [
+                0.12,
+                0.12,
+                0.12,
+                0.5
+              ],
+              "Uniform Sprite Size Min": 60,
+              "Uniform Sprite Size Max": 110
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Smoke",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  40,
+                  90
+                ]
+              },
+              "Cone Angle": 15
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Smoke",
+            "stage": "particle_update",
+            "module": "GravityForce",
+            "inputs": {
+              "Gravity": [
+                0,
+                0,
+                20
+              ]
+            }
+          },
+          {
+            "op": "add_module",
+            "emitter": "Smoke",
+            "stage": "particle_update",
+            "script": "WindForce",
+            "index": 2,
+            "inputs": {
+              "Wind Speed": [
+                30,
+                0,
+                0
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "niagara_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "system": "{root}/NS_Campfire",
+            "label": "Campfire",
+            "location": [
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

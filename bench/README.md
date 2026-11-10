@@ -42,7 +42,7 @@ uv run python -m unreal_mcp.bench run --agent cmd --label "claude-code opus" \
 
 The agent command gets the prompt as `{prompt}` (one argument), as `{prompt_file}` (a path), or on stdin, so any MCP-capable agent works: Claude Code, Cursor CLI, or a local model behind an agent loop.
 
-## Tasks (24)
+## Tasks (42)
 scene ×6 (grid, light ring, cleanup, tagging, transforms, greybox arena), assets ×1, materials ×3 (graph, instance,
 apply), cinematics ×1, input ×1, performance ×1, modeling ×1 (Blender → import → place), gameplay ×2 (PIE: spawn on ground;
 coin collected by walking into it), blueprints ×1 (BeginPlay logic seen in the PIE log), ui ×1 (HUD built and on screen), ai ×1 (Behavior
@@ -50,6 +50,14 @@ Tree guard walks to its goal on a NavMesh), plus `demo-arena-playable`: the demo
 score, a chasing enemy, coins collected in play, score and HUD verified), and world ×4 (rolling-hills landscape with a
 grass layer, forest scattered on slopes under 25°, a road spline between two towns carved into the terrain, a PCG forest
 volume), animation ×3 (1D locomotion BlendSpace, attack montage with sections and a Hit notify, locomotion AnimBP with idle/move/jump states) and gas ×1 (instant heal effect + tagged ability).
+The Blueprint-completeness set adds blueprints ×4 (an interface-based interact system checked in PIE, an event dispatcher switch that opens a door in another Blueprint, a timeline-driven moving platform, and fixing what `bp_review` finds in a planted messy Blueprint), data ×1 (an enum, a struct that uses it, a DataTable of it, and a Blueprint that reads a row at runtime) and audio ×1 (a looping MetaSound with a Pitch input).
+barrel generated with collision and placed on the ground; a character generated from `bench/assets/character_tpose.png`,
+auto-rigged and looping the retargeted Mannequin walk).
+
+`requires: ["gen3d"]` skips a task unless the local generation server answers (`servers/gen3d`, `UNREAL_MCP_GEN3D_URL`).
+CI runs the gen3d tasks against the server's mock backend. `{bench}` in a task is the `bench/` folder on the MCP machine.
+
+The VFX set adds vfx ×6(campfire with embers and smoke, sparks bursting on a timer, rain colliding with the ground, a steam vent on a manhole, fireworks via death events, and editing an existing fire to be twice as tall and blue). The vfx checkers read `niagara_export` (with `nia_input` / `nia_value` / `nia_has` / `nia_lifetime` helpers) and sample live particle counts and particle bounds in PIE (`{"type":"niagara"}` assertions).
 
 
 `requires` also takes `asset:<path>` (content the task builds on, e.g. the template Mannequin from

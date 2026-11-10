@@ -1,0 +1,268 @@
+{
+  "id": "vfx-steam-vent",
+  "domain": "vfx",
+  "title": "Steam vent from a manhole",
+  "prompt": "A manhole cover (actor Manhole) sits on the floor. Create the Niagara system {root}/NS_Steam with one emitter named Steam: soft white puffs that rise straight up from a small area, grow larger over their life and fade out, living 2 s or more. Place it on the manhole as an actor labelled SteamVent.",
+  "requires": [
+    "command:niagara_apply",
+    "command:niagara_export",
+    "command:niagara_particles"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -900,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          },
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cylinder.Cylinder",
+            "label": "Manhole",
+            "location": [
+              300,
+              200,
+              2
+            ],
+            "scale": [
+              1.2,
+              1.2,
+              0.05
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Steam"
+        },
+        "name": "one emitter that lives >= 2 s",
+        "expect": "r['success'] and [e['name'] for e in r['emitters']] == ['Steam'] and (nia_lifetime(r, 'Steam', 'min') or 0) >= 2"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Steam"
+        },
+        "name": "white-ish puffs",
+        "expect": "r['success'] and (lambda c: isinstance(c, list) and min(c[:3]) >= 0.6)(nia_value(nia_input(r, 'Steam', 'particle_spawn', 'InitializeParticle', 'Color')))"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Steam"
+        },
+        "name": "grows over life (sprite size scaled by a rising curve)",
+        "expect": "r['success'] and any(m['enabled'] and any(i['mode'] in ('data', 'dynamic') and i.get('modified') and 'curve' in str(i).lower() and i['name'].lower().startswith(('uniform curve', 'scale factor')) for i in m['inputs']) for m in nia_modules(r, 'Steam', 'particle_update') if 'ScaleSpriteSize' in m['script'])"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "distance",
+          "a": "SteamVent",
+          "b": "Manhole",
+          "op": "<=",
+          "value": 60,
+          "name": "on the manhole"
+        },
+        {
+          "type": "niagara",
+          "name": "steaming",
+          "actor": "SteamVent",
+          "samples": 12,
+          "interval_s": 0.2,
+          "emitter": "Steam",
+          "op": ">=",
+          "value": 20
+        },
+        {
+          "type": "niagara",
+          "name": "rises above the vent",
+          "actor": "SteamVent",
+          "samples": 12,
+          "interval_s": 0.2,
+          "emitter": "Steam",
+          "metric": "max_z",
+          "stat": "max",
+          "op": ">=",
+          "value": 150
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "niagara_apply",
+      "args": {
+        "system": "{root}/NS_Steam",
+        "create_from": "empty",
+        "operations": [
+          {
+            "op": "add_emitter",
+            "name": "Steam",
+            "from": "Fountain"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Steam",
+            "stage": "emitter_update",
+            "module": "SpawnRate",
+            "inputs": {
+              "SpawnRate": 30
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Steam",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 2.0,
+              "Lifetime Max": 3.0,
+              "Color": [
+                0.9,
+                0.9,
+                0.92,
+                0.35
+              ],
+              "Uniform Sprite Size Min": 30,
+              "Uniform Sprite Size Max": 50
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Steam",
+            "stage": "particle_spawn",
+            "module": "ShapeLocation",
+            "inputs": {
+              "Sphere Radius": 20
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Steam",
+            "stage": "particle_spawn",
+            "module": "AddVelocity",
+            "inputs": {
+              "Velocity Speed": {
+                "random": [
+                  120,
+                  200
+                ]
+              },
+              "Cone Angle": 8
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Steam",
+            "stage": "particle_update",
+            "module": "GravityForce",
+            "inputs": {
+              "Gravity": [
+                0,
+                0,
+                0
+              ]
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Steam",
+            "stage": "particle_update",
+            "module": "Drag",
+            "inputs": {
+              "Drag": 0.6
+            }
+          },
+          {
+            "op": "add_module",
+            "emitter": "Steam",
+            "stage": "particle_update",
+            "script": "ScaleSpriteSize",
+            "index": 3,
+            "inputs": {
+              "Uniform Curve Sprite Scale": {
+                "curve": [
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    1,
+                    4
+                  ]
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "niagara_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "system": "{root}/NS_Steam",
+            "label": "SteamVent",
+            "location": [
+              300,
+              200,
+              5
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
