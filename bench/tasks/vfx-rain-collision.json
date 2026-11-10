@@ -1,0 +1,228 @@
+{
+  "id": "vfx-rain-collision",
+  "domain": "vfx",
+  "title": "Rain over an area that collides with the ground",
+  "prompt": "Create the Niagara system {root}/NS_Rain with one CPU emitter named Rain: streaks spawned over an area at least 1000 x 1000 units, falling under gravity, colliding with the ground (the Floor at Z=0) instead of passing through it. At least 200 drops per second. Place it at [0, 0, 800] as an actor labelled Rain.",
+  "requires": [
+    "command:niagara_apply",
+    "command:niagara_export",
+    "command:niagara_particles"
+  ],
+  "setup": [
+    {
+      "tool": "scene_compose",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "asset": "/Engine/BasicShapes/Cube.Cube",
+            "label": "Floor",
+            "location": [
+              0,
+              0,
+              -10
+            ],
+            "scale": [
+              40,
+              40,
+              0.2
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "PlayerStart",
+            "label": "PlayerStart",
+            "location": [
+              -900,
+              0,
+              100
+            ]
+          },
+          {
+            "op": "spawn",
+            "class": "DirectionalLight",
+            "label": "Sun",
+            "location": [
+              0,
+              0,
+              1000
+            ],
+            "rotation": [
+              -45,
+              30,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "check": {
+    "tools": [
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Rain"
+        },
+        "name": "CPU rain emitter with gravity and an enabled Collision module",
+        "expect": "r['success'] and [e['name'] for e in r['emitters']] == ['Rain'] and r['emitters'][0]['sim_target'] == 'cpu' and nia_has(r, 'Rain', 'particle_update', 'GravityForce') and nia_has(r, 'Rain', 'particle_update', 'Collision')"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Rain"
+        },
+        "name": "spawn area >= 1000 x 1000",
+        "expect": "r['success'] and (lambda b: isinstance(b, list) and b[0] >= 1000 and b[1] >= 1000)(nia_value(nia_input(r, 'Rain', 'particle_spawn', 'ShapeLocation', 'Box Size')))"
+      },
+      {
+        "tool": "niagara_export",
+        "args": {
+          "system": "{root}/NS_Rain"
+        },
+        "name": ">= 200 drops per second",
+        "expect": "r['success'] and (nia_value(nia_input(r, 'Rain', 'emitter_update', 'SpawnRate', 'SpawnRate')) or 0) >= 200"
+      }
+    ],
+    "pie": {
+      "duration_s": 2,
+      "assertions": [
+        {
+          "type": "niagara",
+          "name": "raining",
+          "actor": "Rain",
+          "samples": 12,
+          "interval_s": 0.2,
+          "emitter": "Rain",
+          "op": ">=",
+          "value": 100
+        },
+        {
+          "type": "niagara",
+          "name": "drops stop at the ground",
+          "actor": "Rain",
+          "samples": 12,
+          "interval_s": 0.2,
+          "emitter": "Rain",
+          "metric": "min_z",
+          "stat": "min",
+          "op": ">=",
+          "value": -25
+        },
+        {
+          "type": "no_errors"
+        }
+      ]
+    }
+  },
+  "solution": [
+    {
+      "tool": "niagara_apply",
+      "args": {
+        "system": "{root}/NS_Rain",
+        "create_from": "empty",
+        "operations": [
+          {
+            "op": "add_emitter",
+            "name": "Rain",
+            "from": "HangingParticulates"
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Rain",
+            "stage": "emitter_update",
+            "module": "SpawnRate",
+            "inputs": {
+              "SpawnRate": 400
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Rain",
+            "stage": "particle_spawn",
+            "module": "InitializeParticle",
+            "inputs": {
+              "Lifetime Min": 2.0,
+              "Lifetime Max": 2.0,
+              "Color": [
+                0.6,
+                0.7,
+                0.9,
+                0.6
+              ],
+              "Uniform Sprite Size Min": 1,
+              "Uniform Sprite Size Max": 2
+            }
+          },
+          {
+            "op": "set_inputs",
+            "emitter": "Rain",
+            "stage": "particle_spawn",
+            "module": "ShapeLocation",
+            "inputs": {
+              "Box Size": [
+                1200,
+                1200,
+                10
+              ]
+            }
+          },
+          {
+            "op": "remove_module",
+            "emitter": "Rain",
+            "stage": "particle_update",
+            "module": "WindForce"
+          },
+          {
+            "op": "remove_module",
+            "emitter": "Rain",
+            "stage": "particle_update",
+            "module": "AerodynamicDrag"
+          },
+          {
+            "op": "add_module",
+            "emitter": "Rain",
+            "stage": "particle_update",
+            "script": "GravityForce",
+            "index": 1
+          },
+          {
+            "op": "add_module",
+            "emitter": "Rain",
+            "stage": "particle_update",
+            "script": "Collision",
+            "index": 2,
+            "inputs": {
+              "Restitution": 0.05
+            }
+          },
+          {
+            "op": "set_renderer",
+            "emitter": "Rain",
+            "renderer": "sprite",
+            "properties": {
+              "Alignment": "VelocityAligned"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "tool": "niagara_edit",
+      "args": {
+        "operations": [
+          {
+            "op": "spawn",
+            "system": "{root}/NS_Rain",
+            "label": "Rain",
+            "location": [
+              0,
+              0,
+              800
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

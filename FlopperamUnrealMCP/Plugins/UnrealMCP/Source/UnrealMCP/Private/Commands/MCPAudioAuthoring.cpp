@@ -26,7 +26,7 @@
 
 using namespace MCPAuthoring;
 
-namespace
+namespace MCPAudioPriv // named: unity builds share one TU with other authoring files
 {
 FString Str(const TSharedPtr<FJsonObject>& O, const TCHAR* F)
 {
@@ -798,12 +798,12 @@ TSharedPtr<FJsonObject> HandleSoundCue(const TSharedPtr<FJsonObject>& Params)
 	if (bSave) Out->SetBoolField(TEXT("saved"), SaveAsset(Cue));
 	return Out;
 }
-} // namespace
+} // namespace MCPAudioPriv
 
 void FMCPAudioAuthoring::Register(IMCPCommandRegistry& Registry)
 {
-	Registry.Register(TEXT("metasound_apply"), &HandleApply, false);
-	Registry.Register(TEXT("metasound_export"), &HandleExport, false);
-	Registry.Register(TEXT("metasound_nodes"), &HandleNodes, false);
-	Registry.Register(TEXT("sound_cue_apply"), &HandleSoundCue, false);
+	Registry.Register(TEXT("metasound_apply"), &MCPAudioPriv::HandleApply, false);
+	Registry.Register(TEXT("metasound_export"), &MCPAudioPriv::HandleExport, false);
+	Registry.Register(TEXT("metasound_nodes"), &MCPAudioPriv::HandleNodes, false);
+	Registry.Register(TEXT("sound_cue_apply"), &MCPAudioPriv::HandleSoundCue, false);
 }

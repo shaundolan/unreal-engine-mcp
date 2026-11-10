@@ -164,6 +164,7 @@ void UEpicUnrealMCPBridge::RegisterAllCommands()
 	FMCPGameplayTagCommands::Register(R);
 	FMCPDataTypeAuthoring::Register(R);
 	FMCPAudioAuthoring::Register(R);
+	FMCPNiagaraAuthoring::Register(R);
 	FMCPLevelCommands::Register(R);
 	FMCPAgentCommands::Register(R);
 

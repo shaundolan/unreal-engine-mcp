@@ -16,6 +16,7 @@
  *   gameplay_tags                 Gameplay tag table (DefaultGameplayTags.ini)
  *   data_types / data_types_export  User-defined structs and enums, curves, curve tables
  *   metasound_apply / _export / _nodes, sound_cue_apply  Audio graphs
+ *   niagara_export / niagara_apply  Niagara systems: emitters, stage module stacks, inputs, renderers, user params
  */
 class UNREALMCP_API FMCPBlueprintAuthoring
 {
@@ -36,6 +37,12 @@ public:
 };
 
 class UNREALMCP_API FMCPAnimAuthoring
+{
+public:
+	static void Register(IMCPCommandRegistry& Registry);
+};
+
+class UNREALMCP_API FMCPNiagaraAuthoring
 {
 public:
 	static void Register(IMCPCommandRegistry& Registry);

@@ -41,6 +41,7 @@ def run_capture_step(get_conn, step: dict[str, Any], capture_dir: Path) -> dict[
     return {"ok": True, "capture": str(path), "width": r.get("width"), "height": r.get("height")}
 
 LOG_TYPES = ("log_contains", "log_absent", "no_errors")
+SERVER_TYPES = ("niagara",)  # evaluated here by sampling plugin commands, not by the pie_assert script
 _POLL_S = 0.25
 
 
@@ -285,7 +286,7 @@ def _run_steps(get_conn, steps: list[dict[str, Any]], sleep,
         elif "frame_stats" in step:
             rec.update(run_frame_stats_step(get_conn, step, sleep))
         elif "check" in step:
-            r = run_editor_script(get_conn, "pie_assert", {"assertions": step["check"]})
+            r = _world_assertions(get_conn, step["check"], sleep)
             if not r.get("success"):
                 rec.update(ok=False, error=r.get("traceback") or r.get("error"))
                 out.append(rec)
@@ -298,10 +299,27 @@ def _run_steps(get_conn, steps: list[dict[str, Any]], sleep,
     return out
 
 
+def _world_assertions(get_conn, assertions: list[dict[str, Any]], sleep) -> dict[str, Any]:
+    """pie_assert for world assertions plus the server-side types (niagara particle sampling), in order."""
+    from .niagara import niagara_assertion
+    script = [(i, a) for i, a in enumerate(assertions) if a.get("type") not in SERVER_TYPES]
+    out: list[dict[str, Any]] = []
+    if script:
+        r = run_editor_script(get_conn, "pie_assert", {"assertions": [a for _, a in script]})
+        if not r.get("success"):
+            return r
+        for (orig, _), rec in zip(script, r["assertions"], strict=True):
+            out.append({**rec, "index": orig})
+    out += [niagara_assertion(get_conn, a, i, sleep) for i, a in enumerate(assertions) if a.get("type") in SERVER_TYPES]
+    out.sort(key=lambda x: x["index"])
+    return {"success": True, "assertions": out}
+
+
 def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float = 3.0,
                  start_timeout_s: float = 30.0, stop: bool = True,
-                 sleep=time.sleep, steps: list[dict[str, Any]] | None = None, width: int = 1280,
+                 sleep=None, steps: list[dict[str, Any]] | None = None, width: int = 1280,
                  height: int = 720, mode: str = "new_window", capture_dir: str = "") -> dict[str, Any]:
+    sleep = sleep or time.sleep  # looked up per call, so tests can patch time.sleep
     world_asserts = [(i, a) for i, a in enumerate(assertions) if a.get("type") not in LOG_TYPES]
     log_asserts = [(i, a) for i, a in enumerate(assertions) if a.get("type") in LOG_TYPES]
 
@@ -327,7 +345,7 @@ def run_pie_test(get_conn, assertions: list[dict[str, Any]], duration_s: float =
         timeline = _run_steps(get_conn, steps, sleep, Path(capture_dir) if capture_dir else None) if steps else []
         results: list[dict[str, Any]] = []
         if world_asserts:
-            r = run_editor_script(get_conn, "pie_assert", {"assertions": [a for _, a in world_asserts]})
+            r = _world_assertions(get_conn, [a for _, a in world_asserts], sleep)
             if not r.get("success"):
                 return {"success": False, "error": "assertion script failed", "detail": r}
             for (orig, _), rec in zip(world_asserts, r["assertions"], strict=True):
@@ -367,6 +385,9 @@ def register(mcp, get_conn):
           {"type":"distance","a":"Door","point":[0,0,0],"op":">","value":10}
           {"type":"python","expr":"len([a for a in actors if 'Coin' in a.get_actor_label()]) == 10"}
           {"type":"no_errors"}                       (no Error lines logged during the run)
+          {"type":"niagara","actor":"Campfire","emitter":"Embers","stat":"max","op":">=","value":10,
+           "samples":10,"interval_s":0.1}   live particle counts (stat max|min|last|mean|runs = separate
+           bursts); "metric":"min_z" (or max_z, min_x ...) reads the live particles' world AABB (CPU emitters)
           {"type":"log_contains","text":"Game Started"}   {"type":"log_absent","text":"Accessed None"}
         ops: == != < <= > >= approx (with "tolerance"). "@player" = player 0's pawn.
 

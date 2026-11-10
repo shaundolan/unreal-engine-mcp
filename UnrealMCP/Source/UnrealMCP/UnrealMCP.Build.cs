@@ -86,7 +86,10 @@ public class UnrealMCP : ModuleRules
 				"ContentBrowser",      // agent panel: Content Browser selection as context
 				"ContentBrowserData",  // FContentBrowserItemPath (current folder)
 				"WorkspaceMenuStructure", // agent panel tab under Window > Tools
-				"ApplicationCore"
+				"ApplicationCore",
+				"Niagara",             // niagara_export / niagara_apply / niagara_particles
+				"NiagaraCore",
+				"NiagaraEditor"        // stack view models, UNiagaraExternalEditUtilities
 			}
 		);
 		

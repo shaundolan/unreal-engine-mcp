@@ -95,7 +95,8 @@ system = unreal.load_asset("/Game/FX/NS_Fire")   # find real paths via the asset
 actor = sub.spawn_actor_from_object(system, unreal.Vector(0, 0, 100))
 result = actor.get_actor_label()
 ```
-Python can't author Niagara emitter/module graphs well. Duplicate a template system (`EditorAssetLibrary.duplicate_asset`) and change exposed **user parameters** instead.
+Prefer `niagara_edit` (spawn + User parameters) for placement. To **author** Niagara systems (emitters, modules,
+inputs, curves, renderers, events) use `niagara_export` / `niagara_apply`; recipes and tuning rules are in `skill://vfx`.
 
 ## Verify
 `viewport_capture` after `editor_action(action="focus_actor", ...)`. Shader compiles are asynchronous: call

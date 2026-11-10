@@ -132,6 +132,7 @@ def _walk(node: Any):
 def _tool_checks(tools, checks: list[dict[str, Any]]) -> dict[str, Any]:
     """{"tool": name, "args": {...}, "expect": "<python expr over r>", "name": ...}: evaluated here,
     on the tool's JSON result (task files are ours, so eval of their expressions is fine)."""
+    from .tools import niagara as nia
     results = []
     for i, c in enumerate(checks):
         rec: dict[str, Any] = {"index": i, "type": "tool", "name": c.get("name") or c["tool"]}
@@ -141,7 +142,10 @@ def _tool_checks(tools, checks: list[dict[str, Any]]) -> dict[str, Any]:
             rec["passed"] = bool(eval(c["expect"], {  # noqa: S307
                 "__builtins__": {}, "r": r, "walk": _walk, "any": any, "all": all, "len": len, "abs": abs,
                 "round": round, "sorted": sorted, "set": set, "str": str, "list": list, "min": min, "max": max,
-                "next": next}))
+                "next": next, "float": float, "isinstance": isinstance,
+                "nia_emitter": nia.nia_emitter, "nia_modules": nia.nia_modules,
+                "nia_has": nia.nia_has, "nia_input": nia.nia_input, "nia_value": nia.nia_value,
+                "nia_lifetime": nia.nia_lifetime}))
         except Exception as e:
             rec.update(passed=False, error=f"{type(e).__name__}: {e}")
         if not rec["passed"]:

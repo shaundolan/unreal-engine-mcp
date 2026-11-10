@@ -141,6 +141,64 @@ Also check these by hand (each is one tool call):
       `metasound_export` shows the RPM edge. Play it in PIE on an AudioComponent and call Set Float Parameter RPM: the pitch rises (needs audio out).
 - [ ] `sound_cue_apply` with 2+ imported waves, `pitch_range` [0.9,1.1]: open the cue; you see Random → Modulator → Output.
 
+## 8c. Niagara authoring (branch feat/niagara-authoring)
+New C++ in `MCPNiagaraAuthoring.cpp` (commands `niagara_export`, `niagara_apply`, `niagara_particles`), new deps
+`Niagara`, `NiagaraCore`, `NiagaraEditor`, and the plugin now depends on the Niagara plugin. Rebuild (step 2), expect
+**0 warnings** (Linux: 0). Launch, then `unreal_status` must list the three commands.
+
+What was already proven live on Linux (GTX 1080, before the policy to test on the 4090 only): creating a system from
+every emitter template (13/14: BlowingParticles hit the old 125 s game-thread limit while compiling; `timeout_s` 590
+is now sent), exporting it (stages including `event:0` handlers, inputs with constant / linked / dynamic / data modes,
+renderers with bindings and materials, user parameters), and `add_module` of all 57 modules in `MODULES` onto a Minimal
+emitter. These were **not** run live and are the checklist:
+
+```powershell
+cd Python
+$env:UNREAL_MCP_PORT = "55557"
+uv run python ..\scripts\niagara_live_check.py
+```
+The script prints `PASS` / `FAIL` per line (the names below) and ends with `N/N passed`. Expected, all PASS:
+- [ ] **create from empty + add_emitter + inputs + renderer + user param**: one call creates `/Game/NiagaraLive/NS_Ops` with
+      User.SpawnRate / User.Tint, a Fountain emitter Flames, SpawnRate linked to User.SpawnRate, InitializeParticle
+      `Lifetime Mode` = "Direct Set" (an enum set **by display name**), Lifetime 1.25, Color linked to User.Tint, Sprite Size
+      Mode "Uniform" with a `random` [8, 20], CurlNoiseForce inserted at index 2 with two inputs, a Scale RGB `curve`, a light
+      renderer with RadiusScale 2 and fixed bounds. `compile.ok` true.
+- [ ] **link readback**, **enum by display name + local value**, **random dynamic input** (mode `dynamic` with
+      Minimum/Maximum children), **curve via FromCurve** (Scale RGB mode `dynamic`, VectorFromCurve, a curve child with 2
+      keys), **module inserted at index 2**, **light renderer + bounds**, **user params**.
+- [ ] **atomic failure rolls back**: remove Drag, then a bad input name. The error names op 1 and lists the module's inputs;
+      `rolled_back` true. **state unchanged after rollback**: Drag is still there (export identical).
+- [ ] **dry run** of remove_emitter: success, `rolled_back` true. **state unchanged after dry run**.
+- [ ] **compile error is structured + rolled back**: a broken HLSL `expression` on Drag gives `success` false and
+      `compile.errors[]` with emitter `Flames`, the script and a message. **state unchanged after compile error**.
+      (If the compile instead passes, report it: the expression's syntax error should fail translation.)
+- [ ] **module order after move** (`move_module` Drag to 0 relinks the stack graph; also open the system in the Niagara
+      editor and check the stack shows Drag first, with no errors), **disabled module**, **emitter order**
+      (`move_emitter`), **event handler stage** (Sparks gets `event:0` with source_emitter Flames, spawn_number 3, and
+      ReceiveDeathEvent in it), **set parameters module** (`add_parameter` Emitter.Heat in emitter_spawn).
+- [ ] Undo: after the script, Ctrl+Z in the editor once undoes the last `niagara_apply` as one step.
+
+Then the bench (6 new `vfx-*` tasks; they also run in CI against the fake):
+```powershell
+uv run python -m unreal_mcp.bench run --agent solution --filter vfx
+uv run python -m unreal_mcp.bench run --agent none --filter vfx
+```
+Expect **6/6** then **0/6**. Per task, what the checker needs live:
+- [ ] `vfx-campfire`: three CPU emitters; in PIE `niagara_particles` reports at least 20 / 5 / 5 particles for Flames / Embers / Smoke.
+- [ ] `vfx-sparks-timer`: uses `EmitterState` "Loop Behavior" = **"Infinite"** (an enum display name not yet seen live; if it
+      errors, the error lists the valid options, so fix the task's solution). PIE: max at least 30 and `runs` at least 2 over
+      16 samples at 0.2 s (an empty emitter between bursts).
+- [ ] `vfx-rain-collision`: CPU Collision against the Floor cube. PIE `metric: min_z` of the live particles is at least -25.
+      Also try removing the Collision module: min_z should drop far below 0 (proves the check measures collision).
+- [ ] `vfx-steam-vent`: `ScaleSpriteSize` "Uniform Curve Sprite Scale" takes `curve` keys on a curve DI directly; PIE max_z at least 150.
+- [ ] `vfx-fireworks`: `add_event_handler` + ReceiveDeathEvent; PIE Burst max at least 50 within 4 s.
+- [ ] `vfx-edit-fire`: the setup step itself is a `niagara_apply`; the solution doubles Velocity Speed and turns Color blue.
+- [ ] Look at each placed system in the viewport (`viewport_capture`) and check it looks like its name. Paste the images.
+
+Note: Epic's experimental `NiagaraToolsets` plugin (disabled by default) wraps the same `UNiagaraExternalEditUtilities`
+API that `niagara_apply` uses for add/remove emitter, user variables, system creation and compile/stack-issue state.
+It doesn't need to be enabled.
+
 ## 9. Remote mode (optional: agents on Linux, editor on Windows)
 ```powershell
 $env:UNREAL_MCP_BIND = "0.0.0.0"; $env:UNREAL_MCP_TOKEN = "<random-secret>"; scripts\ue_windows.ps1 launch

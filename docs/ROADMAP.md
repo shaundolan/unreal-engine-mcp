@@ -55,7 +55,7 @@ and the runner's Claude Code mode can also attach Epic's server directly (`unrea
 - **Frame timings:** render- and RHI-thread times read 0 offscreen on Linux and are reported as `unavailable`. There is no Unreal Insights
   / `stat` capture yet.
 - **Animation:** linked anim layers, Control Rig nodes, `AnimNotify_<Name>` events in AnimBPs; generic AnimGraph nodes untested.
-- **VFX / audio:** Niagara module graphs (only placement and User parameters today). MetaSound authoring
+- **VFX / audio:** Niagara authoring is done (`niagara_export` / `niagara_apply`, `skill://vfx`). Not yet: creating simulation stages, scratch-pad modules, Niagara Data Channels, lightweight (stateless) emitters, editing a parent emitter asset in place; MetaSounds. MetaSound authoring
   (`metasound_apply` / `metasound_export` / `metasound_nodes`) and `sound_cue_apply` compile, but have not been run live yet
   (WINDOWS_TEST.md). There's no MetaSound Patch authoring, no Quartz, and no submix or attenuation assets.
 - **World:** World Partition / data layers; landscape streaming proxies and edit layers beyond the first.

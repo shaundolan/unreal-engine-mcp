@@ -23,7 +23,7 @@
 
 using namespace MCPAuthoring;
 
-namespace
+namespace MCPDataTypePriv // named: unity builds share one TU with other authoring files
 {
 FString Str(const TSharedPtr<FJsonObject>& O, const TCHAR* F)
 {
@@ -694,10 +694,10 @@ TSharedPtr<FJsonObject> HandleDataTypesExport(const TSharedPtr<FJsonObject>& Par
 	J->SetStringField(TEXT("path"), Obj->GetPathName());
 	return J;
 }
-} // namespace
+} // namespace MCPDataTypePriv
 
 void FMCPDataTypeAuthoring::Register(IMCPCommandRegistry& Registry)
 {
-	Registry.Register(TEXT("data_types"), &HandleDataTypes, false);
-	Registry.Register(TEXT("data_types_export"), &HandleDataTypesExport, false);
+	Registry.Register(TEXT("data_types"), &MCPDataTypePriv::HandleDataTypes, false);
+	Registry.Register(TEXT("data_types_export"), &MCPDataTypePriv::HandleDataTypesExport, false);
 }
