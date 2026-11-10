@@ -16,8 +16,17 @@ dependencies = [
 [project.scripts]
 unreal-mcp = "unreal_mcp_server_advanced:main"
 
+[project.optional-dependencies]
+anthropic = [
+    "anthropic>=0.70",
+]
+
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = [
+    "anthropic>=0.70",
+    "pytest>=8",
+    "ruff>=0.6",
+]
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]

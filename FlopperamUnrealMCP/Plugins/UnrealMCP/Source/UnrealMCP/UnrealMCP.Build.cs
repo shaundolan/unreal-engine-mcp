@@ -81,7 +81,12 @@ public class UnrealMCP : ModuleRules
 				"MetasoundFrontend",   // metasound_export / metasound_nodes: document + node registry
 				"MetasoundGraphCore",
 				"MetasoundEditor",     // BuildToAsset / FindOrBeginBuilding
-				"AudioExtensions"
+				"AudioExtensions",
+				"WebSockets",          // agent panel <-> agent runner
+				"ContentBrowser",      // agent panel: Content Browser selection as context
+				"ContentBrowserData",  // FContentBrowserItemPath (current folder)
+				"WorkspaceMenuStructure", // agent panel tab under Window > Tools
+				"ApplicationCore"
 			}
 		);
 		

@@ -1,6 +1,10 @@
 #include "EpicUnrealMCPModule.h"
 #include "MCPCommon.h"
+#include "Agent/MCPAgentClient.h"
+#include "Agent/SMCPAgentPanel.h"
 #include "Commands/EpicUnrealMCPObservationCommands.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Misc/CoreDelegates.h"
 #include "Modules/ModuleManager.h"
 #include "Misc/OutputDeviceRedirector.h"
 
@@ -13,11 +17,22 @@ void FEpicUnrealMCPModule::StartupModule()
 	{
 		GLog->AddOutputDevice(&FMCPLogCapture::Get());
 	}
+	// The "UnrealMCP Agent" tab (Window > Tools). Not in commandlets, which have no Slate.
+	if (!IsRunningCommandlet())
+	{
+		MCPAgentPanel::RegisterTab();
+	}
 	UE_LOG(LogUnrealMCP, Display, TEXT("UnrealMCP module %s started"), UNREALMCP_PLUGIN_VERSION);
 }
 
 void FEpicUnrealMCPModule::ShutdownModule()
 {
+	if (!IsRunningCommandlet())
+	{
+		MCPAgentPanel::UnregisterTab();
+	}
+	// Stops a runner process the panel started; never touches runners started by someone else.
+	FMCPAgentClient::Shutdown();
 	if (GLog)
 	{
 		GLog->RemoveOutputDevice(&FMCPLogCapture::Get());

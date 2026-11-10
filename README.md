@@ -59,6 +59,18 @@ tools. Skills in [`skills/`](skills/) teach it the observe → act → verify lo
 4. **Optional (recommended)**: build the offline API index. Turn on *Editor Preferences → Plugins → Python →
    Developer Mode*, restart the editor, then ask the agent to run `unreal_api_build_index`.
 
+## Agents
+
+- **Claude Code agent pack:** `/plugin marketplace add shaundolan/unreal-engine-mcp`, then
+  `/plugin install unrealmcp@unrealmcp`. This sets up the MCP server, 7 specialist subagents (Blueprint, Python batch,
+  level design, VFX, verifier, tech artist, animator), `/unrealmcp:unreal-status|playtest|screenshot|package|bench` and
+  the skills. See [docs/CLAUDE_CODE_PLUGIN.md](docs/CLAUDE_CODE_PLUGIN.md).
+- **In-editor agent:** Window → Tools → **UnrealMCP Agent** opens a chat tab backed by a local runner
+  (`Python/unreal_mcp/agent_runner.py`). Use your own Anthropic key, any OpenAI-compatible local model, or the Claude
+  Code CLI. It shows each tool call, confirms destructive operations, and has "Undo last agent turn". See
+  [docs/AGENT_PANEL.md](docs/AGENT_PANEL.md).
+- **Live resources:** `unreal://project`, `unreal://level/summary`, `unreal://selection`, plus `skill://<name>`.
+
 ## Architecture
 
 ```mermaid
