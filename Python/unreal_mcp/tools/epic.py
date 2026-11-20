@@ -106,6 +106,11 @@ class EpicGateway:
             if r.get("isError"):
                 raise RuntimeError(content_text(r))
             return json.loads(content_text(r))
+        if "describe_toolsets" in native:   # newer servers (5.9 docs): plural, batched, schemas opt-in
+            r = self.client.call_tool("describe_toolsets", plural_describe_args(native["describe_toolsets"], toolset))
+            if r.get("isError"):
+                raise RuntimeError(content_text(r))
+            return pick_toolset(json.loads(content_text(r)), toolset)
         tools = [t for n, t in native.items() if n.rpartition(".")[0] == toolset]
         if not tools:
             raise RuntimeError(f"toolset {toolset!r} not found")
@@ -119,6 +124,43 @@ class EpicGateway:
         else:
             r = self.client.call_tool(f"{toolset}.{tool}" if toolset else tool, arguments, timeout=timeout_s)
         return _convert(r)
+
+
+def plural_describe_args(tool: dict[str, Any], toolset: str) -> dict[str, Any]:
+    """Arguments for a batched ``describe_toolsets`` from its own input schema: the (first) array property gets
+    [toolset], a boolean property mentioning schemas is set True (so input schemas come back). Falls back to
+    ``toolset_names`` / ``include_schemas`` when the schema doesn't say."""
+    props = ((tool.get("inputSchema") or {}).get("properties") or {})
+    names = next((k for k, v in props.items() if isinstance(v, dict) and v.get("type") == "array"), None)
+    flag = next((k for k, v in props.items()
+                 if isinstance(v, dict) and v.get("type") == "boolean" and "schema" in k.lower()), None)
+    if not props:
+        names, flag = "toolset_names", "include_schemas"
+    args: dict[str, Any] = {}
+    if names:
+        args[names] = [toolset]
+    else:
+        string = next((k for k, v in props.items() if isinstance(v, dict) and v.get("type") == "string"), None)
+        args[string or "toolset_name"] = toolset
+    if flag:
+        args[flag] = True
+    return args
+
+
+def pick_toolset(data: Any, toolset: str) -> dict[str, Any]:
+    """One toolset's {name, tools} out of a describe_toolsets reply (a list, {"toolsets": [...]}, a dict keyed by
+    toolset name, or already a single toolset)."""
+    if isinstance(data, dict) and "tools" in data:
+        return data
+    if isinstance(data, dict) and isinstance(data.get("toolsets"), list):
+        data = data["toolsets"]
+    if isinstance(data, dict) and isinstance(data.get(toolset), dict):
+        return {"name": toolset, **data[toolset]}
+    if isinstance(data, list):
+        for entry in data:
+            if isinstance(entry, dict) and entry.get("name") == toolset:
+                return entry
+    raise RuntimeError(f"toolset {toolset!r} not in describe_toolsets reply")
 
 
 class _ProxyTool(_FastMCPTool):
