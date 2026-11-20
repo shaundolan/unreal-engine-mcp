@@ -1,11 +1,7 @@
 MIT License
 
 Copyright (c) 2025-2026 Flopperam and contributors
-(Upstream: https://github.com/flopperam/unreal-engine-mcp. Its README declares
-"MIT License"; the upstream repository ships no LICENSE file, so the standard MIT
-text is reproduced here to preserve that grant and its attribution.)
-
-Fork modifications Copyright (c) 2026 Shaun Dolan
+Copyright (c) 2026 Shaun Dolan (fork modifications)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

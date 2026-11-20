@@ -5,17 +5,17 @@ A Claude Code plugin. One install gives you:
 - **the MCP server** (`unreal`), started by uv from the plugin's own copy of `Python/`, with nothing else to configure;
 - **Epic's native MCP server** (`unreal-native`, `http://127.0.0.1:8000/mcp`) as an optional second server. It is used
   when the editor has the experimental ModelContextProtocol plugin enabled, and shows as failed in `/mcp` otherwise;
-- **7 specialist subagents** ([`agents/`](../agents/)), the local counterparts to Aura's specialists:
+- **7 specialist subagents** ([`agents/`](../agents/)), one per kind of editor work:
 
-| Subagent | Aura counterpart | Focus | Verifies with |
-|---|---|---|---|
-| `unrealmcp:unreal-blueprint` | Telos | Blueprints (`bp_export` / `bp_apply`), Blueprint review, UMG, Behavior Trees, Enhanced Input | compile result, `pie_test` with real input, log |
-| `unrealmcp:unreal-python-batch` | Dragon | bulk edits through `execute_python`: preview, then one transaction, per-item report | re-query and compare counts, `scene_assert`, log |
-| `unrealmcp:unreal-level-designer` | Level Design agent | `scene_compose`, landscape, foliage, PCG, splines, lighting, nav | `scene_assert`, `viewport_capture` critique, walk test in PIE |
-| `unrealmcp:unreal-vfx` | VFX agent | Niagara placement and parameters, effect materials (`niagara_apply` is coming in a sibling branch) | capture while playing, `frame_stats` GPU delta |
-| `unrealmcp:unreal-verifier` | Verification agent | independent pass/fail: `pie_test` with real input, vision critique, frame times, UE-Bench | evidence table; it doesn't fix things |
-| `unrealmcp:unreal-tech-artist` | — | materials, textures, import, collision, Blender modeling | capture under level lighting, `performance_audit` |
-| `unrealmcp:unreal-animator` | — | AnimBP state machines, montages, retargeting, GAS | PIE with input, asserting state and tags |
+| Subagent | Focus | Verifies with |
+|---|---|---|
+| `unrealmcp:unreal-blueprint` | Blueprints (`bp_export` / `bp_apply`), Blueprint review, UMG, Behavior Trees, Enhanced Input | compile result, `pie_test` with real input, log |
+| `unrealmcp:unreal-python-batch` | bulk edits through `execute_python`: preview, then one transaction, per-item report | re-query and compare counts, `scene_assert`, log |
+| `unrealmcp:unreal-level-designer` | `scene_compose`, landscape, foliage, PCG, splines, lighting, nav | `scene_assert`, `viewport_capture` critique, walk test in PIE |
+| `unrealmcp:unreal-vfx` | Niagara placement and parameters, effect materials (`niagara_apply` is coming in a sibling branch) | capture while playing, `frame_stats` GPU delta |
+| `unrealmcp:unreal-verifier` | independent pass/fail: `pie_test` with real input, vision critique, frame times, UE-Bench | evidence table; it doesn't fix things |
+| `unrealmcp:unreal-tech-artist` | materials, textures, import, collision, Blender modeling | capture under level lighting, `performance_audit` |
+| `unrealmcp:unreal-animator` | AnimBP state machines, montages, retargeting, GAS | PIE with input, asserting state and tags |
 
 - **5 slash commands** ([`commands/`](../commands/)): `/unrealmcp:unreal-status`, `/unrealmcp:unreal-playtest`,
   `/unrealmcp:unreal-screenshot`, `/unrealmcp:unreal-package`, `/unrealmcp:unreal-bench`. Plugin commands are namespaced;

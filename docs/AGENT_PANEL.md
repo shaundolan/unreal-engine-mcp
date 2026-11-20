@@ -1,6 +1,6 @@
 # UnrealMCP Agent panel
 
-An in-editor chat agent, the local counterpart to Aura's in-editor agent. **Window → Tools → UnrealMCP Agent** opens a
+An in-editor chat agent, running locally. **Window → Tools → UnrealMCP Agent** opens a
 dockable tab where you chat with an agent that drives the editor through the UnrealMCP tools. It shows every tool call,
 asks before destructive calls, and can undo a whole agent turn. It is model-agnostic and local-first: you pick the
 provider, and nothing goes through a service of ours.
