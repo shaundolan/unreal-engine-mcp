@@ -113,7 +113,8 @@ in both directions:
   the same C++ handlers;
 - `UNREAL_MCP_EPIC_URL` lets this server proxy Epic's tools as `epic_*`.
 
-See [docs/EPIC_NATIVE_MCP.md](docs/EPIC_NATIVE_MCP.md).
+See [docs/EPIC_NATIVE_MCP.md](docs/EPIC_NATIVE_MCP.md) for how it works and
+[docs/EPIC_MCP_COMPARISON.md](docs/EPIC_MCP_COMPARISON.md) for a feature-by-feature comparison and which to use when.
 
 ## License
 

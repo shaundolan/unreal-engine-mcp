@@ -226,6 +226,7 @@ Set `UNREAL_MCP_EPIC_URL=http://127.0.0.1:<port>/mcp` for the UnrealMCP server, 
 - **`UNREAL_MCP_EPIC_MODE=meta` (default).** Adds `epic_list_toolsets`, `epic_describe_toolset` and `epic_call_tool`.
   - Discovery is lazy, so the editor can start after the server.
   - It works against Epic's tool-search mode and its eager mode.
+  - It also accepts the batched `describe_toolsets` meta tool that Epic's newer (5.9) docs describe, building its arguments from that tool's own input schema, so an engine upgrade doesn't break discovery.
   - Images come back as MCP image content. That includes `FToolsetImage` results, which Epic's adapter sends as base64 JSON text.
   - It re-initializes after an editor restart.
 - **`UNREAL_MCP_EPIC_MODE=expand`.** At startup it also registers each Epic tool as its own tool, `epic_<ToolsetClass>_<tool>`. Names are sanitized to `[A-Za-z0-9_-]` and at most 64 characters, and the tool keeps Epic's schema.
@@ -241,7 +242,8 @@ The reverse direction also works without code. Run UnrealMCP over HTTP, then add
 **Status.**
 - Built here: `scripts/ue_linux.sh build` reports `build ok (0 warnings)` on UE 5.8.4 Linux, clang, with `UnrealMCPToolsets` and the Epic plugins enabled in the sample project.
 - Unit-tested against fakes: the manifest/parity tests and the gateway tests, which run against a fake of Epic's Streamable HTTP server in both tool modes.
-- **Not yet live-verified.** The live run is assigned to the RTX 4090 box, per the steps below and `docs/WINDOWS_TEST.md` §10b. This GTX 1080 had no free VRAM.
+- **Epic's server: live on Win64 5.8.4 (2026-11-20).** A blank, code-free project with `-EnablePlugins=EditorToolset,GameplayTagsToolset -ModelContextProtocolStartServer -ModelContextProtocolPort=8568` listened about 30 s after launch and served 20 toolsets through the 3 meta tools, at 20–30 ms per call. `resources/list` was empty and `prompts/list` returned HTTP 400. `serverInfo` came back with an empty name.
+- **UnrealMCPToolsets inside it: not yet live-verified.** That still needs a Win64 build of the two plugins (steps below and `docs/WINDOWS_TEST.md` §10b).
 
 **What the sample project enables.** `FlopperamUnrealMCP.uproject` turns on `ModelContextProtocol`, `ToolsetRegistry`, `EditorToolset`, `UMGToolSet`, `GameplayTagsToolset` and `UnrealMCPToolsets`.
 

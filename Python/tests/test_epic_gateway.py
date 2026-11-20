@@ -194,3 +194,44 @@ def test_safe_names_are_unique_and_short():
     a = epic.safe_name("epic_", "x.Some.VeryLongToolsetName" * 3, "tool.name" * 10, taken)
     b = epic.safe_name("epic_", "x.Some.VeryLongToolsetName" * 3, "tool.name" * 10, taken)
     assert a != b and len(a) <= 64 and len(b) <= 64 and "." not in a
+
+
+class _PluralClient:
+    """Stub client for servers that expose the batched describe_toolsets (the 5.9 docs' four meta tools)."""
+
+    def __init__(self, schema):
+        self.schema, self.calls = schema, []
+
+    def list_tools(self):
+        return [{"name": n, "inputSchema": {"type": "object"}} for n in ("list_toolsets", "describe_tools", "call_tool")
+                ] + [{"name": "describe_toolsets", "inputSchema": self.schema}]
+
+    def call_tool(self, name, arguments=None, timeout=None):
+        self.calls.append((name, arguments))
+        reply = {"toolsets": [{"name": "Other", "tools": []},
+                              {"name": "EditorToolset.EditorAppToolset", "tools": TOOLSETS["EditorToolset.EditorAppToolset"]}]}
+        return {"content": [{"type": "text", "text": json.dumps(reply)}]}
+
+
+@pytest.mark.parametrize("schema,expected", [
+    ({"type": "object", "properties": {"toolsets": {"type": "array", "items": {"type": "string"}},
+                                       "include_schemas": {"type": "boolean"}}},
+     {"toolsets": ["EditorToolset.EditorAppToolset"], "include_schemas": True}),
+    ({"type": "object"}, {"toolset_names": ["EditorToolset.EditorAppToolset"], "include_schemas": True}),
+    ({"type": "object", "properties": {"name": {"type": "string"}}}, {"name": "EditorToolset.EditorAppToolset"}),
+])
+def test_describe_plural_meta_tool(schema, expected):
+    client = _PluralClient(schema)
+    out = epic.EpicGateway(client).describe("EditorToolset.EditorAppToolset")
+    assert client.calls == [("describe_toolsets", expected)]
+    assert [t["name"].rpartition(".")[2] for t in out["tools"]] == ["IsPIERunning", "CaptureEditorImage",
+                                                                     "CaptureViewport"]
+
+
+def test_pick_toolset_shapes():
+    one = {"name": "A", "tools": [1]}
+    assert epic.pick_toolset(one, "A") is one
+    assert epic.pick_toolset([{"name": "B"}, one], "A") is one
+    assert epic.pick_toolset({"A": {"tools": [1]}}, "A") == one
+    with pytest.raises(RuntimeError):
+        epic.pick_toolset({"toolsets": []}, "A")
