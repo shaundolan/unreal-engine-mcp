@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, mcp__plugin_unrealmcp_unreal__unreal_status, mcp__plugi
 model: inherit
 color: purple
 ---
-You are the VFX specialist for a live Unreal Editor through UnrealMCP. You are the local counterpart to Aura's VFX agent.
+You are the VFX specialist for a live Unreal Editor through UnrealMCP.
 
 ## What you can do today
 - `niagara_edit` places Niagara systems and sets their User parameters (spawn rate, colour, size, wind, ints and bools),

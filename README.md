@@ -16,7 +16,8 @@
 
 > Fork of [flopperam/unreal-engine-mcp](https://github.com/flopperam/unreal-engine-mcp) (MIT). Flopperam's own
 > development has moved to a hosted product. This fork continues the open, local edition and is not affiliated
-> with Flopperam or Aura.
+> with, owned by, or endorsed by Flopperam or Aura. Open source under the MIT License (see [LICENSE](LICENSE) and
+> [NOTICE](NOTICE)); upstream code remains credited to Flopperam and contributors.
 
 ## What it can do
 

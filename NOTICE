@@ -1,0 +1,10 @@
+UnrealMCP - open-source fork of flopperam/unreal-engine-mcp
+
+This repository is an independent, community-maintained fork of
+https://github.com/flopperam/unreal-engine-mcp (by Flopperam and contributors).
+It is not owned by, affiliated with, or endorsed by Flopperam or Aura (tryaura.dev).
+
+License: MIT (see LICENSE). The upstream README declares "MIT License"; the upstream
+repository ships no LICENSE file, so the standard MIT text is reproduced in LICENSE to
+preserve that grant and its attribution to Flopperam and contributors. Changes made in
+this fork are Copyright (c) 2026 Shaun Dolan and are released under the same MIT terms.
