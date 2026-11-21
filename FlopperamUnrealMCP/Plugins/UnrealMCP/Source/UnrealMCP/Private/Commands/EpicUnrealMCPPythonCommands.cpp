@@ -1,4 +1,5 @@
 #include "Commands/EpicUnrealMCPPythonCommands.h"
+#include "Commands/MCPPythonJobs.h"
 #include "IPythonScriptPlugin.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -24,7 +25,8 @@ static const TCHAR* LogTypeName(EPythonLogOutputType Type)
 }
 
 /**
- * params: code (string), mode ("file" | "statement" | "eval", default "file")
+ * params: code (string), mode ("file" | "statement" | "eval", default "file"),
+ *         job_id (string, optional: progress / cancel registry key; see MCPPythonJobs.h)
  * result: command_result (string; the value for "eval"), log [{type, output}], python_ok (bool)
  *
  * A Python exception is NOT a transport error: the reply is success with python_ok=false and
@@ -78,7 +80,11 @@ static TSharedPtr<FJsonObject> HandleExecutePython(const TSharedPtr<FJsonObject>
 		}
 	}
 
+	FString JobId;
+	Params->TryGetStringField(TEXT("job_id"), JobId);
+	FMCPPythonJobs::Begin(JobId);
 	const bool bOk = Python->ExecPythonCommandEx(Command);
+	FMCPPythonJobs::End(JobId);
 	if (!TempScript.IsEmpty())
 	{
 		IFileManager::Get().Delete(*TempScript, /*RequireExists*/ false, /*EvenReadOnly*/ true, /*Quiet*/ true);

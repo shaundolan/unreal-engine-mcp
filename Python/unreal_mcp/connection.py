@@ -77,15 +77,8 @@ class UnrealConnection:
     def probe_health(self, timeout: float = 5.0) -> dict[str, Any] | None:
         """editor_health on a separate short-lived connection. The plugin answers it on its socket thread, so it
         works while the game thread is stuck. None when the editor does not answer (or predates editor_health)."""
-        message: dict[str, Any] = {"id": 0, "type": "editor_health", "params": {}}
-        if self.settings.token:
-            message["token"] = self.settings.token
-        try:
-            with socket.create_connection((self.settings.host, self.settings.port), timeout=timeout) as s:
-                s.settimeout(timeout)
-                s.sendall(encode_frame(message))
-                reply = read_frame(s)
-        except (OSError, ProtocolError, ConnectionError, ValueError):
+        reply = self.side_command("editor_health", {}, timeout=timeout)
+        if reply is None:
             return None
         if reply.get("status") == "success" and isinstance(reply.get("result"), dict):
             return reply["result"]
@@ -93,6 +86,22 @@ class UnrealConnection:
             # A plugin older than editor_health queues it like any command: an answer means it is being serviced.
             return {"responsive": True, "legacy_plugin": True}
         return None
+
+    def side_command(self, command: str, params: dict[str, Any] | None = None,
+                     timeout: float = 5.0) -> dict[str, Any] | None:
+        """One framed command on its own short-lived connection, bypassing the main socket (and its lock). For the
+        commands the plugin answers on its socket thread (editor_health, python_job_status, python_job_cancel), which
+        work while a long command holds the game thread. None on any transport failure."""
+        message: dict[str, Any] = {"id": 0, "type": command, "params": dict(params or {})}
+        if self.settings.token:
+            message["token"] = self.settings.token
+        try:
+            with socket.create_connection((self.settings.host, self.settings.port), timeout=timeout) as s:
+                s.settimeout(timeout)
+                s.sendall(encode_frame(message))
+                return read_frame(s)
+        except (OSError, ProtocolError, ConnectionError, ValueError):
+            return None
 
     def _timeout_reply(self, command: str, timeout: float) -> dict[str, Any]:
         """The editor sent nothing back: ask it (out of band) whether it is still servicing commands."""

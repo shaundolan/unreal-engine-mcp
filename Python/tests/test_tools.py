@@ -19,7 +19,9 @@ def run_wrapper(code: str, marker="<<M>>"):
 
 def test_wrapper_returns_result_and_stdout():
     r = run_wrapper("print('hi')\nresult = {'n': 1 + 2}")
+    job = r.pop("job")
     assert r == {"ok": True, "result": {"n": 3}, "stdout": "hi\n"}
+    assert job["reports"] == 0 and job["elapsed_s"] >= 0
 
 
 def test_wrapper_captures_traceback():
@@ -59,6 +61,7 @@ def test_execute_python_tool_end_to_end(fake, tools):
 
     fake.on("execute_python", handler)
     r = tools["execute_python"]("result = 42", timeout_s=5)
+    assert len(r.pop("job_id")) == 32 and r.pop("outcome") == "ok"
     assert r == {"success": True, "result": 42, "stdout": "x\n", "log_errors": ["LogPython: Warning-ish"]}
 
 
