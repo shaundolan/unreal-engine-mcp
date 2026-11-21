@@ -1,4 +1,6 @@
 #include "Commands/MCPScriptLibrary.h"
+#include "Commands/MCPPlayCommands.h"
+#include "GameFramework/Actor.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "MaterialEditingLibrary.h"
@@ -227,4 +229,34 @@ FString UMCPScriptLibrary::ReleaseStaleAssetPath(const FString& AssetPath)
 		Pkg->Rename(*NewPkgName.ToString(), nullptr, Flags);
 	}
 	return FString::Printf(TEXT("released:%d"), ToMove.Num());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Multi-client PIE: world targets and replicas (pie_assert / pie_net_assert scripts)
+// ---------------------------------------------------------------------------------------------
+
+TArray<UWorld*> UMCPScriptLibrary::GetPieWorlds()
+{
+	return FMCPPlayCommands::GetPieWorlds();
+}
+
+UWorld* UMCPScriptLibrary::GetPieWorld(const FString& Target)
+{
+	FString Err;
+	return FMCPPlayCommands::ResolvePieWorld(Target, Err);
+}
+
+FString UMCPScriptLibrary::GetPieWorldTarget(UWorld* World)
+{
+	return FMCPPlayCommands::PieWorldTarget(World);
+}
+
+FString UMCPScriptLibrary::GetNetId(AActor* Actor)
+{
+	return FMCPPlayCommands::NetIdOf(Actor);
+}
+
+AActor* UMCPScriptLibrary::FindReplica(AActor* Actor, UWorld* World)
+{
+	return FMCPPlayCommands::FindReplica(Actor, World);
 }

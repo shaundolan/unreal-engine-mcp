@@ -59,7 +59,7 @@ and the runner's Claude Code mode can also attach Epic's server directly (`unrea
   (`metasound_apply` / `metasound_export` / `metasound_nodes`) and `sound_cue_apply` compile, but have not been run live yet
   (WINDOWS_TEST.md). There's no MetaSound Patch authoring, no Quartz, and no submix or attenuation assets.
 - **World:** World Partition / data layers; landscape streaming proxies and edit layers beyond the first.
-- **Gameplay:** GAS ability tasks, Gameplay Cues and custom calculations (AttributeSets are generated C++), multiplayer/replication testing (multi-client PIE).
+- **Gameplay:** GAS ability tasks, Gameplay Cues and custom calculations (AttributeSets are generated C++). Multi-client PIE testing is built (`pie_test(net_mode=..., clients=N)`, world targets, replication assertions, `skill://multiplayer-testing`; `feat/net-test`), but not run live yet. Not covered yet: network emulation settings, matching spawned actors across worlds under Iris.
 - **Blueprints:** interfaces, event dispatchers bound across Blueprints, timelines, local variables, macros, promotable operators,
   select/switch, make/break struct, format text, async actions, Get Data Table Row, struct/enum/DataTable/curve authoring
   (`data_types`) and `bp_explain` / `bp_review` are built (`feat/bp-complete`). The C++ ops are not run live yet; the analysis and

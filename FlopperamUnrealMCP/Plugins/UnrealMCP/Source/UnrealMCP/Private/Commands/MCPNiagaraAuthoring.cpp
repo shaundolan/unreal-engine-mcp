@@ -7,6 +7,7 @@
 // Module reordering relinks the stack graph's parameter-map chain directly (the engine's MoveModule isn't exported).
 #include "Commands/MCPAuthoringCommands.h"
 #include "Commands/EpicUnrealMCPReflectionCommands.h"
+#include "Commands/MCPPlayCommands.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Curves/RichCurve.h"
@@ -2707,8 +2708,10 @@ TSharedPtr<FJsonObject> HandleParticles(const TSharedPtr<FJsonObject>& Params)
 	FString Where = Str(Params, TEXT("world")).ToLower();
 	UWorld* World = nullptr;
 	if (Where.IsEmpty()) Where = GEditor && GEditor->PlayWorld ? TEXT("pie") : TEXT("editor");
-	World = Where == TEXT("pie") ? (GEditor ? GEditor->PlayWorld.Get() : nullptr) : FEpicUnrealMCPReflectionCommands::GetEditorWorld();
-	if (!World) return MCPError(Where == TEXT("pie") ? TEXT("PIE is not running") : TEXT("no editor world"));
+	// "pie" (PlayWorld), "editor", or a multi-client PIE target: "server", "client:1", ...
+	FString WorldErr;
+	World = Where == TEXT("editor") ? FEpicUnrealMCPReflectionCommands::GetEditorWorld() : FMCPPlayCommands::ResolvePieWorld(Where, WorldErr);
+	if (!World) return MCPError(Where == TEXT("editor") ? FString(TEXT("no editor world")) : WorldErr);
 	const FString Actor = Str(Params, TEXT("actor"));
 	const FString SystemFilter = Str(Params, TEXT("system"));
 	TArray<TSharedPtr<FJsonValue>> Comps;

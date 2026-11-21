@@ -22,10 +22,15 @@
 #include "Editor.h"
 #include "Editor/EditorEngine.h"
 #include "EnhancedPlayerInput.h"
+#include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/NetConnection.h"
+#include "Engine/NetDriver.h"
+#include "Engine/PackageMapClient.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "GameFramework/PlayerInput.h"
 #include "HAL/PlatformTime.h"
 #include "InputAction.h"
@@ -198,18 +203,18 @@ namespace
 		}
 	}
 
-	APlayerController* PiePlayer(int32 Index, FString& Err)
+	APlayerController* PiePlayer(const TSharedPtr<FJsonObject>& P, int32 Index, FString& Err)
 	{
-		UWorld* World = GEditor ? GEditor->PlayWorld.Get() : nullptr;
+		UWorld* World = FMCPPlayCommands::ResolvePieWorld(P, Err);
 		if (!World)
 		{
-			Err = TEXT("PIE is not running (start it with editor_action pie_start, or use pie_test steps)");
 			return nullptr;
 		}
+		// On a client only the local controller exists; on a server index 0 is the host / first player.
 		APlayerController* PC = UGameplayStatics::GetPlayerController(World, Index);
 		if (!PC)
 		{
-			Err = FString::Printf(TEXT("no player controller %d in the PIE world"), Index);
+			Err = FString::Printf(TEXT("no player controller %d in the PIE world %s"), Index, *FMCPPlayCommands::PieWorldTarget(World));
 		}
 		return PC;
 	}
@@ -252,7 +257,7 @@ namespace
 		int32 PlayerIndex = 0;
 		P->TryGetNumberField(TEXT("player"), PlayerIndex);
 		FString Err;
-		APlayerController* PC = PiePlayer(PlayerIndex, Err);
+		APlayerController* PC = PiePlayer(P, PlayerIndex, Err);
 		if (!PC) return MCPError(Err);
 
 		FInjection J;
@@ -327,6 +332,7 @@ namespace
 		Out->SetNumberField(TEXT("duration_s"), Duration);
 		if (APawn* Pawn = PC->GetPawn()) Out->SetStringField(TEXT("pawn"), Pawn->GetName());
 		Out->SetNumberField(TEXT("active"), GInjections.Num());
+		Out->SetStringField(TEXT("world"), FMCPPlayCommands::PieWorldTarget(PC->GetWorld()));
 		return Out;
 	}
 
@@ -428,21 +434,141 @@ namespace
 		return { MakeShared<FJsonValueNumber>(V.X), MakeShared<FJsonValueNumber>(V.Y), MakeShared<FJsonValueNumber>(V.Z) };
 	}
 
-	FSceneViewport* PieSceneViewport()
+	FSceneViewport* PieSceneViewport(UWorld* World = nullptr)
 	{
-		UWorld* World = GEditor ? GEditor->PlayWorld.Get() : nullptr;
+		if (!World) World = GEditor ? GEditor->PlayWorld.Get() : nullptr;
 		UGameViewportClient* GVC = World ? World->GetGameViewport() : nullptr;
 		return GVC ? GVC->GetGameViewport() : nullptr;
 	}
+
+	// The net mode / client count our last pie_start asked for (pie_worlds compares against it).
+	FString GRequestedNetMode;
+	int32 GRequestedClients = 0;
 
 	void OnPostPieStarted(bool /*bSimulating*/)
 	{
 		if (GPendingPieSize.X > 0 && GPendingPieSize.Y > 0)
 		{
-			FString Err;
-			FMCPPlayCommands::SetPieViewportSize(GPendingPieSize.X, GPendingPieSize.Y, Err);
+			// Every instance with a window (a dedicated server has none): server, client 1, client 2 ...
+			for (UWorld* World : FMCPPlayCommands::GetPieWorlds())
+			{
+				if (PieSceneViewport(World))
+				{
+					FString Err;
+					FMCPPlayCommands::SetPieViewportSize(GPendingPieSize.X, GPendingPieSize.Y, Err, World);
+				}
+			}
 		}
 		GPendingPieSize = FIntPoint(0, 0);
+	}
+
+	const TCHAR* NetModeName(ENetMode M)
+	{
+		switch (M)
+		{
+		case NM_ListenServer: return TEXT("listen_server");
+		case NM_DedicatedServer: return TEXT("dedicated_server");
+		case NM_Client: return TEXT("client");
+		default: return TEXT("standalone");
+		}
+	}
+
+	bool IsServerMode(ENetMode M) { return M == NM_ListenServer || M == NM_DedicatedServer; }
+
+	/** A client world is connected once its server connection is up and the server's controller for it has replicated. */
+	bool IsClientConnected(UWorld* World)
+	{
+		UNetDriver* Driver = World ? World->GetNetDriver() : nullptr;
+		if (!Driver || !Driver->ServerConnection) return false;
+		APlayerController* PC = World->GetFirstPlayerController();
+		return PC && PC->PlayerState;
+	}
+
+	/** pie_worlds: every PIE world context (server first), with players / connection state. */
+	TSharedPtr<FJsonObject> HandlePieWorlds(const TSharedPtr<FJsonObject>& /*P*/)
+	{
+		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+		const TArray<UWorld*> Worlds = FMCPPlayCommands::GetPieWorlds();
+		TArray<TSharedPtr<FJsonValue>> List;
+		int32 NumClients = 0, Connected = 0, ServerPlayers = -1;
+		FString Mode = TEXT("standalone");
+		UWorld* Play = GEditor ? GEditor->PlayWorld.Get() : nullptr;
+		for (UWorld* World : Worlds)
+		{
+			const ENetMode M = World->GetNetMode();
+			TSharedPtr<FJsonObject> W = MakeShared<FJsonObject>();
+			W->SetStringField(TEXT("target"), FMCPPlayCommands::PieWorldTarget(World));
+			W->SetStringField(TEXT("net_mode"), NetModeName(M));
+			W->SetStringField(TEXT("world"), World->GetName());
+			if (const FWorldContext* Ctx = GEngine->GetWorldContextFromWorld(World))
+			{
+				W->SetNumberField(TEXT("pie_instance"), Ctx->PIEInstance);
+			}
+			W->SetBoolField(TEXT("has_viewport"), PieSceneViewport(World) != nullptr);
+			W->SetBoolField(TEXT("is_play_world"), World == Play);
+			int32 Players = 0;
+			for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (It->IsValid()) ++Players;
+			}
+			W->SetNumberField(TEXT("players"), Players);
+			if (IsServerMode(M))
+			{
+				Mode = NetModeName(M);
+				ServerPlayers = Players;
+				UNetDriver* Driver = World->GetNetDriver();
+				W->SetNumberField(TEXT("client_connections"), Driver ? Driver->ClientConnections.Num() : 0);
+			}
+			else if (M == NM_Client)
+			{
+				++NumClients;
+				const bool bConnected = IsClientConnected(World);
+				Connected += bConnected ? 1 : 0;
+				W->SetBoolField(TEXT("connected"), bConnected);
+				APlayerController* PC = World->GetFirstPlayerController();
+				if (PC && PC->PlayerState) W->SetNumberField(TEXT("player_id"), PC->PlayerState->GetPlayerId());
+				if (PC && PC->GetPawn()) W->SetStringField(TEXT("pawn"), PC->GetPawn()->GetName());
+			}
+			List.Add(MakeShared<FJsonValueObject>(W));
+		}
+		Out->SetArrayField(TEXT("worlds"), List);
+		Out->SetBoolField(TEXT("pie_running"), Worlds.Num() > 0);
+		Out->SetStringField(TEXT("net_mode"), Mode);
+		Out->SetNumberField(TEXT("clients"), NumClients);
+		Out->SetNumberField(TEXT("clients_connected"), Connected);
+		if (ServerPlayers >= 0) Out->SetNumberField(TEXT("server_players"), ServerPlayers);
+		if (!GRequestedNetMode.IsEmpty())
+		{
+			Out->SetStringField(TEXT("requested_net_mode"), GRequestedNetMode);
+			Out->SetNumberField(TEXT("requested_clients"), GRequestedClients);
+		}
+		const int32 Want = GRequestedNetMode.IsEmpty() ? NumClients : GRequestedClients;
+		const int32 WantPlayers = Mode == TEXT("listen_server") ? Want + 1 : Want;
+		Out->SetBoolField(TEXT("all_connected"), Worlds.Num() > 0 && NumClients >= Want && Connected >= Want
+			&& (ServerPlayers < 0 || ServerPlayers >= WantPlayers));
+		return Out;
+	}
+
+	/** The server's controller for a client world's local player (matched by PlayerState player id). */
+	APlayerController* ServerControllerFor(UWorld* ClientWorld, int32 PlayerIndex, UWorld*& OutServer, FString& Err)
+	{
+		OutServer = FMCPPlayCommands::ResolvePieWorld(TEXT("server"), Err);
+		if (!OutServer) return nullptr;
+		APlayerController* ClientPC = UGameplayStatics::GetPlayerController(ClientWorld, PlayerIndex);
+		if (!ClientPC || !ClientPC->PlayerState)
+		{
+			Err = FString::Printf(TEXT("%s has no connected player %d yet (wait for clients: {\"wait_clients\": true})"),
+				*FMCPPlayCommands::PieWorldTarget(ClientWorld), PlayerIndex);
+			return nullptr;
+		}
+		const int32 Id = ClientPC->PlayerState->GetPlayerId();
+		for (FConstPlayerControllerIterator It = OutServer->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (PC && PC->PlayerState && PC->PlayerState->GetPlayerId() == Id) return PC;
+		}
+		Err = FString::Printf(TEXT("the server has no controller for %s (player id %d)"), *FMCPPlayCommands::PieWorldTarget(ClientWorld), Id);
+		return nullptr;
 	}
 
 	bool ReadPieVector(const TSharedPtr<FJsonObject>& P, const TCHAR* Field, FVector& Out)
@@ -529,14 +655,25 @@ namespace
 		return ByName;
 	}
 
-	bool Possess(UWorld* World, int32 PlayerIndex, APawn* Pawn, bool bDestroyPrevious, TSharedPtr<FJsonObject>& Out, FString& Err)
+	/** The controller that should possess a pawn of World for player PlayerIndex. Possession is server-authoritative: for
+	 *  a client world it is the server's controller of that client's player, and the pawn must live on the server. */
+	APlayerController* PossessingController(UWorld* World, int32 PlayerIndex, UWorld*& OutAuthorityWorld, FString& Err)
 	{
+		OutAuthorityWorld = World;
+		if (World->GetNetMode() == NM_Client)
+		{
+			return ServerControllerFor(World, PlayerIndex, OutAuthorityWorld, Err);
+		}
 		APlayerController* PC = UGameplayStatics::GetPlayerController(World, PlayerIndex);
 		if (!PC)
 		{
-			Err = FString::Printf(TEXT("no player controller %d in the PIE world"), PlayerIndex);
-			return false;
+			Err = FString::Printf(TEXT("no player controller %d in the PIE world %s"), PlayerIndex, *FMCPPlayCommands::PieWorldTarget(World));
 		}
+		return PC;
+	}
+
+	bool Possess(APlayerController* PC, APawn* Pawn, bool bDestroyPrevious, TSharedPtr<FJsonObject>& Out, FString& Err)
+	{
 		APawn* Previous = PC->GetPawn();
 		if (Previous == Pawn)
 		{
@@ -572,12 +709,12 @@ namespace
 	 */
 	TSharedPtr<FJsonObject> HandleSpawnInPie(const TSharedPtr<FJsonObject>& P)
 	{
-		UWorld* World = GEditor ? GEditor->PlayWorld.Get() : nullptr;
+		FString ClassName, Err;
+		UWorld* World = FMCPPlayCommands::ResolvePieWorld(P, Err);
 		if (!World)
 		{
-			return MCPError(TEXT("PIE is not running (start it with editor_action pie_start, or use a pie_test spawn step)"));
+			return MCPError(Err);
 		}
-		FString ClassName, Err;
 		P->TryGetStringField(TEXT("class"), ClassName);
 		UClass* Class = ResolveActorClass(ClassName, Err);
 		if (!Class)
@@ -665,6 +802,12 @@ namespace
 		Out->SetStringField(TEXT("class"), Class->GetPathName());
 		Out->SetArrayField(TEXT("location"), Vec3(Actor->GetActorLocation()));
 		Out->SetBoolField(TEXT("has_begun_play"), Actor->HasActorBegunPlay());
+		Out->SetStringField(TEXT("world"), FMCPPlayCommands::PieWorldTarget(World));
+		if (World->GetNetMode() == NM_Client)
+		{
+			Out->SetStringField(TEXT("warning"), TEXT("spawned on a client: this actor is local to that client and never replicates "
+				"(spawn on \"server\" to test replication)"));
+		}
 		Out->SetArrayField(TEXT("properties_set"), SetEarly);
 		if (SetLate.Num()) Out->SetArrayField(TEXT("properties_set_after_construction"), SetLate);
 		if (Failed.Num()) Out->SetArrayField(TEXT("properties_failed"), Failed);
@@ -682,7 +825,23 @@ namespace
 			bool bDestroy = false;
 			P->TryGetNumberField(TEXT("player"), PlayerIndex);
 			P->TryGetBoolField(TEXT("destroy_previous"), bDestroy);
-			if (!Possess(World, PlayerIndex, Pawn, bDestroy, Out, Err))
+			// "possess_for": "client:1" spawns here (the server) and hands the pawn to that client's player.
+			FString For;
+			UWorld* PlayerWorld = World;
+			if (P->TryGetStringField(TEXT("possess_for"), For) && !For.IsEmpty())
+			{
+				PlayerWorld = FMCPPlayCommands::ResolvePieWorld(For, Err);
+				if (!PlayerWorld) return MCPError(Err);
+			}
+			UWorld* Authority = nullptr;
+			APlayerController* PC = PossessingController(PlayerWorld, PlayerIndex, Authority, Err);
+			if (!PC) return MCPError(Err);
+			if (Authority != World)
+			{
+				return MCPError(FString::Printf(TEXT("spawned %s in %s, but possession happens on the server: spawn with world=\"server\" "
+					"and possess_for=\"%s\""), *Actor->GetName(), *FMCPPlayCommands::PieWorldTarget(World), *FMCPPlayCommands::PieWorldTarget(PlayerWorld)));
+			}
+			if (!Possess(PC, Pawn, bDestroy, Out, Err))
 			{
 				return MCPError(Err);
 			}
@@ -699,32 +858,45 @@ namespace
 	/** pie_possess: target (actor label or name in the PIE world), player, destroy_previous. */
 	TSharedPtr<FJsonObject> HandlePiePossess(const TSharedPtr<FJsonObject>& P)
 	{
-		UWorld* World = GEditor ? GEditor->PlayWorld.Get() : nullptr;
-		if (!World)
-		{
-			return MCPError(TEXT("PIE is not running"));
-		}
 		FString Target, Err;
+		UWorld* PlayerWorld = FMCPPlayCommands::ResolvePieWorld(P, Err);
+		if (!PlayerWorld)
+		{
+			return MCPError(Err);
+		}
+		int32 PlayerIndex = 0;
+		P->TryGetNumberField(TEXT("player"), PlayerIndex);
+		// world = "client:N": that client's player possesses, through its controller on the server (the pawn is looked up
+		// in the server world, where labels from spawn steps live).
+		UWorld* World = nullptr;
+		APlayerController* PC = PossessingController(PlayerWorld, PlayerIndex, World, Err);
+		if (!PC)
+		{
+			return MCPError(Err);
+		}
 		P->TryGetStringField(TEXT("target"), Target);
 		AActor* Actor = FindPieActor(World, Target);
 		if (!Actor)
 		{
-			return MCPError(FString::Printf(TEXT("no actor labelled or named '%s' in the PIE world"), *Target));
+			return MCPError(FString::Printf(TEXT("no actor labelled or named '%s' in the PIE world %s"), *Target, *FMCPPlayCommands::PieWorldTarget(World)));
 		}
 		APawn* Pawn = Cast<APawn>(Actor);
 		if (!Pawn)
 		{
 			return MCPError(FString::Printf(TEXT("%s (%s) is not a Pawn"), *Actor->GetName(), *Actor->GetClass()->GetName()));
 		}
-		int32 PlayerIndex = 0;
 		bool bDestroy = false;
-		P->TryGetNumberField(TEXT("player"), PlayerIndex);
 		P->TryGetBoolField(TEXT("destroy_previous"), bDestroy);
 		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
 		Out->SetStringField(TEXT("pawn"), Pawn->GetName());
-		if (!Possess(World, PlayerIndex, Pawn, bDestroy, Out, Err))
+		if (!Possess(PC, Pawn, bDestroy, Out, Err))
 		{
 			return MCPError(Err);
+		}
+		Out->SetStringField(TEXT("world"), FMCPPlayCommands::PieWorldTarget(World));
+		if (PlayerWorld != World)
+		{
+			Out->SetStringField(TEXT("for"), FMCPPlayCommands::PieWorldTarget(PlayerWorld));
 		}
 		return Out;
 	}
@@ -736,25 +908,32 @@ namespace
 		P->TryGetNumberField(TEXT("width"), W);
 		P->TryGetNumberField(TEXT("height"), H);
 		FString Err;
-		if (!FMCPPlayCommands::SetPieViewportSize(W, H, Err))
+		UWorld* World = FMCPPlayCommands::ResolvePieWorld(P, Err);
+		if (!World)
+		{
+			return MCPError(Err);
+		}
+		if (!FMCPPlayCommands::SetPieViewportSize(W, H, Err, World))
 		{
 			return MCPError(Err);
 		}
 		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
-		const FIntPoint Size = PieSceneViewport()->GetSizeXY();
+		const FIntPoint Size = PieSceneViewport(World)->GetSizeXY();
 		Out->SetNumberField(TEXT("width"), Size.X);
 		Out->SetNumberField(TEXT("height"), Size.Y);
-		Out->SetBoolField(TEXT("fixed"), PieSceneViewport()->HasFixedSize());
+		Out->SetBoolField(TEXT("fixed"), PieSceneViewport(World)->HasFixedSize());
 		return Out;
 	}
 }
 
-bool FMCPPlayCommands::SetPieViewportSize(int32 Width, int32 Height, FString& OutError)
+bool FMCPPlayCommands::SetPieViewportSize(int32 Width, int32 Height, FString& OutError, UWorld* World)
 {
-	FSceneViewport* Viewport = PieSceneViewport();
+	FSceneViewport* Viewport = PieSceneViewport(World);
 	if (!Viewport)
 	{
-		OutError = TEXT("PIE is not running (no PIE game viewport)");
+		OutError = World && World->GetNetMode() == NM_DedicatedServer
+			? FString(TEXT("the dedicated server world has no viewport (target a client: world=\"client:1\")"))
+			: FString(TEXT("PIE is not running (no PIE game viewport)"));
 		return false;
 	}
 	if (Width < 0 || Height < 0 || Width > 8192 || Height > 8192 || (Width == 0) != (Height == 0) || (Width > 0 && (Width < 16 || Height < 16)))
@@ -792,6 +971,45 @@ TSharedPtr<FJsonObject> FMCPPlayCommands::StartPie(const TSharedPtr<FJsonObject>
 	}
 	FString Mode = TEXT("new_window");
 	Params->TryGetStringField(TEXT("mode"), Mode);
+	FString NetMode;
+	Params->TryGetStringField(TEXT("net_mode"), NetMode);
+	NetMode = NetMode.ToLower().Replace(TEXT("-"), TEXT("_"));
+	int32 Clients = 0;
+	Params->TryGetNumberField(TEXT("clients"), Clients);
+	EPlayNetMode PlayNetMode = PIE_Standalone;
+	int32 NumInstances = 1;
+	if (NetMode.IsEmpty())
+	{
+		if (Clients > 0)
+		{
+			return MCPError(TEXT("clients needs net_mode (listen_server or client)"));
+		}
+	}
+	else if (NetMode == TEXT("standalone"))
+	{
+		if (Clients > 1)
+		{
+			return MCPError(TEXT("net_mode standalone has one player; use listen_server or client for several"));
+		}
+		Clients = 0;
+	}
+	else if (NetMode == TEXT("listen_server") || NetMode == TEXT("client") || NetMode == TEXT("dedicated_server"))
+	{
+		NetMode = NetMode == TEXT("dedicated_server") ? TEXT("client") : NetMode;
+		Clients = Clients > 0 ? Clients : 1;
+		if (Clients > 8)
+		{
+			return MCPError(FString::Printf(TEXT("clients %d: at most 8 in one editor process"), Clients));
+		}
+		// Listen server: the host is a player too, plus `Clients` remote ones. Client: `Clients` players and an
+		// in-process dedicated server (no window).
+		PlayNetMode = NetMode == TEXT("listen_server") ? PIE_ListenServer : PIE_Client;
+		NumInstances = NetMode == TEXT("listen_server") ? Clients + 1 : Clients;
+	}
+	else
+	{
+		return MCPError(FString::Printf(TEXT("unknown net_mode '%s' (standalone, listen_server, client)"), *NetMode));
+	}
 
 	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
 	ULevelEditorPlaySettings* Defaults = GetMutableDefault<ULevelEditorPlaySettings>();
@@ -816,6 +1034,16 @@ TSharedPtr<FJsonObject> FMCPPlayCommands::StartPie(const TSharedPtr<FJsonObject>
 		Settings->NewWindowWidth = W;
 		Settings->NewWindowHeight = H;
 	}
+	if (!NetMode.IsEmpty())
+	{
+		// Only this session's copy of the settings: the user's saved Play options stay as they were.
+		Settings->SetPlayNetMode(PlayNetMode);
+		Settings->SetPlayNumberOfClients(NumInstances);
+		Settings->SetRunUnderOneProcess(true); // one editor process, never extra game processes
+		Settings->bLaunchSeparateServer = false;
+	}
+	GRequestedNetMode = NetMode;
+	GRequestedClients = Clients;
 	Session.EditorPlaySettings = Settings;
 	if (Mode == TEXT("viewport"))
 	{
@@ -841,8 +1069,167 @@ TSharedPtr<FJsonObject> FMCPPlayCommands::StartPie(const TSharedPtr<FJsonObject>
 		Out->SetNumberField(TEXT("width"), W);
 		Out->SetNumberField(TEXT("height"), H);
 	}
-	Out->SetStringField(TEXT("note"), TEXT("PIE starts on the next editor tick; poll project_context.pie_running"));
+	if (!NetMode.IsEmpty())
+	{
+		Out->SetStringField(TEXT("net_mode"), NetMode);
+		Out->SetNumberField(TEXT("clients"), Clients);
+		Out->SetNumberField(TEXT("expected_worlds"), PlayNetMode == PIE_Client ? Clients + 1 : NumInstances);
+		Out->SetNumberField(TEXT("expected_players"), NumInstances);
+	}
+	Out->SetStringField(TEXT("note"), NetMode.IsEmpty() || NetMode == TEXT("standalone")
+		? TEXT("PIE starts on the next editor tick; poll project_context.pie_running")
+		: TEXT("PIE starts on the next editor tick; poll pie_worlds until all_connected"));
 	return Out;
+}
+
+TArray<UWorld*> FMCPPlayCommands::GetPieWorlds()
+{
+	TArray<TPair<int32, UWorld*>> Found;
+	if (GEngine)
+	{
+		for (const FWorldContext& Ctx : GEngine->GetWorldContexts())
+		{
+			if (Ctx.WorldType == EWorldType::PIE && Ctx.World())
+			{
+				Found.Emplace(Ctx.PIEInstance, Ctx.World());
+			}
+		}
+	}
+	Found.Sort([](const TPair<int32, UWorld*>& A, const TPair<int32, UWorld*>& B) { return A.Key < B.Key; });
+	TArray<UWorld*> Out;
+	for (const TPair<int32, UWorld*>& F : Found)
+	{
+		Out.Add(F.Value);
+	}
+	return Out;
+}
+
+FString FMCPPlayCommands::PieWorldTarget(const UWorld* World)
+{
+	if (!World || World->WorldType != EWorldType::PIE)
+	{
+		return FString();
+	}
+	const ENetMode M = World->GetNetMode();
+	if (IsServerMode(M))
+	{
+		return TEXT("server");
+	}
+	int32 N = 0;
+	for (UWorld* W : GetPieWorlds())
+	{
+		if (W->GetNetMode() != M) continue;
+		++N;
+		if (W == World)
+		{
+			return FString::Printf(TEXT("%s:%d"), M == NM_Client ? TEXT("client") : TEXT("standalone"), N);
+		}
+	}
+	return TEXT("pie");
+}
+
+UWorld* FMCPPlayCommands::ResolvePieWorld(const FString& InTarget, FString& OutError)
+{
+	const FString T = InTarget.TrimStartAndEnd().ToLower();
+	if (T.IsEmpty() || T == TEXT("pie") || T == TEXT("game"))
+	{
+		UWorld* World = GEditor ? GEditor->PlayWorld.Get() : nullptr;
+		if (!World)
+		{
+			OutError = TEXT("PIE is not running (start it with editor_action pie_start, or use pie_test steps)");
+		}
+		return World;
+	}
+	const TArray<UWorld*> Worlds = GetPieWorlds();
+	if (Worlds.Num() == 0)
+	{
+		OutError = TEXT("PIE is not running (start it with editor_action pie_start, or use pie_test steps)");
+		return nullptr;
+	}
+	if (T == TEXT("server") || T == TEXT("host") || T == TEXT("authority") || T == TEXT("listen_server") || T == TEXT("dedicated_server"))
+	{
+		for (UWorld* W : Worlds)
+		{
+			if (IsServerMode(W->GetNetMode())) return W;
+		}
+		OutError = TEXT("no server world: PIE runs standalone (start it with net_mode listen_server or client)");
+		return nullptr;
+	}
+	FString Kind = T, Index = TEXT("1");
+	T.Split(TEXT(":"), &Kind, &Index);
+	if ((Kind != TEXT("client") && Kind != TEXT("standalone")) || !Index.IsNumeric() || FCString::Atoi(*Index) < 1)
+	{
+		OutError = FString::Printf(TEXT("unknown world '%s' (pie, server, client:1, client:2, ..., standalone:1)"), *InTarget);
+		return nullptr;
+	}
+	const ENetMode Want = Kind == TEXT("client") ? NM_Client : NM_Standalone;
+	const int32 Wanted = FCString::Atoi(*Index);
+	int32 N = 0;
+	for (UWorld* W : Worlds)
+	{
+		if (W->GetNetMode() == Want && ++N == Wanted) return W;
+	}
+	OutError = FString::Printf(TEXT("no %s world %d (PIE has %d)"), *Kind, Wanted, N);
+	return nullptr;
+}
+
+UWorld* FMCPPlayCommands::ResolvePieWorld(const TSharedPtr<FJsonObject>& Params, FString& OutError)
+{
+	FString Target;
+	if (Params.IsValid() && !Params->TryGetStringField(TEXT("world"), Target))
+	{
+		Params->TryGetStringField(TEXT("net_role"), Target);
+	}
+	return ResolvePieWorld(Target, OutError);
+}
+
+FString FMCPPlayCommands::NetIdOf(const AActor* Actor)
+{
+	UWorld* World = Actor ? Actor->GetWorld() : nullptr;
+	UNetDriver* Driver = World ? World->GetNetDriver() : nullptr;
+	if (!Driver || Driver->IsUsingIrisReplication() || !Driver->GetNetGuidCache().IsValid())
+	{
+		return FString();
+	}
+	const FNetworkGUID Guid = Driver->GetNetGuidCache()->GetNetGUID(Actor);
+	return Guid.IsValid() ? Guid.ToString() : FString();
+}
+
+AActor* FMCPPlayCommands::FindReplica(const AActor* Actor, UWorld* InWorld)
+{
+	if (!Actor || !InWorld)
+	{
+		return nullptr;
+	}
+	if (Actor->GetWorld() == InWorld)
+	{
+		return const_cast<AActor*>(Actor);
+	}
+	const FString Id = NetIdOf(Actor);
+	AActor* ByName = nullptr;
+	AActor* OnlyOne = nullptr;
+	int32 OfClass = 0;
+	for (TActorIterator<AActor> It(InWorld, Actor->GetClass()); It; ++It)
+	{
+		AActor* Candidate = *It;
+		if (!IsValid(Candidate) || Candidate->GetClass() != Actor->GetClass()) continue;
+		if (!Id.IsEmpty() && NetIdOf(Candidate) == Id)
+		{
+			return Candidate;
+		}
+		// Level-placed actors keep their name in every PIE world; spawned ones do not.
+		if (!ByName && Actor->IsNetStartupActor() && Candidate->GetFName() == Actor->GetFName())
+		{
+			ByName = Candidate;
+		}
+		OnlyOne = Candidate;
+		++OfClass;
+	}
+	if (ByName)
+	{
+		return ByName;
+	}
+	return Id.IsEmpty() && OfClass == 1 ? OnlyOne : nullptr;
 }
 
 void FMCPPlayCommands::Register(IMCPCommandRegistry& Registry)
@@ -852,6 +1239,7 @@ void FMCPPlayCommands::Register(IMCPCommandRegistry& Registry)
 	Registry.Register(TEXT("spawn_in_pie"), &HandleSpawnInPie, false);
 	Registry.Register(TEXT("pie_possess"), &HandlePiePossess, false);
 	Registry.Register(TEXT("pie_viewport"), &HandlePieViewport, false);
+	Registry.Register(TEXT("pie_worlds"), &HandlePieWorlds, false);
 	if (!GPostPieStartedHandle.IsValid())
 	{
 		GPostPieStartedHandle = FEditorDelegates::PostPIEStarted.AddStatic(&OnPostPieStarted);

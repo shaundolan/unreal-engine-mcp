@@ -7,17 +7,42 @@
 #   {type: python, expr}   evaluated with `world`, `actors`, `find(label)`, `player`, `asset(path)`, `dist(a, b)` in scope
 #   {type: asset_exists, path, class?}      {type: asset_property, path, property, op, value}
 # target/a/b may be "@player" for player 0's pawn. ops: == != < <= > >= approx
+# Multi-client PIE: world "server" | "client:1" | "client:2" ... evaluates in that PIE world ("@player" = that world's
+# local player; on a server, player 0). Python scope adds net_role, pie_world(target), replica(actor, target).
 # ruff: noqa: F821
-_where = ARGS.get("world", "pie")
+_where = ARGS.get("world") or "pie"
+
+
+def _pie_world(target):
+    lib = mcp_lib()
+    if lib is None or not hasattr(lib, "get_pie_world"):
+        raise RuntimeError("PIE world targets (server, client:N) need the updated UnrealMCP plugin (MCPScriptLibrary.GetPieWorld)")
+    w = lib.get_pie_world(str(target))
+    if w is None:
+        raise RuntimeError(f"no PIE world {target!r} (start PIE with net_mode listen_server or client, and enough clients)")
+    return w
+
+
+def _replica(actor, target):
+    """The copy of `actor` (or a label in this world) in another PIE world, or None if it has not replicated there."""
+    if isinstance(actor, str):
+        actor = _find(actor)
+    lib = mcp_lib()
+    return None if actor is None else lib.find_replica(actor, _pie_world(target))
+
+
 if _where == "editor":
     _world = editor_world()
     _actors = all_actors()
     _player = None
 else:
-    _where = "PIE"
-    _world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_game_world()
-    if _world is None:
-        raise RuntimeError("PIE is not running (no game world)")
+    if _where in ("pie", "game"):
+        _where = "PIE"
+        _world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_game_world()
+        if _world is None:
+            raise RuntimeError("PIE is not running (no game world)")
+    else:
+        _world = _pie_world(_where)
     _actors = list(unreal.GameplayStatics.get_all_actors_of_class(_world, unreal.Actor))
     _player = unreal.GameplayStatics.get_player_pawn(_world, 0)
 
@@ -88,7 +113,7 @@ def _dist(a, b):
 
 
 _scope = {"unreal": unreal, "dist": _dist, "world": _world, "actors": _actors, "find": _find, "player": _player, "vec": vec,
-          "asset": _asset}
+          "asset": _asset, "net_role": _where, "pie_world": _pie_world, "replica": _replica}
 if ARGS.get("exec"):
     exec(compile(ARGS["exec"], "<pie_step>", "exec"), _scope)
 
@@ -149,4 +174,4 @@ for _i, _a in enumerate(ARGS.get("assertions") or []):
         _rec["name"] = _a["name"]
     _out.append(_rec)
 result = {"assertions": _out, "actor_count": len(_actors),
-          "player": _player.get_actor_label() if _player else None}
+          "player": _player.get_actor_label() if _player else None, "world": _where}

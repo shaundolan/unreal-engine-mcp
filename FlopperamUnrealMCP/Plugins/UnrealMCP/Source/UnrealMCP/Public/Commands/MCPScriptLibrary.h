@@ -6,6 +6,8 @@
 
 class UMaterial;
 class UMaterialExpression;
+class UWorld;
+class AActor;
 
 /**
  * Helpers for the plugin's editor scripts, reachable from editor Python as unreal.MCPScriptLibrary. They cover what the
@@ -48,4 +50,24 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "UnrealMCP")
 	static FString ReleaseStaleAssetPath(const FString& AssetPath);
+
+	/** Every PIE world (server and clients of a multiplayer session), in PIE instance order. */
+	UFUNCTION(BlueprintCallable, Category = "UnrealMCP")
+	static TArray<UWorld*> GetPieWorlds();
+
+	/** The PIE world for a target: "" / "pie" (GEditor->PlayWorld), "server", "client:N", "standalone:N"; None if absent. */
+	UFUNCTION(BlueprintCallable, Category = "UnrealMCP")
+	static UWorld* GetPieWorld(const FString& Target);
+
+	/** "server", "client:N" or "standalone:N" for a PIE world ("" otherwise). */
+	UFUNCTION(BlueprintCallable, Category = "UnrealMCP")
+	static FString GetPieWorldTarget(UWorld* World);
+
+	/** The actor's replication id, identical on the server and on every client ("" if not replicated yet / Iris). */
+	UFUNCTION(BlueprintCallable, Category = "UnrealMCP")
+	static FString GetNetId(AActor* Actor);
+
+	/** The copy of Actor in another PIE world (by net id, then stable name, then the only actor of its class). */
+	UFUNCTION(BlueprintCallable, Category = "UnrealMCP")
+	static AActor* FindReplica(AActor* Actor, UWorld* World);
 };

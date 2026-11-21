@@ -115,6 +115,8 @@ PIE renders at `width` x `height` (pie_test default 1280x720, exact even offscre
 `viewport_capture(source="pie", width=..., height=...)`.
 `frame_stats` reports avg/p95 frame, game, render, RHI and GPU ms. `navmesh_repaired: true` in the result means pie_test had to
 rebuild the NavMesh first, so add or rebuild a `NavMeshBoundsVolume` properly before shipping.
+Multiplayer: `pie_test(net_mode="listen_server" | "client", clients=2)` runs a multi-client session in the same editor. Steps
+and assertions then take `"world": "server" | "client:1" ...`, and there are replication assertions. See `skill://multiplayer-testing`.
 If something fails, read `results[].actual`, `steps[].assertions` and `errors_in_log`, fix just that, and re-run.
 Then run `performance_audit` and `editor_action(action="save_all")`.
 
