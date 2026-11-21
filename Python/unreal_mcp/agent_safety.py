@@ -32,7 +32,7 @@ READ_ONLY = frozenset({
     "bt_export", "landscape_inspect", "foliage_inspect", "pcg_inspect", "spline_inspect", "anim_inspect",
     "animbp_export", "gas_inspect", "frame_stats", "performance_audit", "package_status", "blender_status",
     "wait_for_shaders", "object_describe", "property_get", "epic_list_toolsets", "epic_describe_toolset",
-    "bp_explain", "bp_review",
+    "bp_explain", "bp_review", "python_job_status",
 })
 EPIC_META = ("epic_list_toolsets", "epic_describe_toolset", "epic_call_tool")
 

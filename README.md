@@ -23,7 +23,7 @@
 
 | Layer | Tools |
 |---|---|
-| **Universal** | `execute_python`: run any Unreal Python in the editor and get back the result, stdout and traceback |
+| **Universal** | `execute_python`: run any Unreal Python in the editor and get back the result, stdout and traceback. Long scripts report `unreal_mcp.progress()` (relayed as MCP progress; `python_job_status` reads it while the script runs), stop cooperatively on cancel/timeout, and `transactional=true` rolls the whole script back if it raises |
 | **Reflection** | `object_describe`, `property_get`, `property_set`, `function_call`: read or write any UPROPERTY and call any UFUNCTION on any object or actor (undoable) |
 | **Observation** | `viewport_capture` (returns an image the model can see; the PIE view at an exact width x height, offscreen too), `editor_log` (Output Log tail with filters and a cursor), `console_command` |
 | **Editor** | `unreal_status`, `project_context`, `editor_health` (answers even when the game thread is hung; stuck commands fail fast with `editor_unresponsive` and a recovery hint), `editor_action` (undo/redo, save all without prompts, open asset, load level, select, focus, PIE start/stop at a fixed size), `level_open` (switch or create maps safely, also out of a map that streams the target in), `wait_for_shaders` (block until the shader queue is empty) |

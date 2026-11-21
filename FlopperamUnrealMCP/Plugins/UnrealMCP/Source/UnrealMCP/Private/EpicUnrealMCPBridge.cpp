@@ -25,6 +25,7 @@
 #include "Commands/MCPPlayCommands.h"
 #include "Commands/MCPLevelCommands.h"
 #include "Commands/MCPAgentCommands.h"
+#include "Commands/MCPPythonJobs.h"
 
 DEFINE_LOG_CATEGORY(LogUnrealMCP);
 
@@ -333,6 +334,27 @@ TSharedRef<FJsonObject> UEpicUnrealMCPBridge::ExecuteCommandJson(const FString& 
 		Reply->SetObjectField(TEXT("result"), HealthJson());
 		return Reply;
 	}
+	if (CommandType == TEXT("python_job_status") || CommandType == TEXT("python_job_cancel"))
+	{
+		// Also never queued: the game thread is busy running the very script being asked about.
+		FString JobId;
+		TSharedRef<FJsonObject> Reply = MakeShared<FJsonObject>();
+		if (!Params->TryGetStringField(TEXT("job_id"), JobId) || JobId.IsEmpty())
+		{
+			Reply->SetStringField(TEXT("status"), TEXT("error"));
+			Reply->SetStringField(TEXT("error"), TEXT("missing 'job_id'"));
+			return Reply;
+		}
+		if (CommandType == TEXT("python_job_cancel"))
+		{
+			FString Reason = TEXT("cancelled by the client");
+			Params->TryGetStringField(TEXT("reason"), Reason);
+			FMCPPythonJobs::RequestCancel(JobId, Reason);
+		}
+		Reply->SetStringField(TEXT("status"), TEXT("success"));
+		Reply->SetObjectField(TEXT("result"), FMCPPythonJobs::StatusJson(JobId));
+		return Reply;
+	}
 	if (IsInGameThread())
 	{
 		return RunOnGameThread(CommandType, Params);
@@ -396,6 +418,15 @@ TSharedRef<FJsonObject> UEpicUnrealMCPBridge::ExecuteCommandJson(const FString& 
 		Stopping->SetStringField(TEXT("status"), TEXT("error"));
 		Stopping->SetStringField(TEXT("error"), TEXT("editor shutting down"));
 		return Stopping;
+	}
+	if (!bReady && Started->load())
+	{
+		// A script that polls unreal_mcp.cancelled() / reports progress stops at its next check instead of running on.
+		FString JobId;
+		if (Params->TryGetStringField(TEXT("job_id"), JobId))
+		{
+			FMCPPythonJobs::RequestCancel(JobId, TEXT("timeout"));
+		}
 	}
 	if (!bReady)
 	{
@@ -553,6 +584,11 @@ TSharedRef<FJsonObject> UEpicUnrealMCPBridge::HealthJson() const
 		Out->SetStringField(TEXT("busy_command"), BusyCommand);
 		Out->SetNumberField(TEXT("busy_for_s"), Round(Now - Busy));
 		Out->SetNumberField(TEXT("busy_timeout_s"), BusyTimeoutS.load());
+		TArray<TSharedPtr<FJsonValue>> Jobs = FMCPPythonJobs::RunningJson();
+		if (Jobs.Num() > 0)
+		{
+			Out->SetArrayField(TEXT("python_jobs"), Jobs); // progress of the running script: slow vs hung
+		}
 	}
 	if (!LastBlockedBy.IsEmpty() && Now - LastServiceTime.load() > 1.0)
 	{
