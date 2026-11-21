@@ -14,6 +14,14 @@ Environment:
   UNREAL_MCP_PORT  port the launched editor listens on and ping/quit talk to (default 55557)
   UNREAL_MCP_HOST, UNREAL_MCP_TOKEN  as for the MCP server
 
+Opt-in machine guards (docs/EDITOR_GUARDS.md; they run Python/unreal_mcp/editor_guard.py, so they need uv + `uv sync`):
+  UNREAL_MCP_EDITOR_LOCK       single-editor lock dir (mkdir lock with pid/owner files); build and launch refuse while
+                               another live process holds it, a dead holder's lock is moved aside
+  UNREAL_MCP_MIN_FREE_RAM_GB   refuse build/launch below this much free RAM
+  UNREAL_MCP_MAX_LOAD          POSIX load ceiling (skipped on Windows)
+  UNREAL_MCP_PORT=auto         launch/rebuild pick a free port from UNREAL_MCP_PORT_RANGE, never UNREAL_MCP_RESERVED_PORTS
+  UNREAL_MCP_LOCK_HELD=1       an outer queue already holds the lock
+
 Works in Windows PowerShell 5.1 and PowerShell 7. If scripts are blocked:
   powershell -ExecutionPolicy Bypass -File scripts\ue_windows.ps1 build
 #>
@@ -37,7 +45,23 @@ $Repo = Split-Path -Parent $PSScriptRoot
 $UeRoot = Get-EnvOr "UE_ROOT" "C:\Program Files\Epic Games\UE_5.8"
 $Project = Get-EnvOr "UE_PROJECT" (Join-Path $Repo "FlopperamUnrealMCP\FlopperamUnrealMCP.uproject")
 $McpHost = Get-EnvOr "UNREAL_MCP_HOST" "127.0.0.1"
-$Port = [int](Get-EnvOr "UNREAL_MCP_PORT" "55557")
+$GuardsOn = [bool]("$env:UNREAL_MCP_EDITOR_LOCK$env:UNREAL_MCP_MIN_FREE_RAM_GB$env:UNREAL_MCP_MAX_LOAD")
+# Runs Python/unreal_mcp/editor_guard.py; returns its exit code (0 ok, 3 refused; the reason is on stderr).
+function Invoke-Guard {
+    Push-Location (Join-Path $Repo "Python")
+    try { & uv run --quiet python -m unreal_mcp.editor_guard @args | Out-Host; return $LASTEXITCODE } finally { Pop-Location }
+}
+$PortSetting = Get-EnvOr "UNREAL_MCP_PORT" "55557"
+if ($PortSetting -eq "auto") {
+    if ($Command -notin @("launch", "launch-gui", "rebuild")) {
+        Write-Host "UNREAL_MCP_PORT=auto only works with launch/rebuild; pass the port"; exit 2
+    }
+    Push-Location (Join-Path $Repo "Python")
+    try { $PortSetting = (& uv run --quiet python -m unreal_mcp.editor_guard pick-port | Select-Object -Last 1) } finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0 -or -not $PortSetting) { Write-Host "no free port (see UNREAL_MCP_PORT_RANGE)"; exit 3 }
+    Write-Host "picked free port $PortSetting"
+}
+$Port = [int]$PortSetting
 $Token = Get-EnvOr "UNREAL_MCP_TOKEN" ""
 # One log/pid dir per port, so several editors (one per port) never share editor.log or a pid file.
 $LogDir = Get-EnvOr "UE_LOG_DIR" (Join-Path $env:TEMP "unreal-mcp\$Port")
@@ -104,6 +128,11 @@ function Get-ProjectEditors {
         ForEach-Object { $_.ProcessId }
 }
 
+# Drop the single-editor lock when $HolderPid holds it (or its holder is gone). No-op when the lock is off.
+function Remove-EditorLock([int]$HolderPid) {
+    if ($env:UNREAL_MCP_EDITOR_LOCK -and $HolderPid) { Invoke-Guard lock-release --pid $HolderPid | Out-Null }
+}
+
 function Invoke-Quit {
     $proc = Get-OurEditor
     if (Test-Editor) {
@@ -125,12 +154,21 @@ function Invoke-Quit {
         Start-Sleep 5
     }
     Remove-Item $PidFile -ErrorAction SilentlyContinue
+    Remove-EditorLock $proc.Id
 }
 
 function Invoke-Build {
     if (-not (Test-Path $BuildBat)) { throw "Build.bat not found under UE_ROOT=$UeRoot" }
     $open = @(Get-ProjectEditors)
     if ($open.Count -gt 0) { throw "the project is open in editor pid(s) $($open -join ', '); quit it first" }
+    if ($GuardsOn) {
+        $owner = Get-EnvOr "UNREAL_MCP_LOCK_OWNER" "ue_windows.ps1 build $([IO.Path]::GetFileName($Project))"
+        if ((Invoke-Guard preflight --pid $PID --owner $owner) -ne 0) { Write-Host "build refused by the machine guards"; exit 3 }
+    }
+    try { Invoke-BuildInner } finally { if ($GuardsOn) { Remove-EditorLock $PID } }
+}
+
+function Invoke-BuildInner {
     & (Join-Path $PSScriptRoot "sync_plugin.ps1") | Out-Null
     $log = Join-Path $LogDir "build.log"
     $target = [IO.Path]::GetFileNameWithoutExtension($Project) + "Editor"
@@ -161,6 +199,10 @@ function Invoke-Launch([bool]$Gui) {
     if ($existing) { throw "editor $($existing.Id) is still starting or hung; run quit first" }
     $open = @(Get-ProjectEditors)
     if ($open.Count -gt 0) { throw "the project is already open in editor pid(s) $($open -join ', ') on another port" }
+    if ($GuardsOn) {
+        $owner = Get-EnvOr "UNREAL_MCP_LOCK_OWNER" "ue_windows.ps1 launch $([IO.Path]::GetFileName($Project)) port $Port"
+        if ((Invoke-Guard preflight --pid $PID --owner $owner) -ne 0) { Write-Host "launch refused by the machine guards"; exit 3 }
+    }
     $editorArgs = @("`"$Project`"", "-nosplash", "`"-abslog=$EditorLog`"",
         "-ini:Engine:[/Script/PythonScriptPlugin.PythonScriptPluginSettings]:bDeveloperMode=True",
         # a background editor throttles to a few fps ("Use Less CPU when in Background"), which slows pie_test
@@ -171,6 +213,7 @@ function Invoke-Launch([bool]$Gui) {
     $env:UNREAL_MCP_PORT = "$Port"   # inherited by the editor: the plugin listens there
     $proc = Start-Process -FilePath $EditorExe -ArgumentList $editorArgs -PassThru
     Set-Content -Path $PidFile -Value $proc.Id
+    if ($GuardsOn) { Invoke-Guard lock-handover --from $PID --to $proc.Id | Out-Null }  # the lock lives as long as the editor
     for ($i = 1; $i -le 180; $i++) {
         if (Test-Editor) {
             Start-Sleep 10
@@ -181,6 +224,7 @@ function Invoke-Launch([bool]$Gui) {
             Write-Host "EDITOR EXITED (code $($proc.ExitCode))"
             if (Test-Path $EditorLog) { Get-Content $EditorLog -Tail 20 }
             Remove-Item $PidFile -ErrorAction SilentlyContinue
+            Remove-EditorLock $proc.Id
             exit 1
         }
         Start-Sleep 5

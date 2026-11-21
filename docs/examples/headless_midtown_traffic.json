@@ -1,0 +1,46 @@
+{
+  "name": "midtown-drive-60s",
+  "map": "/Game/Planet/Maps/NYC_Planet",
+  "notes": [
+    "RingFold/NYCity: drive a taxi through Midtown traffic for ~60 s on the globe map (NYC_Planet streams NYC_Midtown in).",
+    "Confirmed in NYCity source/tools: /Game/Planet/Maps/NYC_Planet, ANycTrafficSystem::NumActive (BlueprintPure), ANycVehicle,",
+    "UNycGameplaySubsystem::SetAutosave/SetSlot, the HISM_taxi + PlayerStart labels and the E enter-vehicle key (tools/gameplay_test.py, on NYC_Midtown).",
+    "UNCONFIRMED: that HISM_taxi/PlayerStart keep those labels once NYC_Midtown is streamed under NYC_Planet; that traffic spawns",
+    "under -nullrhi; the traffic_active floor (5) and the 1500 cm distance are guesses -- tune after the first live run."
+  ],
+  "discard_changes": true,
+  "duration_s": 2,
+  "start_timeout_s": 120,
+  "width": 640,
+  "height": 360,
+  "steps": [
+    {"do": "", "until": "unreal.GameplayStatics.get_actor_of_class(world, unreal.NycTrafficSystem) is not None and find('HISM_taxi') is not None",
+     "timeout_s": 120, "interval_s": 1.0},
+    {"do": "s = unreal.SubsystemBlueprintLibrary.get_game_instance_subsystem(world, unreal.NycGameplaySubsystem)\ns.set_autosave(False)\ns.set_slot('NycGameplay_headless')"},
+    {"wait_s": 3.0},
+    {"do": "h = find('HISM_taxi').get_component_by_class(unreal.InstancedStaticMeshComponent)\nstart = find('PlayerStart').get_actor_location()\nbest = min(((unreal.MathLibrary.vector_distance(h.get_instance_transform(i, True).translation, start), i) for i in range(h.get_instance_count())))\nxf = h.get_instance_transform(best[1], True)\nside = unreal.MathLibrary.get_right_vector(unreal.Rotator(roll=0, pitch=0, yaw=xf.rotation.rotator().yaw))\nplayer.set_actor_location(xf.translation + side * 200 + unreal.Vector(0, 0, 100), False, True)"},
+    {"wait_s": 0.5},
+    {"press": "E"},
+    {"wait_s": 0.8},
+    {"check": [{"name": "in a vehicle", "type": "python", "expr": "player.get_class().get_name() == 'NycVehicle'"}]},
+    {"do": "unreal._headless_start = player.get_actor_location()"},
+    {"hold": "W", "duration_s": 55},
+    {"hold": "S", "duration_s": 1.5},
+    {"wait_s": 1.0}
+  ],
+  "assertions": [
+    {"name": "still driving", "type": "python", "expr": "player.get_class().get_name() == 'NycVehicle'"},
+    {"name": "drove somewhere", "type": "python",
+     "expr": "unreal.MathLibrary.vector_distance(player.get_actor_location(), unreal._headless_start) >= 1500"},
+    {"name": "no walk-graph error", "type": "log_absent", "text": "NycGameplay: no walk graph"},
+    {"name": "no Accessed None", "type": "log_absent", "text": "Accessed None"}
+  ],
+  "counters": [
+    {"name": "traffic_active",
+     "expr": "(lambda t: t.num_active() if t else -1)(unreal.GameplayStatics.get_actor_of_class(world, unreal.NycTrafficSystem))",
+     "min": 5},
+    {"name": "player_speed_cm_s", "expr": "round(player.get_velocity().length(), 1)"}
+  ],
+  "fail_on_log_errors": false,
+  "ignore_log_errors": ["LogStreaming"]
+}

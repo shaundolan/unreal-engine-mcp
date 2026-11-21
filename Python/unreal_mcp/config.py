@@ -19,6 +19,9 @@ UNREAL_MCP_EPIC_TOOLSETS  expand mode: comma-separated, case-insensitive substri
                        (default: all except UnrealMCP.*, which this server already provides natively)
 UNREAL_MCP_GEN3D_URL   Local text/image->3D server for mesh_generate (default http://127.0.0.1:8765)
 UNREAL_MCP_GEN3D_TOKEN Bearer token of that server (its --token), if it has one
+
+Opt-in launch guards (UNREAL_MCP_EDITOR_LOCK, UNREAL_MCP_MIN_FREE_RAM_GB, UNREAL_MCP_MAX_LOAD,
+UNREAL_MCP_RESERVED_PORTS, UNREAL_MCP_PORT_RANGE, ...): see unreal_mcp/editor_guard.py and docs/EDITOR_GUARDS.md.
 """
 
 from __future__ import annotations

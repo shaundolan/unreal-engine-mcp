@@ -138,6 +138,19 @@ def register(mcp, get_conn):
         return poll_shaders(get_conn, timeout_s=timeout_s, include_assets=include_assets)
 
     @mcp.tool()
+    def editor_preflight() -> dict[str, Any]:
+        """Before launching or rebuilding an editor (scripts/ue_windows.ps1, scripts/ue_linux.sh) on THIS
+        machine: free RAM, 1-minute load, the single-editor lock holder, and a free non-reserved port.
+        resources.ok=false carries the reasons a guarded launch would refuse. Guards are opt-in env vars
+        (UNREAL_MCP_EDITOR_LOCK, UNREAL_MCP_MIN_FREE_RAM_GB, UNREAL_MCP_MAX_LOAD, UNREAL_MCP_RESERVED_PORTS,
+        UNREAL_MCP_PORT_RANGE; see docs/EDITOR_GUARDS.md). Read-only: it takes no lock."""
+        from ..editor_guard import GuardConfig, status
+        try:
+            return {"success": True, **status(GuardConfig.from_env())}
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
+
+    @mcp.tool()
     def console_command(command: str) -> dict[str, Any]:
         """Run an editor console command (e.g. "stat unit", "r.ScreenPercentage 50",
         "obj list class=StaticMesh") and return its captured output."""

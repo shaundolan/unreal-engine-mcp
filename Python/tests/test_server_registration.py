@@ -37,6 +37,7 @@ NEW_TOOLS = {
     "level_open", "wait_for_shaders", "instanced_mesh_place", "mesh_collision",
     "bp_explain", "bp_review", "data_types", "data_types_export",
     "metasound_apply", "metasound_export", "metasound_nodes", "sound_cue_apply",
+    "headless_check", "editor_preflight",
 }
 
 
