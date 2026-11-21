@@ -35,6 +35,24 @@ def wait_for_live_coding(get_conn, since: int, timeout_s: float, sleep=time.slee
             "log": [e["message"] for e in seen][-40:]}
 
 
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def _resource_refusal(get_conn) -> dict[str, Any] | None:
+    """UAT runs on the editor's machine: only gate it when that is this machine."""
+    from ..editor_guard import GuardConfig, check_resources
+    try:
+        settings = getattr(get_conn(), "settings", None)
+        if settings is not None and settings.host not in LOCAL_HOSTS:
+            return None
+        res = check_resources(GuardConfig.from_env())
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    if res["ok"]:
+        return None
+    return {"success": False, "error": "refused to start packaging: " + "; ".join(res["reasons"]), "resources": res}
+
+
 def register(mcp, get_conn):
     register_packaging(mcp, get_conn)
 
@@ -105,7 +123,12 @@ def register_packaging(mcp, get_conn):
         background on the editor machine. platform defaults to the editor's host (Win64/Linux/Mac);
         configuration Development or Shipping; maps limits cooking (e.g. ["/Game/Maps/Arena"]).
         Returns a job id immediately. Poll package_status(job) until state is succeeded/failed
-        (first cooks take many minutes). The editor stays usable meanwhile."""
+        (first cooks take many minutes). The editor stays usable meanwhile.
+        With UNREAL_MCP_MIN_FREE_RAM_GB / UNREAL_MCP_MAX_LOAD set and the editor on this machine, it
+        refuses to start when RAM or load is past those limits (docs/EDITOR_GUARDS.md)."""
+        refused = _resource_refusal(get_conn)
+        if refused:
+            return refused
         return _run(get_conn, "package_job", {"action": "start", "platform": platform, "configuration": configuration,
                                               "output_dir": output_dir, "maps": maps or [], "extra_args": extra_args})
 

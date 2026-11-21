@@ -17,11 +17,22 @@
 # UNREAL_MCP_PORT / UNREAL_MCP_TOKEN pick the editor: the launched editor listens there, and ping/quit only talk to it.
 # Several editors (one per port) can share a machine: quit only ever signals the PID this script started on that port,
 # never every UnrealEditor process, and launch refuses if the port answers or the project is already open elsewhere.
+# Opt-in machine guards (docs/EDITOR_GUARDS.md; need `uv sync` in Python/): UNREAL_MCP_EDITOR_LOCK=<dir> single-editor
+# lock (mkdir lock dir with pid/owner, like ~/.ue_lock; stale holders are moved aside), UNREAL_MCP_MIN_FREE_RAM_GB and
+# UNREAL_MCP_MAX_LOAD refuse build/launch with the reason, UNREAL_MCP_PORT=auto picks a free port outside
+# UNREAL_MCP_RESERVED_PORTS (e.g. 55557) from UNREAL_MCP_PORT_RANGE. UNREAL_MCP_LOCK_HELD=1 when an outer queue holds it.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 UE_ROOT="${UE_ROOT:-$HOME/Downloads/Linux_Unreal_Engine_5.8.4}"
 PROJECT="${UE_PROJECT:-$REPO/FlopperamUnrealMCP/FlopperamUnrealMCP.uproject}"
+guard() { (cd "$REPO/Python" && uv run --quiet python -m unreal_mcp.editor_guard "$@"); }
+guards_on() { [ -n "${UNREAL_MCP_EDITOR_LOCK:-}${UNREAL_MCP_MIN_FREE_RAM_GB:-}${UNREAL_MCP_MAX_LOAD:-}" ]; }
 PORT="${UNREAL_MCP_PORT:-55557}"
+if [ "$PORT" = "auto" ]; then
+  case "${1:-}" in launch|launch-gui|rebuild) ;; *) echo "UNREAL_MCP_PORT=auto only works with launch/rebuild; pass the port"; exit 2 ;; esac
+  PORT="$(guard pick-port)" || exit 3
+  echo "picked free port $PORT"
+fi
 export UNREAL_MCP_PORT="$PORT"
 LOG_DIR="${UE_LOG_DIR:-/tmp/unreal-mcp/$PORT}"
 PID_FILE="$LOG_DIR/editor.pid"
@@ -65,6 +76,9 @@ close_crash_reporter() {
   done
 }
 
+# Drop the single-editor lock if the editor `pid` holds it (or its holder is gone). No-op when guards are off.
+release_lock() { if [ -n "${UNREAL_MCP_EDITOR_LOCK:-}" ] && [ -n "${1:-}" ]; then guard lock-release --pid "$1" || true; fi; }
+
 do_quit() {
   local pid
   pid="$(our_pid)"
@@ -80,15 +94,20 @@ UnrealConnection().send_command('execute_python', {'code': 'import unreal; unrea
     for _ in $(seq 1 45); do ping_editor || { echo "editor closed"; return 0; }; sleep 2; done
     echo "editor on port $PORT did not quit (not started by this script, so not killing it)"; return 1
   fi
-  for _ in $(seq 1 45); do kill -0 "$pid" 2>/dev/null || { echo "editor closed"; rm -f "$PID_FILE"; return 0; }; sleep 2; done
+  for _ in $(seq 1 45); do kill -0 "$pid" 2>/dev/null || { echo "editor closed"; rm -f "$PID_FILE"; release_lock "$pid"; return 0; }; sleep 2; done
   echo "editor did not quit; sending SIGTERM to $pid"; kill -TERM "$pid" 2>/dev/null || true; sleep 5; rm -f "$PID_FILE"
   close_crash_reporter
+  release_lock "$pid"
 }
 
 do_build() {
   local open
   open="$(project_editors)"
   if [ -n "$open" ]; then echo "the project is open in editor pid(s) $(echo $open) - quit it first"; return 1; fi
+  if guards_on; then
+    guard preflight --pid $$ --owner "${UNREAL_MCP_LOCK_OWNER:-ue_linux.sh build $(basename "$PROJECT")}" || return 1
+    trap 'guard lock-release --pid $$ >/dev/null 2>&1 || true; trap - RETURN' RETURN
+  fi
   bash "$REPO/scripts/sync_plugin.sh" >/dev/null
   # -NoHotReloadFromIDE: with ANY other editor running from the same engine, UBT otherwise builds a hot-reload
   # libUnrealEditor-UnrealMCP-NNNN.so that UnrealEditor.modules never points to, so the next launch loads stale code.
@@ -111,14 +130,19 @@ do_launch() {
   local open
   open="$(project_editors)"
   if [ -n "$open" ]; then echo "the project is already open in editor pid(s) $(echo $open) on another port"; return 1; fi
+  if guards_on; then
+    guard preflight --pid $$ --owner "${UNREAL_MCP_LOCK_OWNER:-ue_linux.sh launch $(basename "$PROJECT") port $PORT}" || return 1
+  fi
   UNREAL_MCP_PORT="$PORT" setsid "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$PROJECT" -nosplash "${mode[@]}" "${extra[@]}" \
     -abslog="$EDITOR_LOG" \
     "-ini:Engine:[/Script/PythonScriptPlugin.PythonScriptPluginSettings]:bDeveloperMode=True" >/dev/null 2>&1 &
   local pid=$!
   echo "$pid" >"$PID_FILE"
+  if guards_on; then guard lock-handover --from $$ --to "$pid" || true; fi  # the lock now lives as long as the editor
   for i in $(seq 1 180); do
     if ping_editor; then sleep 10; echo "editor $pid ready on port $PORT after ~$((i * 5))s"; return 0; fi
-    kill -0 "$pid" 2>/dev/null || { echo "EDITOR EXITED"; tail -20 "$EDITOR_LOG"; rm -f "$PID_FILE"; close_crash_reporter; return 1; }
+    kill -0 "$pid" 2>/dev/null || { echo "EDITOR EXITED"; tail -20 "$EDITOR_LOG"; rm -f "$PID_FILE"; close_crash_reporter
+      release_lock "$pid"; return 1; }
     sleep 5
   done
   echo "editor did not answer within 15 min"; return 1
@@ -142,6 +166,7 @@ do_kill() {
   if kill -0 "$pid" 2>/dev/null; then echo "editor $pid survived SIGKILL"; return 1; fi
   rm -f "$PID_FILE"
   close_crash_reporter
+  release_lock "$pid"
   echo "editor killed; relaunch with: UNREAL_MCP_PORT=$PORT $0 launch"
 }
 
