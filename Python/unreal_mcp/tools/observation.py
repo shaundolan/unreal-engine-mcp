@@ -24,25 +24,29 @@ def register(mcp, get_conn):
                                              "since_seq": since_seq, "category": category})
 
     @mcp.tool()
-    def viewport_capture(max_width: int = 1280, source: str = "auto", width: int = 0, height: int = 0) -> Any:
+    def viewport_capture(max_width: int = 1280, source: str = "auto", width: int = 0, height: int = 0,
+                         world: str = "") -> Any:
         """Screenshot and return it as an image, so you can visually verify your work.
         source: "auto" = what the player sees while PIE runs, else the level viewport;
         "pie" (or "game") = the PIE viewport only; "editor" = the level viewport. max_width downsizes.
         width/height (PIE only): render the PIE viewport at exactly this size first (it stays that
         size for the session). Use it in offscreen editors, where the PIE window size is unreliable;
-        HighResShot / take_high_res_screenshot capture the editor view there, not the game."""
-        reply = capture_png(get_conn, max_width, source, width, height)
+        HighResShot / take_high_res_screenshot capture the editor view there, not the game.
+        world (multi-client PIE): whose view, "server" (listen server host) or "client:1", "client:2" ..."""
+        reply = capture_png(get_conn, max_width, source, width, height, world)
         if not reply.get("success"):
             return reply
         return Image(data=reply["png"], format="png")
 
 
 def capture_png(get_conn, max_width: int = 1280, source: str = "auto", width: int = 0,
-                height: int = 0) -> dict[str, Any]:
-    """viewport_capture -> {success, png (bytes), width, height}."""
+                height: int = 0, world: str = "") -> dict[str, Any]:
+    """viewport_capture -> {success, png (bytes), width, height}. world: a multi-client PIE target ("client:2")."""
     params: dict[str, Any] = {"max_width": max(max_width, width) if width else max_width, "source": source}
     if width and height:
         params.update(width=width, height=height)
+    if world:
+        params["world"] = world
     reply = call(get_conn, "viewport_capture", params)
     if not reply.get("success"):
         return reply

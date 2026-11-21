@@ -162,16 +162,36 @@ static TSharedPtr<FJsonObject> HandleViewportCapture(const TSharedPtr<FJsonObjec
 	Params->TryGetNumberField(TEXT("width"), ReqW);
 	Params->TryGetNumberField(TEXT("height"), ReqH);
 	FViewport* Viewport = nullptr;
-	// While playing, "auto" captures what the player sees (the PIE game viewport), not the editor view.
-	if (Source != TEXT("editor") && GEditor && GEditor->PlayWorld && GEditor->PlayWorld->GetGameViewport())
+	// Multi-client PIE: "world" / "net_role" picks whose view ("client:2", "server" for a listen server host).
+	UWorld* PieWorld = GEditor ? GEditor->PlayWorld.Get() : nullptr;
+	FString WorldTarget;
+	if (Params->TryGetStringField(TEXT("world"), WorldTarget) || Params->TryGetStringField(TEXT("net_role"), WorldTarget))
 	{
-		Viewport = GEditor->PlayWorld->GetGameViewport()->Viewport;
+		if (Source == TEXT("editor"))
+		{
+			return MCPError(TEXT("world/net_role picks a PIE world; it does not apply to source=editor"));
+		}
+		FString Err;
+		PieWorld = FMCPPlayCommands::ResolvePieWorld(WorldTarget, Err);
+		if (!PieWorld)
+		{
+			return MCPError(Err);
+		}
+		if (!PieWorld->GetGameViewport())
+		{
+			return MCPError(FString::Printf(TEXT("PIE world '%s' has no viewport (a dedicated server renders nothing; capture a client)"), *WorldTarget));
+		}
+	}
+	// While playing, "auto" captures what the player sees (the PIE game viewport), not the editor view.
+	if (Source != TEXT("editor") && PieWorld && PieWorld->GetGameViewport())
+	{
+		Viewport = PieWorld->GetGameViewport()->Viewport;
 		// A requested size fixes the PIE render size (it stays for the session): the offscreen PIE window's own
 		// size is not to be trusted. The frame below is then drawn at exactly width x height.
 		if (ReqW > 0 && ReqH > 0 && Viewport && Viewport->GetSizeXY() != FIntPoint(int32(ReqW), int32(ReqH)))
 		{
 			FString Err;
-			if (!FMCPPlayCommands::SetPieViewportSize(int32(ReqW), int32(ReqH), Err))
+			if (!FMCPPlayCommands::SetPieViewportSize(int32(ReqW), int32(ReqH), Err, PieWorld))
 			{
 				return MCPError(Err);
 			}
