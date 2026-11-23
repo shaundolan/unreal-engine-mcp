@@ -34,6 +34,12 @@ def register(mcp, get_conn):
               deforms the landscape to the spline (road bed / river channel: put the spline points below the
               surface and raise=false) and optionally paints a landscape layer along it.
           {"op":"delete","target":"Road"}
+          ROADS: add "road":{"width":800,"clearance":3,"step":200,"max_bend_deg":3,"carve":true} to create/modify:
+              the points are the centreline; the deck follows one continuous profile at least `clearance` over the
+              ground under its whole width (other roads ignored: never stacked), one segment per station, the
+              landscape carved to sit under it. Where two roads cross:
+          {"op":"junction","roads":["RoadA","RoadB"],"radius":null,"pad_mesh":"/Engine/BasicShapes/Cylinder.Cylinder"}
+              ONE pad at ONE height, both roads eased into it and stopped at its edge (no ridge, no lip).
         Spline actors are tagged mcp_spline. dry_run=true validates points/snapping without changing the level."""
         return run_editor_script(get_conn, "spline_edit", {
             "operations": operations, "dry_run": dry_run, "stop_on_error": stop_on_error}, timeout_s=300)

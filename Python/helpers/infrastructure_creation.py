@@ -25,68 +25,49 @@ def _safe_spawn_infrastructure_actor(unreal, params):
     return resp
 
 
+def _road_rules():
+    """The shared road rules (unreal_mcp/editor_scripts/_road.py: the same file the editor-side road tools include)."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "unreal_mcp", "editor_scripts", "_road.py")
+    spec = importlib.util.spec_from_file_location("_mcp_road_rules", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _create_street_grid(blocks: int, block_size: float, street_width: float, location: List[float], name_prefix: str) -> Dict[str, Any]:
-    """Create a grid of streets for the town."""
+    """Create a grid of streets for the town: one square pad per crossing and one strip per block side between two
+    crossings (the shared road rules' grid_layout), every piece's top at location z. Nothing overlaps (the old grid
+    laid each street's 70 %-long pieces over the crossing streets' and left the crossings themselves open) and
+    nothing is left uncovered, so a car crosses town on one flush surface."""
     try:
         # Import here to avoid circular imports
         import unreal_mcp_server_advanced as server
         get_unreal_connection = server.get_unreal_connection
         set_actor_transform = server.set_actor_transform
-        
+
         unreal = get_unreal_connection()
         if not unreal:
             return {"success": False, "actors": []}
-            
+
+        thickness = 10.0  # cm: the engine cube scaled 0.1, its top at location z
         streets = []
-        
-        # Create horizontal streets
-        for i in range(blocks + 1):
-            street_y = location[1] + (i - blocks/2) * block_size
-            for j in range(blocks):
-                street_x = location[0] + (j - blocks/2 + 0.5) * block_size
-                
-                actor_name = f"{name_prefix}_Street_H_{i}_{j}"
-                
-                # Simple street spawn
-                result = _safe_spawn_infrastructure_actor(unreal, {
-                    "name": actor_name,
-                    "type": "StaticMeshActor",
-                    "location": [street_x, street_y, location[2] - 5]
-                })
-                
-                # Scale the street segment
-                if result and result.get("status") == "success":
-                    set_actor_transform(
-                        actor_name,
-                        scale=[block_size/100.0 * 0.7, street_width/100.0, 0.1]
-                    )
-                    streets.append(result.get("result"))
-        
-        # Create vertical streets
-        for i in range(blocks + 1):
-            street_x = location[0] + (i - blocks/2) * block_size
-            for j in range(blocks):
-                street_y = location[1] + (j - blocks/2 + 0.5) * block_size
-                
-                actor_name = f"{name_prefix}_Street_V_{i}_{j}"
-                
-                # Simple street spawn
-                result = _safe_spawn_infrastructure_actor(unreal, {
-                    "name": actor_name,
-                    "type": "StaticMeshActor",
-                    "location": [street_x, street_y, location[2] - 5]
-                })
-                
-                # Scale the street segment
-                if result and result.get("status") == "success":
-                    set_actor_transform(
-                        actor_name,
-                        scale=[street_width/100.0, block_size/100.0 * 0.7, 0.1]
-                    )
-                    streets.append(result.get("result"))
-        
+        pieces = _road_rules().grid_layout(blocks, block_size, street_width, tuple(location))
+        for k, piece in enumerate(pieces):
+            x, y, z_top = piece["center"]
+            sx, sy = piece["size"]
+            actor_name = f"{name_prefix}_Street_{'Pad' if piece['kind'] == 'pad' else 'Strip'}_{k}"
+            result = _safe_spawn_infrastructure_actor(unreal, {
+                "name": actor_name,
+                "type": "StaticMeshActor",
+                "location": [x, y, z_top - thickness * 0.5]
+            })
+            if result and result.get("status") == "success":
+                set_actor_transform(actor_name, scale=[sx / 100.0, sy / 100.0, thickness / 100.0])
+                streets.append(result.get("result"))
+
         return {"success": True, "actors": streets}
-        
+
     except Exception as e:
         logger.error(f"_create_street_grid error: {e}")
         return {"success": False, "actors": []}
